@@ -11,7 +11,8 @@ function verifyAdmin(authHeader: string): string | null {
   const token = authHeader.replace('Bearer ', '').trim();
   if (!token) return null;
   try {
-    const payload = jwt.verify(token, SUPABASE_JWT_SECRET) as { sub?: string };
+    const secret = Buffer.from(SUPABASE_JWT_SECRET, 'base64');
+    const payload = jwt.verify(token, secret) as { sub?: string };
     const userId = payload.sub;
     if (!userId || !ADMIN_IDS.includes(userId)) return null;
     return userId;
