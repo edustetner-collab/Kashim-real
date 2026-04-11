@@ -73,9 +73,6 @@ const NOT_APPLICABLE_PATTERNS = [
   'não se aplica',
   'nao se aplica',
   'n/a',
-  'não',
-  '0',
-  '-',
 ];
 
 export interface ParsedField {
@@ -144,12 +141,11 @@ export function parseFormText(text: string): ParsedField[] {
     );
     if (isNotApplicable) continue;
 
-    // Busca o nome mapeado
-    const mappedName = FIELD_MAP[rawKey];
-    if (!mappedName) continue;
-
     const value = parseBRNumber(rawValue);
     if (isNaN(value) || value === 0) continue;
+
+    // Usa o nome mapeado se existir, senão usa o nome original capitalizado
+    const mappedName = FIELD_MAP[rawKey] ?? clean.substring(0, colonIdx).trim();
 
     const isIncome = rawKey === 'renda' || rawKey === 'salário' || rawKey === 'salario';
 
