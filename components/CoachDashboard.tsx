@@ -1,8 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '@clerk/clerk-react';
+import { useAuth, useUser, useClerk } from '@clerk/clerk-react';
+import { useSupabase } from '../lib/useSupabase';
 import { parseFormText, ParsedField } from '../lib/parseFormText';
 import { formatCurrency } from '../constants';
+import ConsultorSettings from './ConsultorSettings';
 
 interface ClientProfile {
   householdId: string;
@@ -19,9 +21,14 @@ interface CoachDashboardProps {
 
 const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
   const { getToken } = useAuth();
+  const { user } = useUser();
+  const { signOut } = useClerk();
+  const db = useSupabase();
+
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [formText, setFormText] = useState('');
   const [parsedFields, setParsedFields] = useState<ParsedField[]>([]);
   const [clientName, setClientName] = useState('');
@@ -122,19 +129,49 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white">
+
+      {showSettings && db && (
+        <ConsultorSettings db={db} onClose={() => setShowSettings(false)} />
+      )}
+
       {/* Header */}
-      <header className="bg-[#0f0f0f] border-b border-yellow-600/30 px-8 py-4 sticky top-0 z-50">
+      <header className="bg-[#0f0f0f] border-b border-yellow-600/30 px-6 py-3 sticky top-0 z-50">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <span className="text-2xl font-black italic bg-clip-text text-transparent bg-gradient-to-b from-yellow-200 to-yellow-700 uppercase tracking-tighter">
-            RICO nessa vida — Coach
-          </span>
+          {/* Logo */}
           <div className="flex items-center gap-3">
-            <span className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Dashboard</span>
+            <img src="/kashim-icon.png" alt="Kashim" className="h-9 w-9 rounded-xl" />
+            <span className="text-xl font-black text-white uppercase tracking-widest hidden md:block">Kashim</span>
+            <span className="text-[9px] font-black uppercase text-yellow-500 bg-yellow-500/10 border border-yellow-500/20 px-2 py-0.5 rounded-full ml-1">Consultor</span>
+          </div>
+
+          {/* Ações do consultor */}
+          <div className="flex items-center gap-2">
+            {user && (
+              <div className="hidden md:flex items-center gap-2 border-r border-zinc-800 pr-3 mr-1">
+                <img src={user.imageUrl} className="w-7 h-7 rounded-full border border-yellow-500/30" alt="Avatar" />
+                <span className="text-[10px] font-black uppercase text-zinc-400">{user.firstName || user.emailAddresses[0]?.emailAddress.split('@')[0]}</span>
+              </div>
+            )}
+            <button
+              onClick={() => setShowSettings(true)}
+              className="flex items-center gap-2 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-zinc-300 hover:text-white transition-all text-xs font-black uppercase"
+              title="Configurações"
+            >
+              <i className="fas fa-cog"></i>
+              <span className="hidden md:inline">Configurações</span>
+            </button>
+            <button
+              onClick={() => signOut()}
+              className="px-3 py-2 bg-zinc-800 hover:bg-red-500/20 text-zinc-500 hover:text-red-400 rounded-xl transition-all"
+              title="Sair"
+            >
+              <i className="fas fa-sign-out-alt"></i>
+            </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-8 py-10">
+      <main className="max-w-6xl mx-auto px-6 py-10">
         {/* Topo */}
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -240,7 +277,6 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
             </h2>
 
             <form onSubmit={handleCreateClient} className="flex flex-col gap-5">
-              {/* Dados do cliente */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest mb-1 block">Nome completo</label>
@@ -266,41 +302,39 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
                 </div>
               </div>
 
-              {/* Área de texto do formulário */}
+              {/* Formulário financeiro */}
               <div>
                 <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest mb-1 block">
-                  Cole aqui o texto do formulário
+                  Formulário financeiro (opcional)
                 </label>
                 <textarea
                   value={formText}
-                  onChange={e => { setFormText(e.target.value); setParsedFields([]); }}
+                  onChange={e => setFormText(e.target.value)}
+                  placeholder="Cole aqui o formulário preenchido pelo cliente..."
                   rows={8}
-                  placeholder={"Renda: R$ 7.662\n* Telefone fixo: Não tenho esse gasto\n* Internet: 93,40\n* Celular: 53,81\n..."}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-500 transition-all font-mono resize-none"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-500 transition-all resize-none font-mono"
                 />
-                <button
-                  type="button"
-                  onClick={handleParseText}
-                  disabled={!formText.trim()}
-                  className="mt-2 bg-zinc-700 hover:bg-zinc-600 text-white font-black px-4 py-2 rounded-xl text-xs uppercase transition-all disabled:opacity-40"
-                >
-                  <i className="fas fa-magic mr-1"></i> Interpretar texto
-                </button>
+                {formText && (
+                  <button
+                    type="button"
+                    onClick={handleParseText}
+                    className="mt-2 text-xs text-yellow-500 hover:text-yellow-400 font-black uppercase underline"
+                  >
+                    Interpretar formulário
+                  </button>
+                )}
               </div>
 
-              {/* Preview dos campos interpretados */}
               {parsedFields.length > 0 && (
-                <div className="bg-zinc-800/50 border border-zinc-700 rounded-2xl p-4">
-                  <p className="text-[10px] font-black uppercase text-yellow-500 tracking-widest mb-3">
-                    {parsedFields.length} campos interpretados — replicados nos 12 meses
+                <div className="bg-zinc-800 rounded-2xl p-4 max-h-48 overflow-y-auto">
+                  <p className="text-[10px] font-black uppercase text-zinc-500 tracking-widest mb-3">
+                    {parsedFields.length} campos interpretados
                   </p>
-                  <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto">
+                  <div className="space-y-1">
                     {parsedFields.map((f, i) => (
-                      <div key={i} className="flex items-center justify-between text-xs">
-                        <span className={`font-bold ${f.isIncome ? 'text-green-400' : 'text-zinc-300'}`}>
-                          {f.isIncome ? '↑' : '↓'} {f.description}
-                        </span>
-                        <span className="font-mono text-zinc-400">{formatCurrency(f.value)}</span>
+                      <div key={i} className="flex justify-between text-xs">
+                        <span className="text-zinc-400">{f.fieldName}</span>
+                        <span className="text-yellow-400 font-bold">{formatCurrency(f.value)}</span>
                       </div>
                     ))}
                   </div>
@@ -308,25 +342,16 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
               )}
 
               {createError && (
-                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-red-400 text-sm">
-                  <i className="fas fa-exclamation-circle mr-2"></i>{createError}
-                </div>
+                <p className="text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">{createError}</p>
               )}
 
               <button
                 type="submit"
-                disabled={creating || !clientName || !clientEmail}
-                className="bg-yellow-600 hover:bg-yellow-500 text-black font-black py-4 rounded-2xl uppercase text-sm tracking-widest transition-all disabled:opacity-50 shadow-lg"
+                disabled={creating}
+                className="w-full bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50 text-black font-black py-4 rounded-2xl transition-all shadow-lg uppercase text-sm"
               >
-                {creating
-                  ? <><i className="fas fa-circle-notch animate-spin mr-2"></i>Criando perfil...</>
-                  : <><i className="fas fa-user-check mr-2"></i>Criar perfil e enviar acesso</>
-                }
+                {creating ? <i className="fas fa-circle-notch animate-spin"></i> : 'Criar perfil e enviar acesso'}
               </button>
-
-              <p className="text-zinc-600 text-[10px] text-center">
-                O cliente receberá um e-mail para definir a senha e acessar o sistema
-              </p>
             </form>
           </div>
         </div>

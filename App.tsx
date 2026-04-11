@@ -46,7 +46,19 @@ const App: React.FC = () => {
   const [showSubscriptionGate, setShowSubscriptionGate] = useState(false);
   const itemIdMapRef = useRef<Record<string, string>>({}); // localId -> dbId
 
-  const isAdmin = user ? ADMIN_IDS.includes(user.id) : false;
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Checa se é admin por env var OU por tabela admin_users (assistentes)
+  useEffect(() => {
+    if (!user) { setIsAdmin(false); return; }
+    if (ADMIN_IDS.includes(user.id)) { setIsAdmin(true); return; }
+    // Checa pelo email na tabela de admins do Supabase
+    if (!db) return;
+    const email = user.emailAddresses[0]?.emailAddress?.toLowerCase();
+    if (!email) return;
+    db.from('admin_users').select('id').eq('email', email).maybeSingle()
+      .then(({ data }) => { if (data) setIsAdmin(true); });
+  }, [user, db]);
 
   const [showProjectionModal, setShowProjectionModal] = useState(false);
   const [pendingStartMonth, setPendingStartMonth] = useState<{month: number, year: number} | null>(null);
@@ -411,10 +423,9 @@ const App: React.FC = () => {
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-yellow-600/5 rounded-full blur-[120px]"></div>
 
         <div className="max-w-md w-full relative z-10 flex flex-col items-center gap-10">
-          <div className="text-center">
-            <h1 className="text-6xl font-black italic bg-clip-text text-transparent bg-gradient-to-b from-yellow-100 to-yellow-600 uppercase tracking-tighter leading-none mb-4 drop-shadow-2xl">
-              RICO nessa vida
-            </h1>
+          <div className="text-center flex flex-col items-center gap-4">
+            <img src="/kashim-icon.png" alt="Kashim" className="w-20 h-20 rounded-3xl shadow-2xl shadow-yellow-600/20" />
+            <img src="/kashim-logo.png" alt="Kashim" className="h-10" style={{filter: 'brightness(0) invert(1)'}} />
             <p className="text-zinc-400 text-xs font-bold uppercase tracking-[0.2em] leading-relaxed">
               A forma mais simples de se manter organizado financeiramente.
             </p>
@@ -503,14 +514,15 @@ const App: React.FC = () => {
         </div>
       )}
 
-      <header id="header" className="bg-[#0f0f0f] text-white py-4 px-8 shadow-2xl mb-8 sticky top-0 z-50 border-b-2 border-yellow-600/50">
+      <header id="header" className="bg-[#0f0f0f] text-white py-3 px-8 shadow-2xl mb-8 sticky top-0 z-50 border-b-2 border-yellow-600/50">
         <div className="max-w-[1600px] mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-6">
-            <span className="text-3xl font-black italic bg-clip-text text-transparent bg-gradient-to-b from-yellow-200 to-yellow-700 uppercase tracking-tighter">RICO nessa vida</span>
+          <div className="flex items-center gap-4">
+            <img src="/kashim-icon.png" alt="Kashim" className="h-10 w-10 rounded-xl shadow-lg" />
+            <img src="/kashim-logo.png" alt="Kashim" className="h-8 hidden md:block" style={{filter: 'brightness(0) invert(1)'}} />
             {user && (
-              <div className="hidden md:flex items-center gap-3 border-l border-zinc-800 pl-6">
-                <img src={user.imageUrl} className="w-8 h-8 rounded-full border border-yellow-500/30 shadow-lg" alt="Avatar" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Bem-vindo, {user.firstName || user.emailAddresses[0]?.emailAddress.split('@')[0]}</span>
+              <div className="hidden md:flex items-center gap-3 border-l border-zinc-800 pl-4">
+                <img src={user.imageUrl} className="w-7 h-7 rounded-full border border-yellow-500/30 shadow-lg" alt="Avatar" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">{user.firstName || user.emailAddresses[0]?.emailAddress.split('@')[0]}</span>
               </div>
             )}
           </div>
