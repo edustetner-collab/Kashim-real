@@ -46,19 +46,19 @@ const App: React.FC = () => {
   const [showSubscriptionGate, setShowSubscriptionGate] = useState(false);
   const itemIdMapRef = useRef<Record<string, string>>({}); // localId -> dbId
 
-  const [isAdmin, setIsAdmin] = useState(false);
+  const isAdminByEnv = user ? ADMIN_IDS.includes(user.id) : false;
+  const [isAdminByDb, setIsAdminByDb] = useState(false);
+  const isAdmin = isAdminByEnv || isAdminByDb;
 
-  // Checa se é admin por env var OU por tabela admin_users (assistentes)
+  // Checa assistentes cadastradas na tabela admin_users
   useEffect(() => {
-    if (!user) { setIsAdmin(false); return; }
-    if (ADMIN_IDS.includes(user.id)) { setIsAdmin(true); return; }
-    // Checa pelo email na tabela de admins do Supabase
-    if (!db) return;
+    if (!db || !user || isAdminByEnv) return;
     const email = user.emailAddresses[0]?.emailAddress?.toLowerCase();
     if (!email) return;
     db.from('admin_users').select('id').eq('email', email).maybeSingle()
-      .then(({ data }) => { if (data) setIsAdmin(true); });
-  }, [user, db]);
+      .then(({ data }) => { if (data) setIsAdminByDb(true); })
+      .catch(() => {});
+  }, [db, user, isAdminByEnv]);
 
   const [showProjectionModal, setShowProjectionModal] = useState(false);
   const [pendingStartMonth, setPendingStartMonth] = useState<{month: number, year: number} | null>(null);
