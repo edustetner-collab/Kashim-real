@@ -94,9 +94,9 @@ const App: React.FC = () => {
     }))
   );
 
-  // Carrega dados do Supabase quando o cliente estiver pronto
+  // Carrega dados do Supabase quando o cliente estiver pronto (não roda para admins)
   useEffect(() => {
-    if (!db || !user) return;
+    if (!db || !user || isAdminByEnv) return;
 
     async function loadData() {
       setDbLoading(true);
