@@ -1,0 +1,7 @@
+{
+  "name": "Kashim",
+  "description": "Aplicativo premium de organização financeira focado em planejamento estratégico de 12 meses. Uma vida financeiramente saudável é uma questão de escolha.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
