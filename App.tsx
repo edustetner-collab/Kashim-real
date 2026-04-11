@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useUser, useClerk, SignIn, SignUp } from '@clerk/clerk-react';
 import { CategoryType, FinanceItem, SummaryData, LinkType, PartialExpense } from './types';
 import { getNext12Months, formatCurrency, MONTHS_BR } from './constants';
 import BlockSection from './components/BlockSection';
@@ -19,16 +20,11 @@ const DEFAULT_FIXED_EXPENSES = [
 ];
 
 const App: React.FC = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return localStorage.getItem('finance_auth') === 'true';
-  });
+  const { isSignedIn, user, isLoaded } = useUser();
+  const { signOut } = useClerk();
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [showTutorial, setShowTutorial] = useState<boolean>(() => {
     return localStorage.getItem('tutorial_completed') !== 'true';
-  });
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [userProfile, setUserProfile] = useState<{name: string, photo?: string} | null>(() => {
-    const saved = localStorage.getItem('user_profile');
-    return saved ? JSON.parse(saved) : null;
   });
   
   const [showProjectionModal, setShowProjectionModal] = useState(false);
@@ -77,29 +73,6 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('finance_data', JSON.stringify(items)); }, [items]);
   useEffect(() => { localStorage.setItem('finance_start_month', startMonth.toString()); }, [startMonth]);
   useEffect(() => { localStorage.setItem('finance_start_year', startYear.toString()); }, [startYear]);
-  useEffect(() => { localStorage.setItem('finance_auth', isAuthenticated.toString()); }, [isAuthenticated]);
-  useEffect(() => { if (userProfile) localStorage.setItem('user_profile', JSON.stringify(userProfile)); }, [userProfile]);
-
-  const handleSocialLogin = (provider: 'google' | 'facebook') => {
-    const profile = {
-      name: provider === 'google' ? 'Usuário Google' : 'Usuário Facebook',
-      photo: provider === 'google' 
-        ? 'https://cdn-icons-png.flaticon.com/512/2991/2991148.png' 
-        : 'https://cdn-icons-png.flaticon.com/512/124/124010.png'
-    };
-    setUserProfile(profile);
-    setIsAuthenticated(true);
-  };
-
-  const handleManualAuth = (e: React.FormEvent) => {
-    e.preventDefault();
-    const profile = { 
-      name: formData.name || formData.email.split('@')[0], 
-      photo: 'https://cdn-icons-png.flaticon.com/512/149/149071.png' 
-    };
-    setUserProfile(profile);
-    setIsAuthenticated(true);
-  };
 
   const handleCompleteTutorial = () => {
     localStorage.setItem('tutorial_completed', 'true');
@@ -270,79 +243,44 @@ const App: React.FC = () => {
     return options;
   }, []);
 
-  if (!isAuthenticated) {
+  if (!isLoaded) {
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6 relative overflow-hidden text-center">
+      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+        <div className="w-10 h-10 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  if (!isSignedIn) {
+    return (
+      <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6 relative overflow-hidden">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-yellow-600/10 rounded-full blur-[120px]"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-yellow-600/5 rounded-full blur-[120px]"></div>
-        
-        <div className="max-w-md w-full relative z-10">
-          <div className="mb-12">
-            <h1 className="text-6xl font-black italic bg-clip-text text-transparent bg-gradient-to-b from-yellow-100 to-yellow-600 uppercase tracking-tighter leading-none mb-6 drop-shadow-2xl">
+
+        <div className="max-w-md w-full relative z-10 flex flex-col items-center gap-10">
+          <div className="text-center">
+            <h1 className="text-6xl font-black italic bg-clip-text text-transparent bg-gradient-to-b from-yellow-100 to-yellow-600 uppercase tracking-tighter leading-none mb-4 drop-shadow-2xl">
               RICO nessa vida
             </h1>
-            <p className="text-zinc-400 text-xs font-bold uppercase tracking-[0.2em] leading-relaxed max-w-[280px] mx-auto">
-              A forma mais simples de se manter organizado financeiramente está aqui.
+            <p className="text-zinc-400 text-xs font-bold uppercase tracking-[0.2em] leading-relaxed">
+              A forma mais simples de se manter organizado financeiramente.
             </p>
           </div>
 
-          <div className="bg-zinc-900/40 border border-zinc-800/50 p-10 rounded-[45px] backdrop-blur-2xl shadow-[0_35px_60px_-15px_rgba(0,0,0,0.6)] transition-all duration-700">
-            <h2 className="text-white font-black text-2xl mb-10 uppercase tracking-tighter italic">
-              {authMode === 'login' ? 'Identifique-se' : 'Junte-se ao Elite'}
-            </h2>
-            
-            <div className="grid grid-cols-2 gap-4 mb-10">
-              <button 
-                onClick={() => handleSocialLogin('google')}
-                className="flex items-center justify-center gap-3 bg-white hover:bg-zinc-200 text-black font-black py-4 rounded-2xl transition-all active:scale-95 shadow-xl group text-left"
-              >
-                <i className="fab fa-google text-lg text-[#DB4437]"></i>
-                <span className="text-[10px] uppercase tracking-widest">Google</span>
-              </button>
+          {authMode === 'login' ? (
+            <SignIn routing="hash" />
+          ) : (
+            <SignUp routing="hash" />
+          )}
 
-              <button 
-                onClick={() => handleSocialLogin('facebook')}
-                className="flex items-center justify-center gap-3 bg-[#1877F2] hover:bg-[#166fe5] text-white font-black py-4 rounded-2xl transition-all active:scale-95 shadow-xl group text-left"
-              >
-                <i className="fab fa-facebook text-xl"></i>
-                <span className="text-[10px] uppercase tracking-widest">Facebook</span>
-              </button>
-            </div>
+          <button
+            onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
+            className="text-zinc-500 hover:text-yellow-500 text-[10px] font-black uppercase tracking-[0.2em] transition-colors"
+          >
+            {authMode === 'login' ? 'Ainda não é membro? Criar conta' : 'Já possuo conta? Entrar'}
+          </button>
 
-            <div className="relative flex items-center justify-center mb-10">
-              <span className="w-full h-[1px] bg-zinc-800/50"></span>
-              <span className="absolute bg-[#0a0a0a] px-5 text-[9px] text-zinc-600 font-black uppercase tracking-[0.4em]">Acesso Manual</span>
-            </div>
-
-            <form onSubmit={handleManualAuth} className="flex flex-col gap-4 mb-10 text-left">
-              {authMode === 'register' && (
-                <input type="text" required placeholder="Seu Nome Completo" className="w-full bg-zinc-950/50 border border-zinc-800/80 rounded-2xl px-6 py-4.5 text-white text-sm outline-none focus:border-yellow-600/50 transition-all shadow-inner" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
-              )}
-              <input type="email" required placeholder="E-mail Corporativo ou Pessoal" className="w-full bg-zinc-950/50 border border-zinc-800/80 rounded-2xl px-6 py-4.5 text-white text-sm outline-none focus:border-yellow-600/50 transition-all shadow-inner" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
-              <input type="password" required placeholder="Sua Senha Mestra" className="w-full bg-zinc-950/50 border border-zinc-800/80 rounded-2xl px-6 py-4.5 text-white text-sm outline-none focus:border-yellow-600/50 transition-all shadow-inner" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} />
-              <button type="submit" className="bg-gradient-to-r from-yellow-600 to-yellow-700 hover:from-yellow-500 hover:to-yellow-600 text-black font-black py-5 rounded-2xl transition-all active:scale-95 shadow-2xl shadow-yellow-900/20 uppercase text-[11px] tracking-[0.2em] mt-2">
-                {authMode === 'login' ? 'Desbloquear Acesso' : 'Confirmar Registro'}
-              </button>
-            </form>
-
-            <button 
-              onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
-              className="w-full text-zinc-500 hover:text-yellow-500 text-[10px] font-black uppercase tracking-[0.2em] transition-colors"
-            >
-              {authMode === 'login' ? 'Ainda não é membro?' : 'Já possuo credenciais'}
-            </button>
-          </div>
-
-          <div className="mt-16 space-y-6">
-            <button 
-              onClick={resetFactory}
-              className="text-zinc-800 hover:text-zinc-600 text-[9px] font-black uppercase tracking-[0.4em] transition-all group"
-            >
-              <i className="fas fa-undo-alt mr-2 group-hover:rotate-[-180deg] transition-transform duration-500"></i>
-              Reset de Fábrica (Ambiente de Teste)
-            </button>
-            <div className="text-zinc-900 text-[10px] font-black uppercase tracking-[0.6em] opacity-40">Professor Digital Stets</div>
-          </div>
+          <div className="text-zinc-900 text-[10px] font-black uppercase tracking-[0.6em] opacity-40">Professor Digital Stets</div>
         </div>
       </div>
     );
@@ -390,17 +328,17 @@ const App: React.FC = () => {
         <div className="max-w-[1600px] mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-6">
             <span className="text-3xl font-black italic bg-clip-text text-transparent bg-gradient-to-b from-yellow-200 to-yellow-700 uppercase tracking-tighter">RICO nessa vida</span>
-            {userProfile && (
+            {user && (
               <div className="hidden md:flex items-center gap-3 border-l border-zinc-800 pl-6">
-                <img src={userProfile.photo} className="w-8 h-8 rounded-full border border-yellow-500/30 shadow-lg" alt="Avatar" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Bem-vindo, {userProfile.name.split(' ')[0]}</span>
+                <img src={user.imageUrl} className="w-8 h-8 rounded-full border border-yellow-500/30 shadow-lg" alt="Avatar" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Bem-vindo, {user.firstName || user.emailAddresses[0]?.emailAddress.split('@')[0]}</span>
               </div>
             )}
           </div>
           <div className="flex gap-2 bg-zinc-900 p-1 rounded-xl border border-zinc-800">
             <button onClick={() => setActiveTab('plan')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'plan' ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/20' : 'text-gray-400 hover:text-white'}`}>12 Meses</button>
             <button id="tab-gastos-frequentes" onClick={() => setActiveTab('teto')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'teto' ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/20' : 'text-gray-400 hover:text-white'}`}>Gastos Frequentes</button>
-            <button onClick={() => { setIsAuthenticated(false); localStorage.removeItem('finance_auth'); }} className="px-3 py-2 text-zinc-600 hover:text-red-500 transition-colors"><i className="fas fa-sign-out-alt"></i></button>
+            <button onClick={() => signOut()} className="px-3 py-2 text-zinc-600 hover:text-red-500 transition-colors"><i className="fas fa-sign-out-alt"></i></button>
           </div>
         </div>
       </header>
