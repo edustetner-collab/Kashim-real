@@ -9,7 +9,7 @@ import TetoGastos from './components/TetoGastos';
 import AICoach from './components/AICoach';
 import OnboardingTutorial from './components/OnboardingTutorial';
 import { useSupabase } from './lib/useSupabase';
-import { getOrCreateHousehold, loadFinanceItems, saveFinanceItem, deleteFinanceItem, addPartialExpense, deletePartialExpense, updateHouseholdPlan } from './lib/db';
+import { getOrCreateHousehold, getHousehold, loadFinanceItems, saveFinanceItem, deleteFinanceItem, addPartialExpense, deletePartialExpense, updateHouseholdPlan } from './lib/db';
 import { processInviteFromUrl } from './lib/invites';
 import InvitePartner from './components/InvitePartner';
 import CoachDashboard from './components/CoachDashboard';
@@ -50,14 +50,8 @@ const App: React.FC = () => {
   const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '' });
   const [activeTab, setActiveTab] = useState<'plan' | 'teto'>('plan');
 
-  const [startMonth, setStartMonth] = useState<number>(() => {
-    const saved = localStorage.getItem('finance_start_month');
-    return saved ? parseInt(saved) : new Date().getMonth();
-  });
-  const [startYear, setStartYear] = useState<number>(() => {
-    const saved = localStorage.getItem('finance_start_year');
-    return saved ? parseInt(saved) : new Date().getFullYear();
-  });
+  const [startMonth, setStartMonth] = useState<number>(() => new Date().getMonth());
+  const [startYear, setStartYear] = useState<number>(() => new Date().getFullYear());
 
   const months = useMemo(() => {
     const result = [];
@@ -74,19 +68,16 @@ const App: React.FC = () => {
 
   const currentActualMonth = new Date().getMonth();
   const currentActualYear = new Date().getFullYear();
-  
-  const [items, setItems] = useState<FinanceItem[]>(() => {
-    const saved = localStorage.getItem('finance_data');
-    if (saved) return JSON.parse(saved);
 
-    return DEFAULT_FIXED_EXPENSES.map((desc, idx) => ({
+  const [items, setItems] = useState<FinanceItem[]>(() =>
+    DEFAULT_FIXED_EXPENSES.map((desc, idx) => ({
       id: `default-fixed-${idx}`,
       description: desc,
       category: CategoryType.FIXED_EXPENSE,
       values: new Array(12).fill(0),
       paidStatus: new Array(12).fill(false)
-    }));
-  });
+    }))
+  );
 
   // Carrega dados do Supabase quando o cliente estiver pronto
   useEffect(() => {
@@ -100,7 +91,14 @@ const App: React.FC = () => {
         const hId = inviteHouseholdId ?? await getOrCreateHousehold(db!, user!.id);
         setHouseholdId(hId);
 
-        const dbItems = await loadFinanceItems(db!, hId);
+        const [household, dbItems] = await Promise.all([
+          getHousehold(db!, hId),
+          loadFinanceItems(db!, hId),
+        ]);
+
+        if (household?.start_month != null) setStartMonth(household.start_month);
+        if (household?.start_year != null) setStartYear(household.start_year);
+
         if (dbItems.length > 0) {
           setItems(dbItems);
         }
@@ -141,10 +139,6 @@ const App: React.FC = () => {
     updateHouseholdPlan(db, householdId, startMonth, startYear);
   }, [startMonth, startYear, db, householdId]);
 
-  // Fallback: salva no localStorage também (redundância)
-  useEffect(() => { localStorage.setItem('finance_data', JSON.stringify(items)); }, [items]);
-  useEffect(() => { localStorage.setItem('finance_start_month', startMonth.toString()); }, [startMonth]);
-  useEffect(() => { localStorage.setItem('finance_start_year', startYear.toString()); }, [startYear]);
 
   const handleCompleteTutorial = () => {
     localStorage.setItem('tutorial_completed', 'true');
