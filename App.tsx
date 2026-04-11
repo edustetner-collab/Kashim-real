@@ -10,6 +10,8 @@ import AICoach from './components/AICoach';
 import OnboardingTutorial from './components/OnboardingTutorial';
 import { useSupabase } from './lib/useSupabase';
 import { getOrCreateHousehold, loadFinanceItems, saveFinanceItem, deleteFinanceItem, addPartialExpense, deletePartialExpense, updateHouseholdPlan } from './lib/db';
+import { processInviteFromUrl } from './lib/invites';
+import InvitePartner from './components/InvitePartner';
 
 const DEFAULT_FIXED_EXPENSES = [
   'Moradia', 'Condominio', 'Telefone fixo', 'Internet', 'Celular',
@@ -31,6 +33,7 @@ const App: React.FC = () => {
   });
   const [householdId, setHouseholdId] = useState<string | null>(null);
   const [dbLoading, setDbLoading] = useState(false);
+  const [showInvitePanel, setShowInvitePanel] = useState(false);
   const itemIdMapRef = useRef<Record<string, string>>({}); // localId -> dbId
 
   const [showProjectionModal, setShowProjectionModal] = useState(false);
@@ -83,7 +86,9 @@ const App: React.FC = () => {
     async function loadData() {
       setDbLoading(true);
       try {
-        const hId = await getOrCreateHousehold(db!, user!.id);
+        // Processa convite da URL antes de criar/buscar household
+        const inviteHouseholdId = await processInviteFromUrl(db!, user!.id);
+        const hId = inviteHouseholdId ?? await getOrCreateHousehold(db!, user!.id);
         setHouseholdId(hId);
 
         const dbItems = await loadFinanceItems(db!, hId);
@@ -360,6 +365,20 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen pb-20 bg-gray-50 text-gray-900">
       {showTutorial && <OnboardingTutorial onComplete={handleCompleteTutorial} />}
+
+      {showInvitePanel && db && householdId && user && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-6 bg-black/70 backdrop-blur-sm">
+          <div className="max-w-md w-full relative">
+            <button
+              onClick={() => setShowInvitePanel(false)}
+              className="absolute -top-4 -right-4 w-10 h-10 bg-zinc-800 text-zinc-400 hover:text-white rounded-full flex items-center justify-center z-10 border border-zinc-700"
+            >
+              <i className="fas fa-times"></i>
+            </button>
+            <InvitePartner db={db} householdId={householdId} currentUserId={user.id} />
+          </div>
+        </div>
+      )}
       
       {showProjectionModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-300">
@@ -414,6 +433,13 @@ const App: React.FC = () => {
                 <i className="fas fa-circle-notch animate-spin text-xs"></i>
               </div>
             )}
+            <button
+              onClick={() => setShowInvitePanel(p => !p)}
+              className="px-3 py-2 text-zinc-500 hover:text-yellow-500 transition-colors"
+              title="Convidar parceiro(a)"
+            >
+              <i className="fas fa-user-plus"></i>
+            </button>
             <button onClick={() => signOut()} className="px-3 py-2 text-zinc-600 hover:text-red-500 transition-colors"><i className="fas fa-sign-out-alt"></i></button>
           </div>
         </div>
