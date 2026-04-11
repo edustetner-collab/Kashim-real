@@ -12,6 +12,10 @@ import { useSupabase } from './lib/useSupabase';
 import { getOrCreateHousehold, loadFinanceItems, saveFinanceItem, deleteFinanceItem, addPartialExpense, deletePartialExpense, updateHouseholdPlan } from './lib/db';
 import { processInviteFromUrl } from './lib/invites';
 import InvitePartner from './components/InvitePartner';
+import CoachDashboard from './components/CoachDashboard';
+import ClientSettings from './components/ClientSettings';
+
+const ADMIN_IDS = (import.meta.env.VITE_ADMIN_USER_IDS ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
 
 const DEFAULT_FIXED_EXPENSES = [
   'Moradia', 'Condominio', 'Telefone fixo', 'Internet', 'Celular',
@@ -34,7 +38,12 @@ const App: React.FC = () => {
   const [householdId, setHouseholdId] = useState<string | null>(null);
   const [dbLoading, setDbLoading] = useState(false);
   const [showInvitePanel, setShowInvitePanel] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [coachViewHouseholdId, setCoachViewHouseholdId] = useState<string | null>(null);
+  const [coachViewClientName, setCoachViewClientName] = useState<string>('');
   const itemIdMapRef = useRef<Record<string, string>>({}); // localId -> dbId
+
+  const isAdmin = user ? ADMIN_IDS.includes(user.id) : false;
 
   const [showProjectionModal, setShowProjectionModal] = useState(false);
   const [pendingStartMonth, setPendingStartMonth] = useState<{month: number, year: number} | null>(null);
@@ -319,6 +328,24 @@ const App: React.FC = () => {
     return options;
   }, []);
 
+  // Coach vendo painel de um cliente específico
+  if (isSignedIn && isAdmin && coachViewHouseholdId) {
+    // Carrega o household do cliente selecionado
+    // (reutiliza o mesmo painel mas com householdId diferente)
+  }
+
+  // Coach/assistente sem cliente selecionado → Dashboard
+  if (isLoaded && isSignedIn && isAdmin && !coachViewHouseholdId) {
+    return (
+      <CoachDashboard
+        onEnterClient={(hId, name) => {
+          setCoachViewHouseholdId(hId);
+          setCoachViewClientName(name);
+        }}
+      />
+    );
+  }
+
   if (!isLoaded) {
     return (
       <div className="min-h-screen bg-[#050505] flex items-center justify-center">
@@ -365,6 +392,14 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen pb-20 bg-gray-50 text-gray-900">
       {showTutorial && <OnboardingTutorial onComplete={handleCompleteTutorial} />}
+
+      {showSettings && db && householdId && (
+        <ClientSettings
+          db={db}
+          householdId={householdId}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
 
       {showInvitePanel && db && householdId && user && (
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-6 bg-black/70 backdrop-blur-sm">
@@ -428,18 +463,38 @@ const App: React.FC = () => {
           <div className="flex gap-2 bg-zinc-900 p-1 rounded-xl border border-zinc-800">
             <button onClick={() => setActiveTab('plan')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'plan' ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/20' : 'text-gray-400 hover:text-white'}`}>12 Meses</button>
             <button id="tab-gastos-frequentes" onClick={() => setActiveTab('teto')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'teto' ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/20' : 'text-gray-400 hover:text-white'}`}>Gastos Frequentes</button>
+            {coachViewHouseholdId && (
+              <div className="flex items-center gap-2 bg-yellow-600/10 border border-yellow-600/30 px-3 py-1.5 rounded-xl">
+                <i className="fas fa-eye text-yellow-500 text-xs"></i>
+                <span className="text-yellow-500 text-[10px] font-black uppercase">{coachViewClientName}</span>
+                <button onClick={() => { setCoachViewHouseholdId(null); setCoachViewClientName(''); }} className="text-zinc-500 hover:text-white ml-1 transition-colors">
+                  <i className="fas fa-times text-xs"></i>
+                </button>
+              </div>
+            )}
             {dbLoading && (
               <div className="px-3 py-2 text-yellow-500" title="Sincronizando...">
                 <i className="fas fa-circle-notch animate-spin text-xs"></i>
               </div>
             )}
-            <button
-              onClick={() => setShowInvitePanel(p => !p)}
-              className="px-3 py-2 text-zinc-500 hover:text-yellow-500 transition-colors"
-              title="Convidar parceiro(a)"
-            >
-              <i className="fas fa-user-plus"></i>
-            </button>
+            {!isAdmin && (
+              <button
+                onClick={() => setShowInvitePanel(p => !p)}
+                className="px-3 py-2 text-zinc-500 hover:text-yellow-500 transition-colors"
+                title="Convidar parceiro(a)"
+              >
+                <i className="fas fa-user-plus"></i>
+              </button>
+            )}
+            {!isAdmin && (
+              <button
+                onClick={() => setShowSettings(true)}
+                className="px-3 py-2 text-zinc-500 hover:text-yellow-500 transition-colors"
+                title="Configurações"
+              >
+                <i className="fas fa-cog"></i>
+              </button>
+            )}
             <button onClick={() => signOut()} className="px-3 py-2 text-zinc-600 hover:text-red-500 transition-colors"><i className="fas fa-sign-out-alt"></i></button>
           </div>
         </div>
