@@ -14,6 +14,7 @@ import { processInviteFromUrl } from './lib/invites';
 import InvitePartner from './components/InvitePartner';
 import CoachDashboard from './components/CoachDashboard';
 import ClientSettings from './components/ClientSettings';
+import SubscriptionGate from './components/SubscriptionGate';
 
 const ADMIN_IDS = (import.meta.env.VITE_ADMIN_USER_IDS ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
 
@@ -41,6 +42,8 @@ const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [coachViewHouseholdId, setCoachViewHouseholdId] = useState<string | null>(null);
   const [coachViewClientName, setCoachViewClientName] = useState<string>('');
+  const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
+  const [showSubscriptionGate, setShowSubscriptionGate] = useState(false);
   const itemIdMapRef = useRef<Record<string, string>>({}); // localId -> dbId
 
   const isAdmin = user ? ADMIN_IDS.includes(user.id) : false;
@@ -99,6 +102,24 @@ const App: React.FC = () => {
         if (household?.start_month != null) setStartMonth(household.start_month);
         if (household?.start_year != null) setStartYear(household.start_year);
 
+        // Verifica status da assinatura
+        const status = household?.subscription_status ?? null;
+        setSubscriptionStatus(status);
+
+        // Checa se o acesso do coach expirou e não tem assinatura
+        const coachAccessData = await db!.from('coach_access')
+          .select('expires_at')
+          .eq('household_id', hId)
+          .eq('status', 'approved')
+          .maybeSingle();
+        const coachExpired = coachAccessData?.data?.expires_at
+          ? new Date(coachAccessData.data.expires_at) < new Date()
+          : false;
+
+        if (coachExpired && status !== 'active') {
+          setShowSubscriptionGate(true);
+        }
+
         if (dbItems.length > 0) {
           setItems(dbItems);
         }
@@ -111,6 +132,37 @@ const App: React.FC = () => {
 
     loadData();
   }, [db, user]);
+
+  // Quando coach entra no painel de um cliente, carrega os dados daquele household
+  useEffect(() => {
+    if (!db || !coachViewHouseholdId) return;
+
+    async function loadClientData() {
+      setDbLoading(true);
+      try {
+        setHouseholdId(coachViewHouseholdId!);
+        const [household, dbItems] = await Promise.all([
+          getHousehold(db!, coachViewHouseholdId!),
+          loadFinanceItems(db!, coachViewHouseholdId!),
+        ]);
+        if (household?.start_month != null) setStartMonth(household.start_month);
+        if (household?.start_year != null) setStartYear(household.start_year);
+        setItems(dbItems.length > 0 ? dbItems : DEFAULT_FIXED_EXPENSES.map((desc, idx) => ({
+          id: `default-fixed-${idx}`,
+          description: desc,
+          category: CategoryType.FIXED_EXPENSE,
+          values: new Array(12).fill(0),
+          paidStatus: new Array(12).fill(false)
+        })));
+      } catch (e) {
+        console.error('Erro ao carregar dados do cliente:', e);
+      } finally {
+        setDbLoading(false);
+      }
+    }
+
+    loadClientData();
+  }, [db, coachViewHouseholdId]);
 
   // Salva item no Supabase sempre que items mudar (debounced)
   const saveTimeoutRef = useRef<any>(null);
@@ -139,6 +191,16 @@ const App: React.FC = () => {
     updateHouseholdPlan(db, householdId, startMonth, startYear);
   }, [startMonth, startYear, db, householdId]);
 
+
+  // Detecta retorno do Stripe com pagamento confirmado
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment') === 'success') {
+      setSubscriptionStatus('active');
+      setShowSubscriptionGate(false);
+      window.history.replaceState({}, '', '/');
+    }
+  }, []);
 
   const handleCompleteTutorial = () => {
     localStorage.setItem('tutorial_completed', 'true');
@@ -322,12 +384,6 @@ const App: React.FC = () => {
     return options;
   }, []);
 
-  // Coach vendo painel de um cliente específico
-  if (isSignedIn && isAdmin && coachViewHouseholdId) {
-    // Carrega o household do cliente selecionado
-    // (reutiliza o mesmo painel mas com householdId diferente)
-  }
-
   // Coach/assistente sem cliente selecionado → Dashboard
   if (isLoaded && isSignedIn && isAdmin && !coachViewHouseholdId) {
     return (
@@ -386,6 +442,10 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen pb-20 bg-gray-50 text-gray-900">
       {showTutorial && <OnboardingTutorial onComplete={handleCompleteTutorial} />}
+
+      {showSubscriptionGate && (
+        <SubscriptionGate onClose={() => setShowSubscriptionGate(false)} />
+      )}
 
       {showSettings && db && householdId && (
         <ClientSettings
