@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useUser, useClerk, SignIn, SignUp } from '@clerk/clerk-react';
 import { CategoryType, FinanceItem, SummaryData, LinkType, PartialExpense } from './types';
 import { getNext12Months, formatCurrency, MONTHS_BR } from './constants';
@@ -8,6 +8,8 @@ import Diagnosis from './components/Diagnosis';
 import TetoGastos from './components/TetoGastos';
 import AICoach from './components/AICoach';
 import OnboardingTutorial from './components/OnboardingTutorial';
+import { useSupabase } from './lib/useSupabase';
+import { getOrCreateHousehold, loadFinanceItems, saveFinanceItem, deleteFinanceItem, addPartialExpense, deletePartialExpense, updateHouseholdPlan } from './lib/db';
 
 const DEFAULT_FIXED_EXPENSES = [
   'Moradia', 'Condominio', 'Telefone fixo', 'Internet', 'Celular',
@@ -22,16 +24,20 @@ const DEFAULT_FIXED_EXPENSES = [
 const App: React.FC = () => {
   const { isSignedIn, user, isLoaded } = useUser();
   const { signOut } = useClerk();
+  const db = useSupabase();
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [showTutorial, setShowTutorial] = useState<boolean>(() => {
     return localStorage.getItem('tutorial_completed') !== 'true';
   });
-  
+  const [householdId, setHouseholdId] = useState<string | null>(null);
+  const [dbLoading, setDbLoading] = useState(false);
+  const itemIdMapRef = useRef<Record<string, string>>({}); // localId -> dbId
+
   const [showProjectionModal, setShowProjectionModal] = useState(false);
   const [pendingStartMonth, setPendingStartMonth] = useState<{month: number, year: number} | null>(null);
   const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '' });
   const [activeTab, setActiveTab] = useState<'plan' | 'teto'>('plan');
-  
+
   const [startMonth, setStartMonth] = useState<number>(() => {
     const saved = localStorage.getItem('finance_start_month');
     return saved ? parseInt(saved) : new Date().getMonth();
@@ -70,6 +76,58 @@ const App: React.FC = () => {
     }));
   });
 
+  // Carrega dados do Supabase quando o cliente estiver pronto
+  useEffect(() => {
+    if (!db || !user) return;
+
+    async function loadData() {
+      setDbLoading(true);
+      try {
+        const hId = await getOrCreateHousehold(db!, user!.id);
+        setHouseholdId(hId);
+
+        const dbItems = await loadFinanceItems(db!, hId);
+        if (dbItems.length > 0) {
+          setItems(dbItems);
+        }
+      } catch (e) {
+        console.error('Erro ao carregar dados:', e);
+      } finally {
+        setDbLoading(false);
+      }
+    }
+
+    loadData();
+  }, [db, user]);
+
+  // Salva item no Supabase sempre que items mudar (debounced)
+  const saveTimeoutRef = useRef<any>(null);
+  useEffect(() => {
+    if (!db || !householdId || dbLoading) return;
+
+    clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          const dbId = await saveFinanceItem(db!, householdId, item, i);
+          if (dbId !== item.id) {
+            itemIdMapRef.current[item.id] = dbId;
+          }
+        }
+      } catch (e) {
+        console.error('Erro ao salvar dados:', e);
+      }
+    }, 1500);
+  }, [items, db, householdId]);
+
+  // Salva mês/ano de início no Supabase
+  useEffect(() => {
+    if (!db || !householdId) return;
+    updateHouseholdPlan(db, householdId, startMonth, startYear);
+  }, [startMonth, startYear, db, householdId]);
+
+  // Fallback: salva no localStorage também (redundância)
   useEffect(() => { localStorage.setItem('finance_data', JSON.stringify(items)); }, [items]);
   useEffect(() => { localStorage.setItem('finance_start_month', startMonth.toString()); }, [startMonth]);
   useEffect(() => { localStorage.setItem('finance_start_year', startYear.toString()); }, [startYear]);
@@ -154,6 +212,10 @@ const App: React.FC = () => {
 
   const handleRemoveItem = (id: string) => {
     setItems(prev => prev.filter(item => item.id !== id));
+    if (db) {
+      const dbId = itemIdMapRef.current[id] ?? id;
+      deleteFinanceItem(db, dbId).catch(console.error);
+    }
   };
 
   const handleUpdateCardConfig = (id: string, field: 'closingDay' | 'dueDay', value: number) => {
@@ -183,6 +245,11 @@ const App: React.FC = () => {
       const partials = item.partialExpenses || {};
       return { ...item, partialExpenses: { ...partials, [monthKey]: [...(partials[monthKey] || []), expense] } };
     }));
+
+    if (db) {
+      const dbId = itemIdMapRef.current[itemId] ?? itemId;
+      addPartialExpense(db, dbId, targetYear, targetMonth, expense).catch(console.error);
+    }
   };
 
   const handleRemovePartial = (itemId: string, expenseId: string) => {
@@ -195,6 +262,10 @@ const App: React.FC = () => {
       });
       return { ...item, partialExpenses: newPartials };
     }));
+
+    if (db) {
+      deletePartialExpense(db, expenseId).catch(console.error);
+    }
   };
 
   const handleReplicateValue = (id: string, monthIdx: number) => {
@@ -338,6 +409,11 @@ const App: React.FC = () => {
           <div className="flex gap-2 bg-zinc-900 p-1 rounded-xl border border-zinc-800">
             <button onClick={() => setActiveTab('plan')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'plan' ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/20' : 'text-gray-400 hover:text-white'}`}>12 Meses</button>
             <button id="tab-gastos-frequentes" onClick={() => setActiveTab('teto')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'teto' ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/20' : 'text-gray-400 hover:text-white'}`}>Gastos Frequentes</button>
+            {dbLoading && (
+              <div className="px-3 py-2 text-yellow-500" title="Sincronizando...">
+                <i className="fas fa-circle-notch animate-spin text-xs"></i>
+              </div>
+            )}
             <button onClick={() => signOut()} className="px-3 py-2 text-zinc-600 hover:text-red-500 transition-colors"><i className="fas fa-sign-out-alt"></i></button>
           </div>
         </div>
