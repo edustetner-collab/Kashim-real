@@ -415,6 +415,7 @@ const App: React.FC = () => {
           setCoachViewHouseholdId(hId);
           setCoachViewClientName(name);
         }}
+        isSuperAdmin={ADMIN_IDS.includes(user?.id ?? '')}
       />
     );
   }

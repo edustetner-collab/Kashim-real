@@ -19,15 +19,15 @@ interface ClientProfile {
 
 interface CoachDashboardProps {
   onEnterClient: (householdId: string, clientName: string) => void;
+  isSuperAdmin: boolean;
 }
 
-const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
+const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperAdmin }) => {
   const { getToken } = useAuth();
   const { user } = useUser();
   const { signOut } = useClerk();
   const db = useSupabase();
 
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -58,7 +58,6 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
       if (res.ok) {
         const data = await res.json();
         setClients(data.clients ?? []);
-        setIsSuperAdmin(data.isSuperAdmin ?? false);
       }
     } catch (e) {
       console.error(e);

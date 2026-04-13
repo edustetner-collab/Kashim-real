@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rico-v1';
+const CACHE_NAME = 'rico-v3';
 const STATIC_ASSETS = ['/', '/index.html'];
 
 self.addEventListener('install', (event) => {
