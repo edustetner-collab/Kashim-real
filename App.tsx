@@ -315,13 +315,13 @@ const App: React.FC = () => {
     setItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
   };
 
-  const handleAddPartial = (itemId: string, expense: PartialExpense) => {
-    console.log('[App] handleAddPartial', { itemId, expense, itemsCount: items.length, foundItem: items.find(i => i.id === itemId)?.id ?? 'NOT FOUND', householdId, db: !!db });
+  const handleAddPartial = (itemId: string, expense: PartialExpense, overrideYear?: number, overrideMonth?: number) => {
     const item = items.find(i => i.id === itemId);
-    let targetMonth = currentActualMonth;
-    let targetYear = currentActualYear;
+    let targetMonth = overrideMonth ?? currentActualMonth;
+    let targetYear = overrideYear ?? currentActualYear;
 
-    if (item?.linkedCardId) {
+    // Only apply credit card shift logic when caller doesn't specify explicit month/year
+    if (overrideYear === undefined && overrideMonth === undefined && item?.linkedCardId) {
       const card = items.find(c => c.id === item.linkedCardId);
       if (card?.closingDay) {
         const todayDay = new Date().getDate();

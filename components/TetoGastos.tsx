@@ -9,7 +9,7 @@ interface TetoGastosProps {
   items: FinanceItem[];
   currentMonthIdx: number;
   currentYear: number;
-  onAddPartial: (itemId: string, expense: PartialExpense) => void;
+  onAddPartial: (itemId: string, expense: PartialExpense, year?: number, month?: number) => void;
   onRemovePartial: (itemId: string, expenseId: string) => void;
   db?: SupabaseClient | null;
   householdId?: string | null;
@@ -77,19 +77,16 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   };
 
   const handleValueEntry = (itemId: string, value: string) => {
-    console.log('[TetoGastos] handleValueEntry', { itemId, value, itemsCount: items.length, itemIds: items.map(i => i.id) });
-    if (!itemId || value === '' || isNaN(parseFloat(value))) {
-      console.log('[TetoGastos] RETURN EARLY — itemId empty or value invalid', { itemId, value });
-      return;
-    }
+    if (!itemId || value === '' || isNaN(parseFloat(value))) return;
     const expense: PartialExpense = {
       id: crypto.randomUUID(),
       date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
       description: 'Gasto mensal',
       value: parseFloat(value)
     };
-    console.log('[TetoGastos] calling onAddPartial with', { itemId, expense });
-    onAddPartial(itemId, expense);
+
+    // Pass explicit year/month so handleAddPartial skips credit card shift logic
+    onAddPartial(itemId, expense, currentYear, currentMonthIdx);
   };
 
   return (
