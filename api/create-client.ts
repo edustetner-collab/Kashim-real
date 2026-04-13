@@ -64,6 +64,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (parsedItems && parsedItems.length > 0) {
+      const now = new Date().toISOString();
       const rows = parsedItems.map((item: any, i: number) => ({
         household_id: householdId,
         description: item.description,
@@ -71,8 +72,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         values: new Array(12).fill(item.value),
         paid_status: new Array(12).fill(false),
         sort_order: i,
+        updated_at: now,
       }));
-      await db.from('finance_items').insert(rows);
+      const { error: fiError } = await db.from('finance_items').insert(rows);
+      if (fiError) {
+        console.error('finance_items insert error:', fiError);
+        return res.status(500).json({ error: 'Perfil criado mas erro ao salvar itens: ' + fiError.message });
+      }
     }
 
     return res.status(200).json({ success: true, householdId, prospectName: name, prospectEmail: email });

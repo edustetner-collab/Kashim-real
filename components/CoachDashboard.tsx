@@ -75,10 +75,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
       const token = await getToken({ template: 'supabase' });
       const res = await fetch('/api/create-client', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           name: clientName,
           email: clientEmail,
@@ -87,20 +84,12 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
           startYear: new Date().getFullYear(),
         }),
       });
-
       const data = await res.json();
-      if (!res.ok) {
-        setCreateError(data.error ?? 'Erro ao criar perfil');
-        return;
-      }
-
+      if (!res.ok) { setCreateError(data.error ?? 'Erro ao criar perfil'); return; }
       setShowCreateForm(false);
-      setClientName('');
-      setClientEmail('');
-      setFormText('');
-      setParsedFields([]);
+      setClientName(''); setClientEmail(''); setFormText(''); setParsedFields([]);
       await loadClients();
-    } catch (e) {
+    } catch {
       setCreateError('Erro de conexão. Tente novamente.');
     } finally {
       setCreating(false);
@@ -113,21 +102,15 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
       const token = await getToken({ template: 'supabase' });
       const res = await fetch('/api/activate-client', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ householdId }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        alert(data.error ?? 'Erro ao ativar cliente');
-        return;
-      }
+      if (!res.ok) { alert(data.error ?? 'Erro ao ativar cliente'); return; }
       setActivateSuccess(householdId);
       await loadClients();
       setTimeout(() => setActivateSuccess(null), 4000);
-    } catch (e) {
+    } catch {
       alert('Erro de conexão. Tente novamente.');
     } finally {
       setActivating(null);
@@ -139,17 +122,12 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
       const token = await getToken({ template: 'supabase' });
       await fetch('/api/delete-client', {
         method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ householdId, clientClerkId: clientId }),
       });
       setDeleteConfirm(null);
       await loadClients();
-    } catch (e) {
-      console.error(e);
-    }
+    } catch (e) { console.error(e); }
   }
 
   function daysRemaining(endsAt: string) {
@@ -169,13 +147,12 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
 
       {/* Header */}
       <header className="bg-[#0f0f0f] border-b border-yellow-600/30 px-6 py-3 sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img src="/kashim-icon.png" alt="Kashim" className="h-9 w-9 rounded-xl" />
             <span className="text-xl font-black text-white uppercase tracking-widest hidden md:block">Kashim</span>
             <span className="text-[9px] font-black uppercase text-yellow-500 bg-yellow-500/10 border border-yellow-500/20 px-2 py-0.5 rounded-full ml-1">Consultor</span>
           </div>
-
           <div className="flex items-center gap-2">
             {user && (
               <div className="hidden md:flex items-center gap-2 border-r border-zinc-800 pr-3 mr-1">
@@ -183,43 +160,36 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
                 <span className="text-[10px] font-black uppercase text-zinc-400">{user.firstName || user.emailAddresses[0]?.emailAddress.split('@')[0]}</span>
               </div>
             )}
-            <button
-              onClick={() => setShowSettings(true)}
-              className="flex items-center gap-2 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-zinc-300 hover:text-white transition-all text-xs font-black uppercase"
-            >
+            <button onClick={() => setShowSettings(true)} className="flex items-center gap-2 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-zinc-300 hover:text-white transition-all text-xs font-black uppercase">
               <i className="fas fa-cog"></i>
               <span className="hidden md:inline">Configurações</span>
             </button>
-            <button
-              onClick={() => signOut()}
-              className="px-3 py-2 bg-zinc-800 hover:bg-red-500/20 text-zinc-500 hover:text-red-400 rounded-xl transition-all"
-              title="Sair"
-            >
+            <button onClick={() => signOut()} className="px-3 py-2 bg-zinc-800 hover:bg-red-500/20 text-zinc-500 hover:text-red-400 rounded-xl transition-all" title="Sair">
               <i className="fas fa-sign-out-alt"></i>
             </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-10">
+      <main className="max-w-5xl mx-auto px-6 py-8">
         {/* Topo */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Clientes</h1>
-            <p className="text-zinc-500 text-sm mt-1">
+            <h1 className="text-2xl font-black uppercase italic tracking-tighter text-white">Clientes</h1>
+            <p className="text-zinc-500 text-xs mt-0.5">
               {activeCount} ativo{activeCount !== 1 ? 's' : ''}
               {draftCount > 0 && <span className="ml-2 text-zinc-600">· {draftCount} rascunho{draftCount !== 1 ? 's' : ''}</span>}
             </p>
           </div>
           <button
             onClick={() => setShowCreateForm(true)}
-            className="bg-yellow-600 hover:bg-yellow-500 text-black font-black px-6 py-3 rounded-2xl transition-all shadow-lg flex items-center gap-2 uppercase text-sm"
+            className="bg-yellow-600 hover:bg-yellow-500 text-black font-black px-5 py-2.5 rounded-xl transition-all shadow-lg flex items-center gap-2 uppercase text-xs"
           >
             <i className="fas fa-plus"></i> Criar novo perfil
           </button>
         </div>
 
-        {/* Lista de clientes */}
+        {/* Lista */}
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <i className="fas fa-circle-notch animate-spin text-yellow-500 text-3xl"></i>
@@ -231,7 +201,15 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
             <p className="text-xs mt-2">Clique em "Criar novo perfil" para começar</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="flex flex-col gap-2">
+            {/* Cabeçalho da tabela */}
+            <div className="grid grid-cols-[1fr_180px_90px_auto] gap-3 px-4 py-2 text-[10px] font-black uppercase text-zinc-600 tracking-widest">
+              <span>Cliente</span>
+              <span>Status</span>
+              <span className="text-center">Consulta</span>
+              <span></span>
+            </div>
+
             {clients.map(client => {
               const days = daysRemaining(client.coachingEndsAt);
               const isExpiring = days < 30;
@@ -239,94 +217,82 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
               const justActivated = activateSuccess === client.householdId;
 
               return (
-                <div
-                  key={client.householdId}
-                  className={`bg-zinc-900 border rounded-3xl p-6 transition-all group ${
-                    isDraft ? 'border-zinc-700 opacity-90' : 'border-zinc-800 hover:border-yellow-600/30'
-                  }`}
-                >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border ${
-                      isDraft
-                        ? 'bg-zinc-800/50 border-zinc-700'
-                        : 'bg-yellow-600/10 border-yellow-600/20'
-                    }`}>
-                      <i className={`fas fa-user ${isDraft ? 'text-zinc-500' : 'text-yellow-500'}`}></i>
+                <div key={client.householdId}>
+                  <div className={`grid grid-cols-[1fr_180px_90px_auto] gap-3 items-center px-4 py-3 rounded-2xl border transition-all ${
+                    isDraft ? 'bg-zinc-900/60 border-zinc-800' : 'bg-zinc-900 border-zinc-800 hover:border-yellow-600/20'
+                  }`}>
+                    {/* Nome + e-mail */}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-white font-black text-sm uppercase italic truncate">{client.clientName}</p>
+                        {isDraft && (
+                          <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full bg-zinc-700 text-zinc-400 shrink-0">Rascunho</span>
+                        )}
+                        {justActivated && (
+                          <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 shrink-0">
+                            <i className="fas fa-check mr-1"></i>E-mail enviado!
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-zinc-500 text-xs truncate">{client.clientEmail}</p>
                     </div>
-                    {isDraft ? (
-                      <span className="text-[9px] font-black uppercase px-2 py-1 rounded-full bg-zinc-700/60 text-zinc-400">
-                        Rascunho
-                      </span>
-                    ) : (
-                      <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-full ${isExpiring ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
-                        {days}d restantes
-                      </span>
-                    )}
-                  </div>
 
-                  <h3 className="text-white font-black text-lg uppercase italic tracking-tight mb-1">{client.clientName}</h3>
-                  <p className="text-zinc-500 text-xs mb-4">{client.clientEmail}</p>
-                  <p className="text-zinc-700 text-[9px] uppercase tracking-widest mb-4">
-                    Criado em {new Date(client.createdAt).toLocaleDateString('pt-BR')}
-                  </p>
-
-                  {justActivated && (
-                    <div className="mb-3 p-2 bg-green-500/10 border border-green-500/20 rounded-xl text-center">
-                      <p className="text-green-400 text-xs font-bold">
-                        <i className="fas fa-check-circle mr-1"></i>
-                        Convite enviado por e-mail!
-                      </p>
+                    {/* Status de consultoria */}
+                    <div>
+                      {isDraft ? (
+                        <span className="text-zinc-500 text-xs">Aguardando ativação</span>
+                      ) : (
+                        <span className={`text-xs font-bold ${isExpiring ? 'text-red-400' : 'text-green-400'}`}>
+                          {days}d restantes
+                        </span>
+                      )}
                     </div>
-                  )}
 
-                  <div className="flex flex-col gap-2">
-                    <div className="flex gap-2">
+                    {/* Data de criação */}
+                    <div className="text-center">
+                      <span className="text-zinc-600 text-[10px]">
+                        {new Date(client.createdAt).toLocaleDateString('pt-BR')}
+                      </span>
+                    </div>
+
+                    {/* Ações */}
+                    <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => onEnterClient(client.householdId, client.clientName)}
-                        className="flex-1 bg-yellow-600 hover:bg-yellow-500 text-black font-black py-2.5 rounded-xl transition-all text-xs uppercase"
+                        className="bg-yellow-600 hover:bg-yellow-500 text-black font-black px-3 py-1.5 rounded-lg text-[10px] uppercase transition-all"
                       >
                         <i className="fas fa-eye mr-1"></i> Acessar
                       </button>
+
+                      {isDraft && (
+                        <button
+                          onClick={() => handleActivateClient(client.householdId)}
+                          disabled={activating === client.householdId}
+                          className="bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase transition-all"
+                        >
+                          {activating === client.householdId
+                            ? <i className="fas fa-circle-notch animate-spin"></i>
+                            : <><i className="fas fa-paper-plane mr-1"></i> Ativar</>}
+                        </button>
+                      )}
+
                       <button
                         onClick={() => setDeleteConfirm(client.householdId)}
-                        className="w-10 h-10 bg-zinc-800 hover:bg-red-500/20 text-zinc-500 hover:text-red-400 rounded-xl transition-all flex items-center justify-center"
-                        title="Excluir perfil"
+                        className="w-7 h-7 bg-zinc-800 hover:bg-red-500/20 text-zinc-500 hover:text-red-400 rounded-lg transition-all flex items-center justify-center"
+                        title="Excluir"
                       >
-                        <i className="fas fa-trash-alt text-xs"></i>
+                        <i className="fas fa-trash-alt text-[10px]"></i>
                       </button>
                     </div>
-
-                    {isDraft && (
-                      <button
-                        onClick={() => handleActivateClient(client.householdId)}
-                        disabled={activating === client.householdId}
-                        className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-black py-2.5 rounded-xl transition-all text-xs uppercase"
-                      >
-                        {activating === client.householdId ? (
-                          <i className="fas fa-circle-notch animate-spin"></i>
-                        ) : (
-                          <><i className="fas fa-paper-plane mr-1"></i> Ativar e enviar acesso</>
-                        )}
-                      </button>
-                    )}
                   </div>
 
+                  {/* Confirmação de exclusão */}
                   {deleteConfirm === client.householdId && (
-                    <div className="mt-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
-                      <p className="text-red-400 text-xs mb-2 font-bold">Excluir perfil de {client.clientName}?</p>
+                    <div className="mx-1 mb-1 p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center justify-between">
+                      <p className="text-red-400 text-xs font-bold">Excluir {client.clientName}?</p>
                       <div className="flex gap-2">
-                        <button
-                          onClick={() => handleDeleteClient(client.householdId, client.clientId)}
-                          className="flex-1 bg-red-600 text-white font-black text-xs py-2 rounded-lg uppercase"
-                        >
-                          Confirmar
-                        </button>
-                        <button
-                          onClick={() => setDeleteConfirm(null)}
-                          className="flex-1 bg-zinc-700 text-white font-black text-xs py-2 rounded-lg uppercase"
-                        >
-                          Cancelar
-                        </button>
+                        <button onClick={() => handleDeleteClient(client.householdId, client.clientId)} className="bg-red-600 text-white font-black text-xs px-3 py-1.5 rounded-lg uppercase">Confirmar</button>
+                        <button onClick={() => setDeleteConfirm(null)} className="bg-zinc-700 text-white font-black text-xs px-3 py-1.5 rounded-lg uppercase">Cancelar</button>
                       </div>
                     </div>
                   )}
@@ -341,62 +307,37 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
       {showCreateForm && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
           <div className="max-w-2xl w-full bg-zinc-900 border border-zinc-800 rounded-[30px] p-8 my-4 relative">
-            <button
-              onClick={() => { setShowCreateForm(false); setParsedFields([]); setFormText(''); }}
-              className="absolute top-4 right-4 w-8 h-8 bg-zinc-800 rounded-full flex items-center justify-center text-zinc-400 hover:text-white"
-            >
+            <button onClick={() => { setShowCreateForm(false); setParsedFields([]); setFormText(''); }} className="absolute top-4 right-4 w-8 h-8 bg-zinc-800 rounded-full flex items-center justify-center text-zinc-400 hover:text-white">
               <i className="fas fa-times text-xs"></i>
             </button>
 
-            <h2 className="text-xl font-black uppercase italic tracking-tighter text-white mb-2">
+            <h2 className="text-xl font-black uppercase italic tracking-tighter text-white mb-1">
               <i className="fas fa-user-plus text-yellow-500 mr-2"></i>
               Novo Perfil de Cliente
             </h2>
-            <p className="text-zinc-500 text-xs mb-6">O cliente não receberá e-mail agora. O acesso só é enviado quando você clicar em "Ativar".</p>
+            <p className="text-zinc-500 text-xs mb-6">O cliente não receberá e-mail agora. O acesso só é enviado ao clicar em "Ativar".</p>
 
             <form onSubmit={handleCreateClient} className="flex flex-col gap-5">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest mb-1 block">Nome completo</label>
-                  <input
-                    type="text"
-                    value={clientName}
-                    onChange={e => setClientName(e.target.value)}
-                    required
-                    placeholder="Maria Silva"
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-500 transition-all"
-                  />
+                  <input type="text" value={clientName} onChange={e => setClientName(e.target.value)} required placeholder="Maria Silva"
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-500 transition-all" />
                 </div>
                 <div>
                   <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest mb-1 block">E-mail do cliente</label>
-                  <input
-                    type="email"
-                    value={clientEmail}
-                    onChange={e => setClientEmail(e.target.value)}
-                    required
-                    placeholder="maria@email.com"
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-500 transition-all"
-                  />
+                  <input type="email" value={clientEmail} onChange={e => setClientEmail(e.target.value)} required placeholder="maria@email.com"
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-500 transition-all" />
                 </div>
               </div>
 
               <div>
-                <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest mb-1 block">
-                  Formulário financeiro (opcional)
-                </label>
-                <textarea
-                  value={formText}
-                  onChange={e => setFormText(e.target.value)}
-                  placeholder="Cole aqui o formulário preenchido pelo cliente..."
-                  rows={8}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-500 transition-all resize-none font-mono"
-                />
+                <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest mb-1 block">Formulário financeiro (opcional)</label>
+                <textarea value={formText} onChange={e => setFormText(e.target.value)}
+                  placeholder="Cole aqui o formulário preenchido pelo cliente..." rows={8}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-500 transition-all resize-none font-mono" />
                 {formText && (
-                  <button
-                    type="button"
-                    onClick={handleParseText}
-                    className="mt-2 text-xs text-yellow-500 hover:text-yellow-400 font-black uppercase underline"
-                  >
+                  <button type="button" onClick={handleParseText} className="mt-2 text-xs text-yellow-500 hover:text-yellow-400 font-black uppercase underline">
                     Interpretar formulário
                   </button>
                 )}
@@ -404,9 +345,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
 
               {parsedFields.length > 0 && (
                 <div className="bg-zinc-800 rounded-2xl p-4 max-h-48 overflow-y-auto">
-                  <p className="text-[10px] font-black uppercase text-zinc-500 tracking-widest mb-3">
-                    {parsedFields.length} campos interpretados
-                  </p>
+                  <p className="text-[10px] font-black uppercase text-zinc-500 tracking-widest mb-3">{parsedFields.length} campos interpretados</p>
                   <div className="space-y-1">
                     {parsedFields.map((f, i) => (
                       <div key={i} className="flex justify-between text-xs">
@@ -422,11 +361,8 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
                 <p className="text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">{createError}</p>
               )}
 
-              <button
-                type="submit"
-                disabled={creating}
-                className="w-full bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50 text-black font-black py-4 rounded-2xl transition-all shadow-lg uppercase text-sm"
-              >
+              <button type="submit" disabled={creating}
+                className="w-full bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50 text-black font-black py-4 rounded-2xl transition-all shadow-lg uppercase text-sm">
                 {creating ? <i className="fas fa-circle-notch animate-spin"></i> : 'Criar perfil'}
               </button>
             </form>
