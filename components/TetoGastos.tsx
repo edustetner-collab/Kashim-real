@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { FinanceItem, PartialExpense, CategoryType } from '../types';
-import { formatCurrency } from '../constants';
+import { formatCurrency, MONTHS_BR } from '../constants';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { loadTetoColumns, saveTetoColumns } from '../lib/db';
 
@@ -103,12 +103,22 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       <div className="flex gap-4 overflow-x-auto pb-8 pt-2 px-2 scrollbar-thin scrollbar-thumb-yellow-600 scrollbar-track-zinc-900">
         {columns.map((col) => {
           const linkedItem = items.find(i => i.id === col.linkedItemId);
-          
+
           const teto = linkedItem ? (linkedItem.values[0] || 0) : 0;
-          
+
           const partials = linkedItem?.partialExpenses?.[monthKey] || [];
           const totalSpent = partials.reduce((acc, p) => acc + p.value, 0);
           const isOverLimit = totalSpent > teto && teto > 0;
+
+          // Credit card billing month notice
+          const card = linkedItem?.linkedCardId ? items.find(i => i.id === linkedItem.linkedCardId) : null;
+          const todayDay = new Date().getDate();
+          const isAfterClosing = card?.closingDay ? todayDay >= card.closingDay : false;
+          const billingMonthIdx = isAfterClosing
+            ? (currentMonthIdx + 1) % 12
+            : currentMonthIdx;
+          const billingYear = isAfterClosing && currentMonthIdx === 11 ? currentYear + 1 : currentYear;
+          const billingMonthName = MONTHS_BR[billingMonthIdx];
           
           return (
             <div key={col.id} className="min-w-[260px] flex-shrink-0 flex flex-col group relative transition-all duration-300">
@@ -190,12 +200,26 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                 })}
               </div>
 
-              <div className={`p-5 rounded-b-2xl border border-zinc-200 text-center shadow-lg transition-all ${isOverLimit ? 'bg-red-50' : 'bg-zinc-900'}`}>
+              <div className={`p-5 border border-zinc-200 text-center shadow-lg transition-all ${isOverLimit ? 'bg-red-50' : 'bg-zinc-900'} ${card ? '' : 'rounded-b-2xl'}`}>
                 <p className={`text-[9px] font-black uppercase mb-1 ${isOverLimit ? 'text-red-600' : 'text-zinc-500'}`}>Total Lançado</p>
                 <p className={`text-xl font-black font-mono tracking-tighter ${isOverLimit ? 'text-red-600' : 'text-yellow-500'}`}>
                   {formatCurrency(totalSpent)}
                 </p>
               </div>
+
+              {card && (
+                <div className="rounded-b-2xl border border-t-0 border-zinc-700 bg-zinc-800 px-4 py-3 text-center">
+                  <p className="text-[10px] text-zinc-400 leading-relaxed">
+                    <i className="fas fa-credit-card mr-1 text-yellow-500"></i>
+                    Gastos no <span className="text-white font-black">{card.description}</span>
+                    {isAfterClosing ? (
+                      <> entram na <span className="text-yellow-400 font-black">fatura de {billingMonthName}</span></>
+                    ) : (
+                      <> entram na <span className="text-yellow-400 font-black">fatura de {billingMonthName}</span> (fatura aberta)</>
+                    )}
+                  </p>
+                </div>
+              )}
 
               <button 
                 onClick={() => removeColumn(col.id)}
