@@ -5,6 +5,7 @@ const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY!;
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!;
 const ADMIN_IDS = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean);
+const APP_URL = process.env.VITE_APP_URL ?? 'https://kashim-gilt.vercel.app';
 
 function getAdminId(authHeader: string): string | null {
   const token = (authHeader ?? '').replace('Bearer ', '').trim();
@@ -33,6 +34,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+    // Busca dados do prospecto
     const { data: household, error: hhError } = await db
       .from('households')
       .select('prospect_name, prospect_email, status')
@@ -42,11 +44,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (hhError || !household) return res.status(404).json({ error: 'Household not found' });
     if (household.status === 'active') return res.status(400).json({ error: 'Already activated' });
 
-    const name = household.prospect_name ?? '';
     const email = household.prospect_email ?? '';
+    const name = household.prospect_name ?? '';
     const [firstName, ...rest] = name.trim().split(' ');
     const lastName = rest.join(' ') || '';
 
+    // 1. Cria o usuário no Clerk
     const clerkRes = await fetch('https://api.clerk.com/v1/users', {
       method: 'POST',
       headers: {
@@ -64,21 +67,63 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!clerkRes.ok) {
       const err = await clerkRes.json();
-      return res.status(400).json({ error: err.errors?.[0]?.message ?? 'Clerk error' });
+      return res.status(400).json({ error: err.errors?.[0]?.message ?? 'Erro ao criar conta Clerk' });
     }
 
     const clerkUser = await clerkRes.json();
     const clientClerkId = clerkUser.id;
 
+    // 2. Cria household_member
     await db.from('household_members').insert({
       household_id: householdId,
       clerk_user_id: clientClerkId,
       role: 'owner',
     });
 
+    // 3. Atualiza status para ativo
     await db.from('households').update({ status: 'active' }).eq('id', householdId);
 
-    return res.status(200).json({ success: true, clientId: clientClerkId });
+    // 4. Gera link mágico de acesso (sign-in token do Clerk)
+    const tokenRes = await fetch('https://api.clerk.com/v1/sign_in_tokens', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${CLERK_SECRET_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        user_id: clientClerkId,
+        expires_in_seconds: 7 * 24 * 60 * 60, // 7 dias
+      }),
+    });
+
+    let signInUrl = APP_URL;
+    if (tokenRes.ok) {
+      const tokenData = await tokenRes.json();
+      signInUrl = tokenData.url ?? APP_URL;
+    }
+
+    // 5. Envia email de convite via Clerk Invitation (sem precisar de serviço externo)
+    // Nota: o Clerk envia email automaticamente ao criar invitation
+    await fetch('https://api.clerk.com/v1/invitations', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${CLERK_SECRET_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email_address: email,
+        redirect_url: APP_URL,
+        public_metadata: { role: 'client', household_id: householdId },
+        notify: true,
+        ignore_existing: true,
+      }),
+    });
+
+    return res.status(200).json({
+      success: true,
+      clientId: clientClerkId,
+      signInUrl,
+    });
   } catch (err: any) {
     console.error('activate-client error:', err);
     return res.status(500).json({ error: err.message ?? 'Internal server error' });
