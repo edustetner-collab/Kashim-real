@@ -8,12 +8,10 @@ workflows:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.kashim.app
+      groups:
+        - kashim
       vars:
         XCODE_SCHEME: "App"
-        VITE_CLERK_PUBLISHABLE_KEY: $VITE_CLERK_PUBLISHABLE_KEY
-        VITE_SUPABASE_URL: $VITE_SUPABASE_URL
-        VITE_SUPABASE_ANON_KEY: $VITE_SUPABASE_ANON_KEY
-        VITE_ADMIN_USER_IDS: $VITE_ADMIN_USER_IDS
       node: 20.11.0
 
     triggering:
