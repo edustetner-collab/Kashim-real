@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { UserProfile } from '@clerk/clerk-react';
+import { useUser } from '@clerk/clerk-react';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 interface ClientSettingsProps {
@@ -9,10 +9,31 @@ interface ClientSettingsProps {
   onClose: () => void;
 }
 
+type PasswordView = 'idle' | 'set' | 'change' | 'reset_sent';
+
 const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClose }) => {
+  const { user } = useUser();
+
+  // Coach access
   const [coachAccess, setCoachAccess] = useState<any[]>([]);
   const [revokeConfirm, setRevokeConfirm] = useState(false);
   const [revoking, setRevoking] = useState(false);
+
+  // Password
+  const [passwordView, setPasswordView] = useState<PasswordView>('idle');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+
+  // Show/hide password fields
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const hasPassword = user?.passwordEnabled ?? false;
 
   useEffect(() => {
     loadCoachAccess();
@@ -42,11 +63,74 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
     }
   }
 
+  function openPasswordForm() {
+    setPasswordView(hasPassword ? 'change' : 'set');
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordError('');
+    setPasswordSuccess('');
+  }
+
+  function cancelPassword() {
+    setPasswordView('idle');
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordError('');
+    setPasswordSuccess('');
+  }
+
+  async function handleSavePassword() {
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (!newPassword || newPassword.length < 8) {
+      setPasswordError('A senha deve ter pelo menos 8 caracteres.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('As senhas não coincidem.');
+      return;
+    }
+    if (hasPassword && !currentPassword) {
+      setPasswordError('Informe sua senha atual.');
+      return;
+    }
+
+    setPasswordLoading(true);
+    try {
+      await user?.updatePassword({
+        newPassword,
+        ...(hasPassword ? { currentPassword } : {}),
+        signOutOfOtherSessions: false,
+      });
+      setPasswordSuccess(hasPassword ? 'Senha alterada com sucesso!' : 'Senha cadastrada com sucesso!');
+      setPasswordView('idle');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err: any) {
+      const msg: string = err?.errors?.[0]?.longMessage ?? err?.message ?? 'Erro ao salvar senha.';
+      if (msg.toLowerCase().includes('incorrect') || msg.toLowerCase().includes('wrong')) {
+        setPasswordError('Senha atual incorreta.');
+      } else if (msg.toLowerCase().includes('pwned') || msg.toLowerCase().includes('common')) {
+        setPasswordError('Essa senha é muito comum. Escolha uma senha mais segura.');
+      } else {
+        setPasswordError(msg);
+      }
+    } finally {
+      setPasswordLoading(false);
+    }
+  }
+
   const hasActiveCoach = coachAccess.length > 0;
 
   return (
     <div className="fixed inset-0 z-[200] overflow-y-auto bg-black/80 backdrop-blur-sm flex items-start justify-center p-4 pt-10">
-      <div className="max-w-2xl w-full">
+      <div className="max-w-2xl w-full pb-16">
+
+        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-black uppercase italic tracking-tighter text-white">
             <i className="fas fa-cog text-yellow-500 mr-2"></i>Configurações
@@ -59,25 +143,151 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
           </button>
         </div>
 
-        {/* Perfil do Clerk — foto, nome, senha, etc */}
-        <div className="mb-6 rounded-3xl overflow-hidden">
-          <UserProfile
-            appearance={{
-              elements: {
-                rootBox: 'w-full',
-                card: 'bg-zinc-900 border border-zinc-800 shadow-none rounded-3xl',
-                navbar: 'bg-zinc-950 border-r border-zinc-800',
-                navbarButton: 'text-zinc-400 hover:text-white',
-                navbarButtonIcon: 'text-zinc-500',
-                headerTitle: 'text-white font-black uppercase italic',
-                headerSubtitle: 'text-zinc-500',
-                formFieldLabel: 'text-zinc-400 text-xs uppercase tracking-widest',
-                formFieldInput: 'bg-zinc-800 border-zinc-700 text-white rounded-xl',
-                formButtonPrimary: 'bg-yellow-600 hover:bg-yellow-500 text-black font-black uppercase text-xs',
-                badge: 'bg-yellow-600/20 text-yellow-500',
-              }
-            }}
-          />
+        {/* Senha */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 mb-4">
+          <h3 className="text-white font-black uppercase italic tracking-tight mb-1 flex items-center gap-2">
+            <i className="fas fa-lock text-yellow-500"></i>
+            Senha de acesso
+          </h3>
+          <p className="text-zinc-500 text-xs mb-5">
+            {hasPassword
+              ? 'Você já tem uma senha cadastrada. Altere-a abaixo quando quiser.'
+              : 'Cadastre uma senha para entrar sem precisar receber código por e-mail toda vez.'}
+          </p>
+
+          {/* Mensagem de sucesso */}
+          {passwordSuccess && passwordView === 'idle' && (
+            <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/20 rounded-2xl px-4 py-3 mb-4">
+              <i className="fas fa-check-circle text-green-400 text-sm"></i>
+              <span className="text-green-400 text-sm font-bold">{passwordSuccess}</span>
+            </div>
+          )}
+
+          {passwordView === 'idle' && (
+            <button
+              onClick={openPasswordForm}
+              className="w-full bg-yellow-600 hover:bg-yellow-500 text-black font-black py-3 rounded-2xl transition-all text-sm uppercase tracking-widest"
+            >
+              <i className={`fas ${hasPassword ? 'fa-key' : 'fa-plus'} mr-2`}></i>
+              {hasPassword ? 'Alterar senha' : 'Cadastrar senha'}
+            </button>
+          )}
+
+          {(passwordView === 'set' || passwordView === 'change') && (
+            <div className="flex flex-col gap-3">
+
+              {/* Senha atual (só se já tem senha) */}
+              {hasPassword && (
+                <div>
+                  <label className="text-zinc-400 text-xs uppercase tracking-widest block mb-1">
+                    Senha atual
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showCurrent ? 'text' : 'password'}
+                      value={currentPassword}
+                      onChange={e => setCurrentPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-yellow-600 pr-12"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrent(v => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                    >
+                      <i className={`fas ${showCurrent ? 'fa-eye-slash' : 'fa-eye'} text-sm`}></i>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Nova senha */}
+              <div>
+                <label className="text-zinc-400 text-xs uppercase tracking-widest block mb-1">
+                  {hasPassword ? 'Nova senha' : 'Criar senha'}
+                </label>
+                <div className="relative">
+                  <input
+                    type={showNew ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    placeholder="Mínimo 8 caracteres"
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-yellow-600 pr-12"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNew(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                  >
+                    <i className={`fas ${showNew ? 'fa-eye-slash' : 'fa-eye'} text-sm`}></i>
+                  </button>
+                </div>
+              </div>
+
+              {/* Confirmar senha */}
+              <div>
+                <label className="text-zinc-400 text-xs uppercase tracking-widest block mb-1">
+                  Confirmar senha
+                </label>
+                <div className="relative">
+                  <input
+                    type={showConfirm ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    placeholder="Repita a senha"
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-yellow-600 pr-12"
+                    onKeyDown={e => { if (e.key === 'Enter') handleSavePassword(); }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirm(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                  >
+                    <i className={`fas ${showConfirm ? 'fa-eye-slash' : 'fa-eye'} text-sm`}></i>
+                  </button>
+                </div>
+              </div>
+
+              {/* Erro */}
+              {passwordError && (
+                <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+                  <i className="fas fa-exclamation-circle text-red-400 text-sm mt-0.5"></i>
+                  <span className="text-red-400 text-sm">{passwordError}</span>
+                </div>
+              )}
+
+              {/* Botões */}
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={handleSavePassword}
+                  disabled={passwordLoading}
+                  className="flex-1 bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50 text-black font-black py-3 rounded-2xl transition-all text-sm uppercase"
+                >
+                  {passwordLoading
+                    ? <i className="fas fa-circle-notch animate-spin"></i>
+                    : hasPassword ? 'Salvar nova senha' : 'Cadastrar senha'}
+                </button>
+                <button
+                  onClick={cancelPassword}
+                  className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-black py-3 rounded-2xl transition-all text-sm uppercase"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Esqueci minha senha */}
+          {hasPassword && passwordView === 'idle' && (
+            <div className="mt-4 pt-4 border-t border-zinc-800">
+              <p className="text-zinc-500 text-xs">
+                <i className="fas fa-info-circle text-zinc-600 mr-1"></i>
+                Esqueceu sua senha atual? Saia da conta e clique em{' '}
+                <span className="text-zinc-400 font-bold">"Esqueci minha senha"</span>{' '}
+                na tela de login para receber um link de redefinição por e-mail.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Acesso do Coach */}
@@ -143,6 +353,7 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
             </div>
           )}
         </div>
+
       </div>
     </div>
   );
