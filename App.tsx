@@ -445,15 +445,15 @@ const App: React.FC = () => {
           {authMode === 'login' ? (
             <SignIn routing="hash" appearance={{
               elements: {
-                headerTitle: { display: 'none' },
-                headerSubtitle: { display: 'none' },
+                headerTitle: 'hidden',
+                headerSubtitle: 'hidden',
               }
             }} />
           ) : (
             <SignUp routing="hash" appearance={{
               elements: {
-                headerTitle: { display: 'none' },
-                headerSubtitle: { display: 'none' },
+                headerTitle: 'hidden',
+                headerSubtitle: 'hidden',
               }
             }} />
           )}
