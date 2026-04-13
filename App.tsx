@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useUser, useClerk, SignIn, SignUp } from '@clerk/clerk-react';
+import { useUser, useClerk, useSignIn, SignIn, SignUp } from '@clerk/clerk-react';
 import { CategoryType, FinanceItem, SummaryData, LinkType, PartialExpense } from './types';
 import { getNext12Months, formatCurrency, MONTHS_BR } from './constants';
 import BlockSection from './components/BlockSection';
@@ -31,6 +31,7 @@ const DEFAULT_FIXED_EXPENSES = [
 const App: React.FC = () => {
   const { isSignedIn, user, isLoaded } = useUser();
   const { signOut } = useClerk();
+  const { signIn, setActive: setSignInActive } = useSignIn();
   const db = useSupabase();
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [showTutorial, setShowTutorial] = useState<boolean>(() => {
@@ -207,6 +208,22 @@ const App: React.FC = () => {
       window.history.replaceState({}, '', '/');
     }
   }, []);
+
+  // Autenticação via link mágico (sign_in_token)
+  useEffect(() => {
+    if (!signIn || !setSignInActive || isSignedIn) return;
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('sign_in_token');
+    if (!token) return;
+    window.history.replaceState({}, '', '/');
+    signIn.create({ strategy: 'ticket', ticket: token })
+      .then((result) => {
+        if (result.status === 'complete') {
+          return setSignInActive({ session: result.createdSessionId });
+        }
+      })
+      .catch((err) => console.error('Erro ao autenticar com link mágico:', err));
+  }, [signIn, setSignInActive, isSignedIn]);
 
   const handleCompleteTutorial = () => {
     localStorage.setItem('tutorial_completed', 'true');

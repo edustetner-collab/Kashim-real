@@ -59,9 +59,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const tokenData = await tokenRes.json();
-    const APP_URL = 'https://kashim-gilt.vercel.app';
-    const rawUrl: string | null = tokenData.url ?? null;
-    const signInUrl = rawUrl ? `${rawUrl}&redirect_url=${encodeURIComponent(APP_URL)}` : null;
+    const token: string | null = tokenData.token ?? null;
+    const signInUrl = token ? `https://kashim-gilt.vercel.app?sign_in_token=${token}` : null;
     return res.status(200).json({ signInUrl });
   } catch (err: any) {
     console.error('gen-link error:', err);
