@@ -118,10 +118,14 @@ const ConsultorSettings: React.FC<ConsultorSettingsProps> = ({ db, onClose }) =>
                     formFieldLabel: 'text-zinc-400 text-xs uppercase tracking-widest',
                     formFieldInput: 'bg-zinc-800 border-zinc-700 text-white rounded-xl',
                     formButtonPrimary: 'bg-yellow-600 hover:bg-yellow-500 text-black font-black uppercase text-xs',
+                    navbarButton__apiKeys: { display: 'none' },
                   }
                 }}
               />
             </div>
+            <p className="text-zinc-600 text-[10px] text-center mt-2 uppercase tracking-widest">
+              <i className="fas fa-camera mr-1"></i>Para trocar sua foto, clique no avatar dentro da aba "Perfil" acima
+            </p>
 
             <button
               onClick={() => signOut()}

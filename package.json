@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.61.4",
+    "@clerk/localizations": "^4.4.0",
     "@google/genai": "^1.37.0",
     "@stripe/stripe-js": "^9.1.0",
     "@supabase/supabase-js": "^2.103.0",
