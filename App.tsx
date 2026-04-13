@@ -159,13 +159,7 @@ const App: React.FC = () => {
         ]);
         if (household?.start_month != null) setStartMonth(household.start_month);
         if (household?.start_year != null) setStartYear(household.start_year);
-        setItems(dbItems.length > 0 ? dbItems : DEFAULT_FIXED_EXPENSES.map((desc, idx) => ({
-          id: `default-fixed-${idx}`,
-          description: desc,
-          category: CategoryType.FIXED_EXPENSE,
-          values: new Array(12).fill(0),
-          paidStatus: new Array(12).fill(false)
-        })));
+        if (dbItems.length > 0) setItems(dbItems);
       } catch (e) {
         console.error('Erro ao carregar dados do cliente:', e);
       } finally {
@@ -518,7 +512,6 @@ const App: React.FC = () => {
         <div className="max-w-[1600px] mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <img src="/kashim-icon.png" alt="Kashim" className="h-10 w-10 rounded-xl shadow-lg" />
-            <img src="/kashim-logo.png" alt="Kashim" className="h-8 hidden md:block" style={{filter: 'brightness(0) invert(1)'}} />
             {user && (
               <div className="hidden md:flex items-center gap-3 border-l border-zinc-800 pl-4">
                 <img src={user.imageUrl} className="w-7 h-7 rounded-full border border-yellow-500/30 shadow-lg" alt="Avatar" />
