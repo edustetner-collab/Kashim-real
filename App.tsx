@@ -514,7 +514,6 @@ const App: React.FC = () => {
             <img src="/kashim-icon.png" alt="Kashim" className="h-10 w-10 rounded-xl shadow-lg" />
             {user && (
               <div className="hidden md:flex items-center gap-3 border-l border-zinc-800 pl-4">
-                <img src={user.imageUrl} className="w-7 h-7 rounded-full border border-yellow-500/30 shadow-lg" alt="Avatar" />
                 <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">{user.firstName || user.emailAddresses[0]?.emailAddress.split('@')[0]}</span>
               </div>
             )}
