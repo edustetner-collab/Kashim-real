@@ -1,30 +1,15 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import jwt from 'jsonwebtoken';
+import { verifyAdmin } from './_auth';
 
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY!;
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!;
-const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET!;
 const ADMIN_IDS = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean);
-
-function verifyAdmin(authHeader: string): string | null {
-  const token = authHeader.replace('Bearer ', '').trim();
-  if (!token) return null;
-  try {
-    const secret = Buffer.from(SUPABASE_JWT_SECRET, 'base64');
-    const payload = jwt.verify(token, secret) as { sub?: string };
-    const userId = payload.sub;
-    if (!userId || !ADMIN_IDS.includes(userId)) return null;
-    return userId;
-  } catch {
-    return null;
-  }
-}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const requesterId = verifyAdmin(req.headers.authorization ?? '');
+  const requesterId = await verifyAdmin(req.headers.authorization ?? '');
   if (!requesterId) return res.status(403).json({ error: 'Forbidden: not an admin' });
 
   try {
@@ -73,7 +58,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (hhError || !household) {
       console.error('household error:', hhError);
-      return res.status(500).json({ error: 'Failed to create household' });
+      return res.status(500).json({ error: 'Failed to create household: ' + hhError?.message });
     }
 
     const householdId = household.id;
@@ -85,7 +70,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       role: 'owner',
     });
 
-    // 4. Dá acesso do consultor a todos os admins por 5 meses
+    // 4. Dá acesso do consultor por 5 meses
     for (const adminId of ADMIN_IDS) {
       await db.from('coach_access').insert({
         household_id: householdId,
@@ -97,7 +82,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // 5. Insere itens financeiros pré-preenchidos (replicados 12 meses)
+    // 5. Insere itens financeiros replicados nos 12 meses
     if (parsedItems && parsedItems.length > 0) {
       const rows = parsedItems.map((item: any, i: number) => ({
         household_id: householdId,
