@@ -1,7 +1,9 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { FinanceItem, PartialExpense, CategoryType } from '../types';
 import { formatCurrency } from '../constants';
+import { SupabaseClient } from '@supabase/supabase-js';
+import { loadTetoColumns, saveTetoColumns } from '../lib/db';
 
 interface TetoGastosProps {
   items: FinanceItem[];
@@ -9,6 +11,8 @@ interface TetoGastosProps {
   currentYear: number;
   onAddPartial: (itemId: string, expense: PartialExpense) => void;
   onRemovePartial: (itemId: string, expenseId: string) => void;
+  db?: SupabaseClient | null;
+  householdId?: string | null;
 }
 
 interface ColumnData {
@@ -17,26 +21,50 @@ interface ColumnData {
   linkedItemId: string;
 }
 
-const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, currentYear, onAddPartial, onRemovePartial }) => {
+const DEFAULT_COLUMNS: ColumnData[] = [
+  { id: crypto.randomUUID(), title: 'SUPERMERCADO', linkedItemId: '' },
+  { id: crypto.randomUUID(), title: 'GASOLINA', linkedItemId: '' },
+  { id: crypto.randomUUID(), title: 'LAZER', linkedItemId: '' },
+  { id: crypto.randomUUID(), title: 'EXTRAS', linkedItemId: '' },
+];
+
+const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, currentYear, onAddPartial, onRemovePartial, db, householdId }) => {
   const monthKey = `${currentYear}-${currentMonthIdx}`;
-  
+  const [columnsLoaded, setColumnsLoaded] = useState(false);
+
   const [columns, setColumns] = useState<ColumnData[]>(() => {
     const saved = localStorage.getItem('teto_columns_v3');
-    return saved ? JSON.parse(saved) : [
-      { id: '1', title: 'SUPERMERCADO', linkedItemId: '' },
-      { id: '2', title: 'GASOLINA', linkedItemId: '' },
-      { id: '3', title: 'LAZER', linkedItemId: '' },
-      { id: '4', title: 'EXTRAS', linkedItemId: '' }
-    ];
+    return saved ? JSON.parse(saved) : DEFAULT_COLUMNS;
   });
 
+  // Load columns from Supabase on mount
   useEffect(() => {
+    if (!db || !householdId) { setColumnsLoaded(true); return; }
+    loadTetoColumns(db, householdId).then((rows) => {
+      if (rows.length > 0) {
+        setColumns(rows.map((r: any) => ({
+          id: r.id,
+          title: r.title,
+          linkedItemId: r.linked_item_id ?? '',
+        })));
+      }
+      setColumnsLoaded(true);
+    }).catch(() => setColumnsLoaded(true));
+  }, [db, householdId]);
+
+  // Save columns whenever they change (after initial load)
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (!columnsLoaded) return;
+    if (isFirstRender.current) { isFirstRender.current = false; return; }
     localStorage.setItem('teto_columns_v3', JSON.stringify(columns));
-  }, [columns]);
+    if (db && householdId) {
+      saveTetoColumns(db, householdId, columns).catch(console.error);
+    }
+  }, [columns, columnsLoaded]);
 
   const addColumn = () => {
-    const newId = Math.random().toString(36).substr(2, 9);
-    setColumns([...columns, { id: newId, title: `NOVA DESPESA`, linkedItemId: '' }]);
+    setColumns(prev => [...prev, { id: crypto.randomUUID(), title: 'NOVA DESPESA', linkedItemId: '' }]);
   };
 
   const removeColumn = (id: string) => {
@@ -51,7 +79,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   const handleValueEntry = (itemId: string, value: string) => {
     if (!itemId || value === '' || isNaN(parseFloat(value))) return;
     const expense: PartialExpense = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
       description: 'Gasto mensal',
       value: parseFloat(value)
