@@ -79,22 +79,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     await db.from('households').update({ status: 'active' }).eq('id', householdId);
 
-    // Envia convite por email via Clerk (usa template "Convite" configurado no dashboard)
-    await fetch('https://api.clerk.com/v1/invitations', {
+    // Gera link mágico de acesso (válido por 7 dias)
+    let signInUrl: string | null = null;
+    const tokenRes = await fetch('https://api.clerk.com/v1/sign_in_tokens', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${CLERK_SECRET_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        email_address: email,
-        redirect_url: 'https://kashim-gilt.vercel.app',
-        notify: true,
-        ignore_existing: true,
+        user_id: clientClerkId,
+        expires_in_seconds: 7 * 24 * 60 * 60,
       }),
     });
+    if (tokenRes.ok) {
+      const tokenData = await tokenRes.json();
+      signInUrl = tokenData.url ?? null;
+    }
 
-    return res.status(200).json({ success: true, clientId: clientClerkId });
+    return res.status(200).json({ success: true, clientId: clientClerkId, signInUrl });
   } catch (err: any) {
     console.error('activate-client error:', err);
     return res.status(500).json({ error: err.message ?? 'Internal server error' });

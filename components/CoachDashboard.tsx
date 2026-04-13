@@ -39,6 +39,8 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [activating, setActivating] = useState<string | null>(null);
   const [activateSuccess, setActivateSuccess] = useState<string | null>(null);
+  const [signInLinks, setSignInLinks] = useState<Record<string, string>>({});
+  const [copiedLink, setCopiedLink] = useState<string | null>(null);
 
   useEffect(() => { loadClients(); }, []);
 
@@ -108,8 +110,11 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
       const data = await res.json();
       if (!res.ok) { alert(data.error ?? 'Erro ao ativar cliente'); return; }
       setActivateSuccess(householdId);
+      if (data.signInUrl) {
+        setSignInLinks(prev => ({ ...prev, [householdId]: data.signInUrl }));
+      }
       await loadClients();
-      setTimeout(() => setActivateSuccess(null), 4000);
+      setTimeout(() => setActivateSuccess(null), 5000);
     } catch {
       alert('Erro de conexão. Tente novamente.');
     } finally {
@@ -230,7 +235,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
                         )}
                         {justActivated && (
                           <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 shrink-0">
-                            <i className="fas fa-check mr-1"></i>E-mail enviado!
+                            <i className="fas fa-check mr-1"></i>Ativado!
                           </span>
                         )}
                       </div>
@@ -285,6 +290,31 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
                       </button>
                     </div>
                   </div>
+
+                  {/* Link de acesso gerado após ativação */}
+                  {signInLinks[client.householdId] && (
+                    <div className="mx-1 mb-1 p-3 bg-green-500/10 border border-green-500/20 rounded-xl flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-green-400 text-[10px] font-black uppercase tracking-wider mb-0.5">
+                          <i className="fas fa-link mr-1"></i>Link de acesso gerado
+                        </p>
+                        <p className="text-zinc-400 text-[10px] truncate">{signInLinks[client.householdId]}</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(signInLinks[client.householdId]);
+                          setCopiedLink(client.householdId);
+                          setTimeout(() => setCopiedLink(null), 2500);
+                        }}
+                        className="shrink-0 bg-green-600 hover:bg-green-500 text-white font-black text-[10px] px-3 py-1.5 rounded-lg uppercase transition-all flex items-center gap-1.5"
+                      >
+                        {copiedLink === client.householdId
+                          ? <><i className="fas fa-check"></i> Copiado!</>
+                          : <><i className="fas fa-copy"></i> Copiar link</>
+                        }
+                      </button>
+                    </div>
+                  )}
 
                   {/* Confirmação de exclusão */}
                   {deleteConfirm === client.householdId && (
