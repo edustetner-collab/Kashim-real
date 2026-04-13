@@ -5,8 +5,9 @@ const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY!;
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!;
 const ADMIN_IDS = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean);
+const ASSISTANT_IDS = (process.env.ASSISTANT_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean);
 
-function getAdminId(authHeader: string): string | null {
+function getRequester(authHeader: string): { userId: string; isSuperAdmin: boolean } | null {
   const token = (authHeader ?? '').replace('Bearer ', '').trim();
   if (!token) return null;
   try {
@@ -14,8 +15,10 @@ function getAdminId(authHeader: string): string | null {
     if (parts.length !== 3) return null;
     const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
     const userId: string = payload.sub;
-    if (!userId || !ADMIN_IDS.includes(userId)) return null;
-    return userId;
+    if (!userId) return null;
+    if (ADMIN_IDS.includes(userId)) return { userId, isSuperAdmin: true };
+    if (ASSISTANT_IDS.includes(userId)) return { userId, isSuperAdmin: false };
+    return null;
   } catch {
     return null;
   }
@@ -24,26 +27,36 @@ function getAdminId(authHeader: string): string | null {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
-  const requesterId = getAdminId(req.headers.authorization ?? '');
-  if (!requesterId) return res.status(403).json({ error: 'Forbidden' });
+  const requester = getRequester(req.headers.authorization ?? '');
+  if (!requester) return res.status(403).json({ error: 'Forbidden' });
 
   try {
     const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+    // Assistente sempre usa o ID do super admin para buscar clientes vinculados
+    const coachId = requester.isSuperAdmin ? requester.userId : ADMIN_IDS[0];
+
     const { data: accesses } = await db
       .from('coach_access')
       .select('household_id, coaching_started_at, coaching_ends_at')
-      .eq('coach_clerk_user_id', requesterId)
+      .eq('coach_clerk_user_id', coachId)
       .eq('status', 'approved');
 
     if (!accesses || accesses.length === 0) return res.status(200).json({ clients: [] });
 
     const householdIds = accesses.map((a: any) => a.household_id);
 
-    const { data: households } = await db
+    let query = db
       .from('households')
-      .select('id, status, prospect_name, prospect_email, created_at')
+      .select('id, status, prospect_name, prospect_email, created_at, is_private')
       .in('id', householdIds);
+
+    // Assistente não vê perfis privados
+    if (!requester.isSuperAdmin) {
+      query = query.eq('is_private', false);
+    }
+
+    const { data: households } = await query;
 
     const { data: members } = await db
       .from('household_members')
@@ -65,6 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             createdAt: household.created_at,
             coachingEndsAt: access?.coaching_ends_at ?? new Date().toISOString(),
             status: 'draft',
+            isPrivate: household.is_private ?? false,
           };
         }
 
@@ -83,11 +97,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           createdAt: member.joined_at,
           coachingEndsAt: access?.coaching_ends_at ?? new Date().toISOString(),
           status: 'active',
+          isPrivate: household.is_private ?? false,
         };
       })
     );
 
-    return res.status(200).json({ clients });
+    return res.status(200).json({ clients, isSuperAdmin: requester.isSuperAdmin });
   } catch (err) {
     console.error('list-clients error:', err);
     return res.status(500).json({ error: 'Internal server error' });

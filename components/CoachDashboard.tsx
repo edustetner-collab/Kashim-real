@@ -14,6 +14,7 @@ interface ClientProfile {
   createdAt: string;
   coachingEndsAt: string;
   status: 'draft' | 'active';
+  isPrivate: boolean;
 }
 
 interface CoachDashboardProps {
@@ -26,10 +27,13 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
   const { signOut } = useClerk();
   const db = useSupabase();
 
+  const isSuperAdmin = (import.meta.env.VITE_ADMIN_USER_IDS ?? '').split(',').map((s: string) => s.trim()).includes(user?.id ?? '');
+
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [privacyLoading, setPrivacyLoading] = useState<string | null>(null);
   const [formText, setFormText] = useState('');
   const [parsedFields, setParsedFields] = useState<ParsedField[]>([]);
   const [clientName, setClientName] = useState('');
@@ -142,6 +146,24 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
     } finally {
       setGeneratingLink(null);
     }
+  }
+
+  async function handleTogglePrivacy(householdId: string, currentIsPrivate: boolean) {
+    setPrivacyLoading(householdId);
+    try {
+      const token = await getToken({ template: 'supabase' });
+      const res = await fetch('/api/toggle-privacy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ householdId, isPrivate: !currentIsPrivate }),
+      });
+      if (res.ok) {
+        setClients(prev => prev.map(c =>
+          c.householdId === householdId ? { ...c, isPrivate: !currentIsPrivate } : c
+        ));
+      }
+    } catch (e) { console.error(e); }
+    finally { setPrivacyLoading(null); }
   }
 
   async function handleDeleteClient(householdId: string, clientId: string | null) {
@@ -311,6 +333,24 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
                           {generatingLink === client.householdId
                             ? <i className="fas fa-circle-notch animate-spin"></i>
                             : <i className="fas fa-link"></i>}
+                        </button>
+                      )}
+
+                      {isSuperAdmin && (
+                        <button
+                          onClick={() => handleTogglePrivacy(client.householdId, client.isPrivate)}
+                          disabled={privacyLoading === client.householdId}
+                          className={`w-7 h-7 rounded-lg transition-all flex items-center justify-center disabled:opacity-50 ${
+                            client.isPrivate
+                              ? 'bg-yellow-600/20 text-yellow-500 hover:bg-yellow-600/30'
+                              : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300'
+                          }`}
+                          title={client.isPrivate ? 'Privado — clique para tornar visível à assistente' : 'Visível à assistente — clique para tornar privado'}
+                        >
+                          {privacyLoading === client.householdId
+                            ? <i className="fas fa-circle-notch animate-spin text-[10px]"></i>
+                            : <i className={`fas ${client.isPrivate ? 'fa-lock' : 'fa-lock-open'} text-[10px]`}></i>
+                          }
                         </button>
                       )}
 
