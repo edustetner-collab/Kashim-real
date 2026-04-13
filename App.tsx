@@ -316,6 +316,7 @@ const App: React.FC = () => {
   };
 
   const handleAddPartial = (itemId: string, expense: PartialExpense) => {
+    console.log('[App] handleAddPartial', { itemId, expense, itemsCount: items.length, foundItem: items.find(i => i.id === itemId)?.id ?? 'NOT FOUND', householdId, db: !!db });
     const item = items.find(i => i.id === itemId);
     let targetMonth = currentActualMonth;
     let targetYear = currentActualYear;

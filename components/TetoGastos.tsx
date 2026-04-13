@@ -77,13 +77,18 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   };
 
   const handleValueEntry = (itemId: string, value: string) => {
-    if (!itemId || value === '' || isNaN(parseFloat(value))) return;
+    console.log('[TetoGastos] handleValueEntry', { itemId, value, itemsCount: items.length, itemIds: items.map(i => i.id) });
+    if (!itemId || value === '' || isNaN(parseFloat(value))) {
+      console.log('[TetoGastos] RETURN EARLY — itemId empty or value invalid', { itemId, value });
+      return;
+    }
     const expense: PartialExpense = {
       id: crypto.randomUUID(),
       date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
       description: 'Gasto mensal',
       value: parseFloat(value)
     };
+    console.log('[TetoGastos] calling onAddPartial with', { itemId, expense });
     onAddPartial(itemId, expense);
   };
 
