@@ -436,16 +436,26 @@ const App: React.FC = () => {
         <div className="max-w-md w-full relative z-10 flex flex-col items-center gap-10">
           <div className="text-center flex flex-col items-center gap-4">
             <img src="/kashim-icon.png" alt="Kashim" className="w-20 h-20 rounded-3xl shadow-2xl shadow-yellow-600/20" />
-            <img src="/kashim-logo.png" alt="Kashim" className="h-10" style={{filter: 'brightness(0) invert(1)'}} />
+            <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Kashim</h1>
             <p className="text-zinc-400 text-xs font-bold uppercase tracking-[0.2em] leading-relaxed">
               A forma mais simples de se manter organizado financeiramente.
             </p>
           </div>
 
           {authMode === 'login' ? (
-            <SignIn routing="hash" />
+            <SignIn routing="hash" appearance={{
+              elements: {
+                headerTitle: { display: 'none' },
+                headerSubtitle: { display: 'none' },
+              }
+            }} />
           ) : (
-            <SignUp routing="hash" />
+            <SignUp routing="hash" appearance={{
+              elements: {
+                headerTitle: { display: 'none' },
+                headerSubtitle: { display: 'none' },
+              }
+            }} />
           )}
 
           <button
