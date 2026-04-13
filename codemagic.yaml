@@ -9,9 +9,11 @@ workflows:
         distribution_type: app_store
         bundle_identifier: com.kashim.app
       vars:
-        XCODE_PROJECT: "App/App.xcodeproj"
         XCODE_SCHEME: "App"
-        APP_STORE_APPLE_ID: "YOUR_APP_STORE_ID_HERE"
+        VITE_CLERK_PUBLISHABLE_KEY: $VITE_CLERK_PUBLISHABLE_KEY
+        VITE_SUPABASE_URL: $VITE_SUPABASE_URL
+        VITE_SUPABASE_ANON_KEY: $VITE_SUPABASE_ANON_KEY
+        VITE_ADMIN_USER_IDS: $VITE_ADMIN_USER_IDS
       node: 20.11.0
 
     triggering:
@@ -29,11 +31,6 @@ workflows:
       - name: Build web app (Vite)
         script: |
           npm run build
-        env:
-          VITE_CLERK_PUBLISHABLE_KEY: $VITE_CLERK_PUBLISHABLE_KEY
-          VITE_SUPABASE_URL: $VITE_SUPABASE_URL
-          VITE_SUPABASE_ANON_KEY: $VITE_SUPABASE_ANON_KEY
-          VITE_ADMIN_USER_IDS: $VITE_ADMIN_USER_IDS
 
       - name: Capacitor sync iOS
         script: |
@@ -46,7 +43,7 @@ workflows:
       - name: Build iOS
         script: |
           xcode-project build-ipa \
-            --workspace "ios/$XCODE_PROJECT/../App.xcworkspace" \
+            --workspace "ios/App/App.xcworkspace" \
             --scheme "$XCODE_SCHEME"
 
     artifacts:
