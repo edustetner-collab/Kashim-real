@@ -1,0 +1,62 @@
+workflows:
+  ios-release:
+    name: Kashim iOS Release
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.kashim.app
+      vars:
+        XCODE_PROJECT: "App/App.xcodeproj"
+        XCODE_SCHEME: "App"
+        APP_STORE_APPLE_ID: "YOUR_APP_STORE_ID_HERE"
+      node: 20.11.0
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+
+    scripts:
+      - name: Install dependencies
+        script: |
+          npm ci
+
+      - name: Build web app (Vite)
+        script: |
+          npm run build
+        env:
+          VITE_CLERK_PUBLISHABLE_KEY: $VITE_CLERK_PUBLISHABLE_KEY
+          VITE_SUPABASE_URL: $VITE_SUPABASE_URL
+          VITE_SUPABASE_ANON_KEY: $VITE_SUPABASE_ANON_KEY
+          VITE_ADMIN_USER_IDS: $VITE_ADMIN_USER_IDS
+
+      - name: Capacitor sync iOS
+        script: |
+          npx cap sync ios
+
+      - name: Set up code signing
+        script: |
+          xcode-project use-profiles
+
+      - name: Build iOS
+        script: |
+          xcode-project build-ipa \
+            --workspace "ios/$XCODE_PROJECT/../App.xcworkspace" \
+            --scheme "$XCODE_SCHEME"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: true
+        submit_to_app_store: false

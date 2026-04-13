@@ -488,7 +488,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen pb-20 bg-gray-50 text-gray-900">
+    <div className="min-h-screen bg-gray-50 text-gray-900">
       {showTutorial && <OnboardingTutorial onComplete={handleCompleteTutorial} />}
 
       {showSubscriptionGate && (
@@ -551,12 +551,47 @@ const App: React.FC = () => {
         </div>
       )}
 
-      <header id="header" className="bg-[#0f0f0f] text-white py-3 px-8 shadow-2xl mb-8 sticky top-0 z-50 border-b-2 border-yellow-600/50">
-        <div className="max-w-[1600px] mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+      {/* ── HEADER DESKTOP ─────────────────────────────────────────────── */}
+      <header id="header" className="bg-[#0f0f0f] text-white safe-top shadow-2xl sticky top-0 z-50 border-b-2 border-yellow-600/50">
+
+        {/* Mobile header */}
+        <div className="md:hidden flex items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-2">
+            <img src="/kashim-icon.png" alt="Kashim" className="h-8 w-8 rounded-xl" />
+            <span className="text-white font-black text-sm uppercase italic tracking-tight">Kashim</span>
+            {dbLoading && <i className="fas fa-circle-notch animate-spin text-yellow-500 text-xs ml-1"></i>}
+          </div>
+          {coachViewHouseholdId && (
+            <div className="flex items-center gap-1 bg-yellow-600/10 border border-yellow-600/30 px-2 py-1 rounded-lg">
+              <i className="fas fa-eye text-yellow-500 text-xs"></i>
+              <span className="text-yellow-500 text-[9px] font-black uppercase truncate max-w-[80px]">{coachViewClientName}</span>
+              <button onClick={() => { setCoachViewHouseholdId(null); setCoachViewClientName(''); }} className="text-zinc-500 ml-1">
+                <i className="fas fa-times text-xs"></i>
+              </button>
+            </div>
+          )}
+          <div className="flex items-center gap-1">
+            {!isAdmin && (
+              <button onClick={() => setShowInvitePanel(p => !p)} className="w-10 h-10 flex items-center justify-center text-zinc-400 active:text-yellow-500">
+                <i className="fas fa-user-plus text-base"></i>
+              </button>
+            )}
+            {user?.imageUrl ? (
+              <img src={user.imageUrl} className="w-8 h-8 rounded-full border border-zinc-700 cursor-pointer" onClick={() => setShowSettings(true)} />
+            ) : (
+              <button onClick={() => setShowSettings(true)} className="w-10 h-10 flex items-center justify-center text-zinc-400 active:text-yellow-500">
+                <i className="fas fa-user-circle text-xl"></i>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Desktop header */}
+        <div className="hidden md:flex max-w-[1600px] mx-auto px-8 py-3 flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <img src="/kashim-icon.png" alt="Kashim" className="h-10 w-10 rounded-xl shadow-lg" />
             {user && (
-              <div className="hidden md:flex items-center gap-3 border-l border-zinc-800 pl-4">
+              <div className="flex items-center gap-3 border-l border-zinc-800 pl-4">
                 <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">{user.firstName || user.emailAddresses[0]?.emailAddress.split('@')[0]}</span>
               </div>
             )}
@@ -573,26 +608,14 @@ const App: React.FC = () => {
                 </button>
               </div>
             )}
-            {dbLoading && (
-              <div className="px-3 py-2 text-yellow-500" title="Sincronizando...">
-                <i className="fas fa-circle-notch animate-spin text-xs"></i>
-              </div>
-            )}
+            {dbLoading && <div className="px-3 py-2 text-yellow-500"><i className="fas fa-circle-notch animate-spin text-xs"></i></div>}
             {!isAdmin && (
-              <button
-                onClick={() => setShowInvitePanel(p => !p)}
-                className="px-3 py-2 text-zinc-500 hover:text-yellow-500 transition-colors"
-                title="Convidar parceiro(a)"
-              >
+              <button onClick={() => setShowInvitePanel(p => !p)} className="px-3 py-2 text-zinc-500 hover:text-yellow-500 transition-colors" title="Convidar parceiro(a)">
                 <i className="fas fa-user-plus"></i>
               </button>
             )}
             {!isAdmin && (
-              <button
-                onClick={() => setShowSettings(true)}
-                className="px-3 py-2 text-zinc-500 hover:text-yellow-500 transition-colors"
-                title="Configurações"
-              >
+              <button onClick={() => setShowSettings(true)} className="px-3 py-2 text-zinc-500 hover:text-yellow-500 transition-colors" title="Configurações">
                 <i className="fas fa-cog"></i>
               </button>
             )}
@@ -601,7 +624,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <main className={`${activeTab === 'plan' ? 'max-w-[1600px]' : 'w-full px-2'} mx-auto px-4 md:px-8`}>
+      <main className={`${activeTab === 'plan' ? 'max-w-[1600px]' : 'w-full px-2'} mx-auto px-2 md:px-8 mt-2 md:mt-8`}>
         {activeTab === 'plan' ? (
           <>
             <div id="stets"><AICoach summary={monthlySummaries[0]} items={items} monthName={months[0].monthName} onAddPartial={handleAddPartial} /></div>
@@ -717,6 +740,52 @@ const App: React.FC = () => {
           <TetoGastos items={items} currentMonthIdx={currentActualMonth} currentYear={currentActualYear} onAddPartial={handleAddPartial} onRemovePartial={handleRemovePartial} db={db} householdId={householdId} />
         )}
       </main>
+
+      {/* ── MOBILE BOTTOM TAB BAR ──────────────────────────────────────── */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0f0f0f] border-t border-zinc-800 safe-bottom">
+        <div className="flex">
+          <button
+            onClick={() => setActiveTab('plan')}
+            className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-colors active:scale-95 ${activeTab === 'plan' ? 'text-yellow-500' : 'text-zinc-500'}`}
+          >
+            <i className={`fas fa-chart-bar text-xl ${activeTab === 'plan' ? 'text-yellow-500' : ''}`}></i>
+            <span className="text-[9px] font-black uppercase tracking-wide">Plano</span>
+            {activeTab === 'plan' && <span className="absolute bottom-0 w-8 h-0.5 bg-yellow-500 rounded-full mb-1"></span>}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('teto')}
+            className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-colors active:scale-95 ${activeTab === 'teto' ? 'text-yellow-500' : 'text-zinc-500'}`}
+          >
+            <i className={`fas fa-wallet text-xl ${activeTab === 'teto' ? 'text-yellow-500' : ''}`}></i>
+            <span className="text-[9px] font-black uppercase tracking-wide">Gastos</span>
+            {activeTab === 'teto' && <span className="absolute bottom-0 w-8 h-0.5 bg-yellow-500 rounded-full mb-1"></span>}
+          </button>
+
+          {!isAdmin && (
+            <button
+              onClick={() => setShowSettings(true)}
+              className="flex-1 flex flex-col items-center justify-center py-3 gap-1 text-zinc-500 transition-colors active:scale-95"
+            >
+              <i className="fas fa-user-circle text-xl"></i>
+              <span className="text-[9px] font-black uppercase tracking-wide">Perfil</span>
+            </button>
+          )}
+
+          {isAdmin && (
+            <button
+              onClick={() => signOut()}
+              className="flex-1 flex flex-col items-center justify-center py-3 gap-1 text-zinc-500 transition-colors active:scale-95"
+            >
+              <i className="fas fa-sign-out-alt text-xl"></i>
+              <span className="text-[9px] font-black uppercase tracking-wide">Sair</span>
+            </button>
+          )}
+        </div>
+      </nav>
+
+      {/* Spacer so bottom tab bar doesn't cover content on mobile */}
+      <div className="md:hidden h-20"></div>
     </div>
   );
 };
