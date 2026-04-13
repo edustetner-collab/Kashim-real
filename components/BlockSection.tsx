@@ -28,7 +28,10 @@ const BlockSection: React.FC<BlockSectionProps> = ({
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
   const [showInstructionModal, setShowInstructionModal] = useState(false);
+  const [installmentWarning, setInstallmentWarning] = useState<string | null>(null);
   const timersRef = useRef<Record<string, number>>({});
+  const itemsRef = useRef<FinanceItem[]>(items);
+  useEffect(() => { itemsRef.current = items; }, [items]);
 
   const handleAddWithInstruction = () => {
     const skipModal = localStorage.getItem(`skip_modal_${category}`);
@@ -57,16 +60,21 @@ const BlockSection: React.FC<BlockSectionProps> = ({
     executeAdd();
   };
 
-  const checkInstallments = (itemId: string, itemValues: number[]) => {
+  const checkInstallments = (itemId: string) => {
     if (category !== CategoryType.FIXED_EXPENSE) return;
     if (timersRef.current[itemId]) window.clearTimeout(timersRef.current[itemId]);
 
     timersRef.current[itemId] = window.setTimeout(() => {
-      const filledCount = itemValues.filter(v => v > 0).length;
+      // Usa o estado ATUAL (via ref) para evitar falsos positivos após replicação
+      const currentItem = itemsRef.current.find(i => i.id === itemId);
+      if (!currentItem) return;
+      const filledCount = currentItem.values.filter(v => v > 0).length;
       if (filledCount > 0 && filledCount < 10) {
-        alert(`Aviso do Stets: Este pagamento ("${items.find(i => i.id === itemId)?.description}"), por ter apenas ${filledCount} parcelas, não se enquadra no parcelamento fixo e será automaticamente considerado uma despesa variável no seu planejamento estratégico. O parcelamento fixo só se aplica a gastos recorrentes sem fim ou compras acima de 18 parcelas.`);
+        setInstallmentWarning(
+          `Este lançamento "${currentItem.description || 'sem nome'}" tem apenas ${filledCount} mês${filledCount > 1 ? 'es' : ''} preenchido${filledCount > 1 ? 's' : ''}. Contas fixas são recorrentes sem fim ou parceladas em mais de 18x. Considere movê-lo para Contas Variáveis.`
+        );
       }
-    }, 10000);
+    }, 8000);
   };
 
   const getTooltipContent = () => {
@@ -93,6 +101,23 @@ const BlockSection: React.FC<BlockSectionProps> = ({
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8 transition-all hover:shadow-md">
+      {installmentWarning && (
+        <div className="fixed bottom-6 right-6 z-[300] max-w-sm w-full bg-zinc-900 border border-yellow-600/40 rounded-2xl p-4 shadow-2xl animate-in slide-in-from-bottom-4">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 bg-yellow-500/10 rounded-xl flex items-center justify-center shrink-0">
+              <i className="fas fa-exclamation-triangle text-yellow-500 text-sm"></i>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-yellow-500 font-black text-xs uppercase tracking-widest mb-1">Aviso de classificação</p>
+              <p className="text-zinc-300 text-xs leading-relaxed">{installmentWarning}</p>
+            </div>
+            <button onClick={() => setInstallmentWarning(null)} className="text-zinc-500 hover:text-white transition-colors shrink-0">
+              <i className="fas fa-times text-sm"></i>
+            </button>
+          </div>
+        </div>
+      )}
+
       {showInstructionModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-[30px] p-8 shadow-2xl">
@@ -285,9 +310,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                             value={val === 0 ? '' : val}
                             onChange={(e) => {
                               onUpdateValue(item.id, mIdx, e.target.value);
-                              const newValues = [...item.values];
-                              newValues[mIdx] = parseFloat(e.target.value) || 0;
-                              checkInstallments(item.id, newValues);
+                              checkInstallments(item.id);
                             }}
                             className={`w-full text-center bg-transparent border-none focus:ring-0 outline-none transition-all text-sm ${isPaid ? 'text-green-700 font-bold' : 'text-gray-900'}`}
                             placeholder="0,00"

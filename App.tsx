@@ -281,7 +281,7 @@ const App: React.FC = () => {
 
   const handleAddItem = (category: CategoryType, customData?: Partial<FinanceItem>) => {
     const newItem: FinanceItem = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       description: customData?.description || '',
       category,
       values: customData?.values || new Array(12).fill(0),
