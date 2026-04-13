@@ -1,15 +1,30 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import { verifyAdmin } from './_auth';
 
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY!;
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!;
+const ADMIN_IDS = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean);
+
+function getAdminId(authHeader: string): string | null {
+  const token = (authHeader ?? '').replace('Bearer ', '').trim();
+  if (!token) return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+    const userId: string = payload.sub;
+    if (!userId || !ADMIN_IDS.includes(userId)) return null;
+    return userId;
+  } catch {
+    return null;
+  }
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'DELETE') return res.status(405).json({ error: 'Method not allowed' });
 
-  const requesterId = await verifyAdmin(req.headers.authorization ?? '');
+  const requesterId = getAdminId(req.headers.authorization ?? '');
   if (!requesterId) return res.status(403).json({ error: 'Forbidden' });
 
   try {
@@ -18,10 +33,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    // Exclui o household (o banco deve deletar coach_access, household_members e finance_items em cascata)
     await db.from('households').delete().eq('id', householdId);
 
-    // Deleta usuário no Clerk apenas se o perfil estava ativo
     if (clientClerkId) {
       await fetch(`https://api.clerk.com/v1/users/${clientClerkId}`, {
         method: 'DELETE',

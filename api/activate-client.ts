@@ -1,15 +1,30 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import { verifyAdmin } from './_auth';
 
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY!;
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!;
+const ADMIN_IDS = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean);
+
+function getAdminId(authHeader: string): string | null {
+  const token = (authHeader ?? '').replace('Bearer ', '').trim();
+  if (!token) return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+    const userId: string = payload.sub;
+    if (!userId || !ADMIN_IDS.includes(userId)) return null;
+    return userId;
+  } catch {
+    return null;
+  }
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const requesterId = await verifyAdmin(req.headers.authorization ?? '');
+  const requesterId = getAdminId(req.headers.authorization ?? '');
   if (!requesterId) return res.status(403).json({ error: 'Forbidden: not an admin' });
 
   try {
@@ -18,7 +33,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    // Busca dados do prospecto
     const { data: household, error: hhError } = await db
       .from('households')
       .select('prospect_name, prospect_email, status')
@@ -33,7 +47,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const [firstName, ...rest] = name.trim().split(' ');
     const lastName = rest.join(' ') || '';
 
-    // Cria usuário no Clerk e envia convite por e-mail
     const clerkRes = await fetch('https://api.clerk.com/v1/users', {
       method: 'POST',
       headers: {
@@ -57,14 +70,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const clerkUser = await clerkRes.json();
     const clientClerkId = clerkUser.id;
 
-    // Cria household_member (dono do perfil)
     await db.from('household_members').insert({
       household_id: householdId,
       clerk_user_id: clientClerkId,
       role: 'owner',
     });
 
-    // Atualiza status para ativo
     await db.from('households').update({ status: 'active' }).eq('id', householdId);
 
     return res.status(200).json({ success: true, clientId: clientClerkId });
