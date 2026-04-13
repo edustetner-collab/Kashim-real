@@ -94,7 +94,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
     if (tokenRes.ok) {
       const tokenData = await tokenRes.json();
-      signInUrl = tokenData.url ?? null;
+      const APP_URL = 'https://kashim-gilt.vercel.app';
+      const rawUrl: string | null = tokenData.url ?? null;
+      signInUrl = rawUrl ? `${rawUrl}&redirect_url=${encodeURIComponent(APP_URL)}` : null;
     }
 
     return res.status(200).json({ success: true, clientId: clientClerkId, signInUrl });
