@@ -8,11 +8,12 @@ import ConsultorSettings from './ConsultorSettings';
 
 interface ClientProfile {
   householdId: string;
-  clientId: string;
+  clientId: string | null;
   clientName: string;
   clientEmail: string;
   createdAt: string;
   coachingEndsAt: string;
+  status: 'draft' | 'active';
 }
 
 interface CoachDashboardProps {
@@ -36,6 +37,8 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [activating, setActivating] = useState<string | null>(null);
+  const [activateSuccess, setActivateSuccess] = useState<string | null>(null);
 
   useEffect(() => { loadClients(); }, []);
 
@@ -104,7 +107,34 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
     }
   }
 
-  async function handleDeleteClient(householdId: string, clientId: string) {
+  async function handleActivateClient(householdId: string) {
+    setActivating(householdId);
+    try {
+      const token = await getToken({ template: 'supabase' });
+      const res = await fetch('/api/activate-client', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ householdId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error ?? 'Erro ao ativar cliente');
+        return;
+      }
+      setActivateSuccess(householdId);
+      await loadClients();
+      setTimeout(() => setActivateSuccess(null), 4000);
+    } catch (e) {
+      alert('Erro de conexão. Tente novamente.');
+    } finally {
+      setActivating(null);
+    }
+  }
+
+  async function handleDeleteClient(householdId: string, clientId: string | null) {
     try {
       const token = await getToken({ template: 'supabase' });
       await fetch('/api/delete-client', {
@@ -127,6 +157,9 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
   }
 
+  const draftCount = clients.filter(c => c.status === 'draft').length;
+  const activeCount = clients.filter(c => c.status === 'active').length;
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white">
 
@@ -137,14 +170,12 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
       {/* Header */}
       <header className="bg-[#0f0f0f] border-b border-yellow-600/30 px-6 py-3 sticky top-0 z-50">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
-          {/* Logo */}
           <div className="flex items-center gap-3">
             <img src="/kashim-icon.png" alt="Kashim" className="h-9 w-9 rounded-xl" />
             <span className="text-xl font-black text-white uppercase tracking-widest hidden md:block">Kashim</span>
             <span className="text-[9px] font-black uppercase text-yellow-500 bg-yellow-500/10 border border-yellow-500/20 px-2 py-0.5 rounded-full ml-1">Consultor</span>
           </div>
 
-          {/* Ações do consultor */}
           <div className="flex items-center gap-2">
             {user && (
               <div className="hidden md:flex items-center gap-2 border-r border-zinc-800 pr-3 mr-1">
@@ -155,7 +186,6 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
             <button
               onClick={() => setShowSettings(true)}
               className="flex items-center gap-2 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-zinc-300 hover:text-white transition-all text-xs font-black uppercase"
-              title="Configurações"
             >
               <i className="fas fa-cog"></i>
               <span className="hidden md:inline">Configurações</span>
@@ -176,7 +206,10 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Clientes</h1>
-            <p className="text-zinc-500 text-sm mt-1">{clients.length} perfil{clients.length !== 1 ? 's' : ''} ativo{clients.length !== 1 ? 's' : ''}</p>
+            <p className="text-zinc-500 text-sm mt-1">
+              {activeCount} ativo{activeCount !== 1 ? 's' : ''}
+              {draftCount > 0 && <span className="ml-2 text-zinc-600">· {draftCount} rascunho{draftCount !== 1 ? 's' : ''}</span>}
+            </p>
           </div>
           <button
             onClick={() => setShowCreateForm(true)}
@@ -202,15 +235,33 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
             {clients.map(client => {
               const days = daysRemaining(client.coachingEndsAt);
               const isExpiring = days < 30;
+              const isDraft = client.status === 'draft';
+              const justActivated = activateSuccess === client.householdId;
+
               return (
-                <div key={client.householdId} className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 hover:border-yellow-600/30 transition-all group">
+                <div
+                  key={client.householdId}
+                  className={`bg-zinc-900 border rounded-3xl p-6 transition-all group ${
+                    isDraft ? 'border-zinc-700 opacity-90' : 'border-zinc-800 hover:border-yellow-600/30'
+                  }`}
+                >
                   <div className="flex items-start justify-between mb-4">
-                    <div className="w-12 h-12 bg-yellow-600/10 rounded-2xl flex items-center justify-center border border-yellow-600/20">
-                      <i className="fas fa-user text-yellow-500"></i>
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border ${
+                      isDraft
+                        ? 'bg-zinc-800/50 border-zinc-700'
+                        : 'bg-yellow-600/10 border-yellow-600/20'
+                    }`}>
+                      <i className={`fas fa-user ${isDraft ? 'text-zinc-500' : 'text-yellow-500'}`}></i>
                     </div>
-                    <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-full ${isExpiring ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
-                      {days}d restantes
-                    </span>
+                    {isDraft ? (
+                      <span className="text-[9px] font-black uppercase px-2 py-1 rounded-full bg-zinc-700/60 text-zinc-400">
+                        Rascunho
+                      </span>
+                    ) : (
+                      <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-full ${isExpiring ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
+                        {days}d restantes
+                      </span>
+                    )}
                   </div>
 
                   <h3 className="text-white font-black text-lg uppercase italic tracking-tight mb-1">{client.clientName}</h3>
@@ -219,19 +270,45 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
                     Criado em {new Date(client.createdAt).toLocaleDateString('pt-BR')}
                   </p>
 
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => onEnterClient(client.householdId, client.clientName)}
-                      className="flex-1 bg-yellow-600 hover:bg-yellow-500 text-black font-black py-2.5 rounded-xl transition-all text-xs uppercase"
-                    >
-                      <i className="fas fa-eye mr-1"></i> Acessar
-                    </button>
-                    <button
-                      onClick={() => setDeleteConfirm(client.householdId)}
-                      className="w-10 h-10 bg-zinc-800 hover:bg-red-500/20 text-zinc-500 hover:text-red-400 rounded-xl transition-all flex items-center justify-center"
-                    >
-                      <i className="fas fa-trash-alt text-xs"></i>
-                    </button>
+                  {justActivated && (
+                    <div className="mb-3 p-2 bg-green-500/10 border border-green-500/20 rounded-xl text-center">
+                      <p className="text-green-400 text-xs font-bold">
+                        <i className="fas fa-check-circle mr-1"></i>
+                        Convite enviado por e-mail!
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-2">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => onEnterClient(client.householdId, client.clientName)}
+                        className="flex-1 bg-yellow-600 hover:bg-yellow-500 text-black font-black py-2.5 rounded-xl transition-all text-xs uppercase"
+                      >
+                        <i className="fas fa-eye mr-1"></i> Acessar
+                      </button>
+                      <button
+                        onClick={() => setDeleteConfirm(client.householdId)}
+                        className="w-10 h-10 bg-zinc-800 hover:bg-red-500/20 text-zinc-500 hover:text-red-400 rounded-xl transition-all flex items-center justify-center"
+                        title="Excluir perfil"
+                      >
+                        <i className="fas fa-trash-alt text-xs"></i>
+                      </button>
+                    </div>
+
+                    {isDraft && (
+                      <button
+                        onClick={() => handleActivateClient(client.householdId)}
+                        disabled={activating === client.householdId}
+                        className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-black py-2.5 rounded-xl transition-all text-xs uppercase"
+                      >
+                        {activating === client.householdId ? (
+                          <i className="fas fa-circle-notch animate-spin"></i>
+                        ) : (
+                          <><i className="fas fa-paper-plane mr-1"></i> Ativar e enviar acesso</>
+                        )}
+                      </button>
+                    )}
                   </div>
 
                   {deleteConfirm === client.householdId && (
@@ -271,10 +348,11 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
               <i className="fas fa-times text-xs"></i>
             </button>
 
-            <h2 className="text-xl font-black uppercase italic tracking-tighter text-white mb-6">
+            <h2 className="text-xl font-black uppercase italic tracking-tighter text-white mb-2">
               <i className="fas fa-user-plus text-yellow-500 mr-2"></i>
               Novo Perfil de Cliente
             </h2>
+            <p className="text-zinc-500 text-xs mb-6">O cliente não receberá e-mail agora. O acesso só é enviado quando você clicar em "Ativar".</p>
 
             <form onSubmit={handleCreateClient} className="flex flex-col gap-5">
               <div className="grid grid-cols-2 gap-4">
@@ -302,7 +380,6 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
                 </div>
               </div>
 
-              {/* Formulário financeiro */}
               <div>
                 <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest mb-1 block">
                   Formulário financeiro (opcional)
@@ -333,7 +410,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
                   <div className="space-y-1">
                     {parsedFields.map((f, i) => (
                       <div key={i} className="flex justify-between text-xs">
-                        <span className="text-zinc-400">{f.fieldName}</span>
+                        <span className={f.isIncome ? 'text-green-400' : 'text-zinc-400'}>{f.description}</span>
                         <span className="text-yellow-400 font-bold">{formatCurrency(f.value)}</span>
                       </div>
                     ))}
@@ -350,7 +427,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
                 disabled={creating}
                 className="w-full bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50 text-black font-black py-4 rounded-2xl transition-all shadow-lg uppercase text-sm"
               >
-                {creating ? <i className="fas fa-circle-notch animate-spin"></i> : 'Criar perfil e enviar acesso'}
+                {creating ? <i className="fas fa-circle-notch animate-spin"></i> : 'Criar perfil'}
               </button>
             </form>
           </div>

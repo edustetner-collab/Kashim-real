@@ -26,31 +26,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const householdIds = accesses.map((a: any) => a.household_id);
 
+    // Busca dados dos households (inclui rascunhos)
+    const { data: households } = await db
+      .from('households')
+      .select('id, status, prospect_name, prospect_email, created_at')
+      .in('id', householdIds);
+
+    // Busca membros ativos (somente perfis já ativados)
     const { data: members } = await db
       .from('household_members')
       .select('household_id, clerk_user_id, joined_at')
       .in('household_id', householdIds)
       .not('clerk_user_id', 'in', `(${ADMIN_IDS.map(id => `"${id}"`).join(',')})`);
 
-    if (!members || members.length === 0) return res.status(200).json({ clients: [] });
-
     const clients = await Promise.all(
-      members.map(async (member: any) => {
+      (households ?? []).map(async (household: any) => {
+        const access = accesses.find((a: any) => a.household_id === household.id);
+        const member = (members ?? []).find((m: any) => m.household_id === household.id);
+
+        // Perfil rascunho — sem login/senha ainda
+        if (household.status === 'draft' || !member) {
+          return {
+            householdId: household.id,
+            clientId: null,
+            clientName: household.prospect_name ?? 'Cliente',
+            clientEmail: household.prospect_email ?? '',
+            createdAt: household.created_at,
+            coachingEndsAt: access?.coaching_ends_at ?? new Date().toISOString(),
+            status: 'draft',
+          };
+        }
+
+        // Perfil ativo — busca nome no Clerk
         const clerkRes = await fetch(`https://api.clerk.com/v1/users/${member.clerk_user_id}`, {
           headers: { Authorization: `Bearer ${CLERK_SECRET_KEY}` },
         });
         const clerkUser = clerkRes.ok ? await clerkRes.json() : null;
-        const access = accesses.find((a: any) => a.household_id === member.household_id);
 
         return {
-          householdId: member.household_id,
+          householdId: household.id,
           clientId: member.clerk_user_id,
           clientName: clerkUser
             ? `${clerkUser.first_name ?? ''} ${clerkUser.last_name ?? ''}`.trim() || clerkUser.email_addresses?.[0]?.email_address
-            : 'Cliente',
-          clientEmail: clerkUser?.email_addresses?.[0]?.email_address ?? '',
+            : (household.prospect_name ?? 'Cliente'),
+          clientEmail: clerkUser?.email_addresses?.[0]?.email_address ?? household.prospect_email ?? '',
           createdAt: member.joined_at,
           coachingEndsAt: access?.coaching_ends_at ?? new Date().toISOString(),
+          status: 'active',
         };
       })
     );

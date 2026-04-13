@@ -13,17 +13,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const { householdId, clientClerkId } = req.body;
-    if (!householdId || !clientClerkId) return res.status(400).json({ error: 'Missing fields' });
+    if (!householdId) return res.status(400).json({ error: 'Missing householdId' });
 
     const { createClient } = await import('@supabase/supabase-js');
     const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+    // Exclui o household (o banco deve deletar coach_access, household_members e finance_items em cascata)
     await db.from('households').delete().eq('id', householdId);
 
-    await fetch(`https://api.clerk.com/v1/users/${clientClerkId}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${CLERK_SECRET_KEY}` },
-    });
+    // Deleta usuário no Clerk apenas se o perfil estava ativo
+    if (clientClerkId) {
+      await fetch(`https://api.clerk.com/v1/users/${clientClerkId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${CLERK_SECRET_KEY}` },
+      });
+    }
 
     return res.status(200).json({ success: true });
   } catch (err) {
