@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { createClient } from '@supabase/supabase-js';
 import { verifyAdmin } from './_auth';
 
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY!;
@@ -13,7 +14,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!requesterId) return res.status(403).json({ error: 'Forbidden' });
 
   try {
-    const { createClient } = await import('@supabase/supabase-js');
     const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
     const { data: accesses } = await db

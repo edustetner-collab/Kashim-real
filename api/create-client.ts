@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { createClient } from '@supabase/supabase-js';
 import { verifyAdmin } from './_auth';
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL!;
@@ -15,7 +16,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { name, email, parsedItems, startMonth, startYear } = req.body;
     if (!email || !name) return res.status(400).json({ error: 'name and email required' });
 
-    const { createClient } = await import('@supabase/supabase-js');
     const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
     // 1. Cria household como rascunho (sem login/senha ainda)
