@@ -335,23 +335,21 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
                         </button>
                       )}
 
-                      {isSuperAdmin && (
-                        <button
-                          onClick={() => handleTogglePrivacy(client.householdId, client.isPrivate)}
-                          disabled={privacyLoading === client.householdId}
-                          className={`w-7 h-7 rounded-lg transition-all flex items-center justify-center disabled:opacity-50 ${
-                            client.isPrivate
-                              ? 'bg-yellow-600/20 text-yellow-500 hover:bg-yellow-600/30'
-                              : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300'
-                          }`}
-                          title={client.isPrivate ? 'Privado — clique para tornar visível à assistente' : 'Visível à assistente — clique para tornar privado'}
-                        >
-                          {privacyLoading === client.householdId
-                            ? <i className="fas fa-circle-notch animate-spin text-[10px]"></i>
-                            : <i className={`fas ${client.isPrivate ? 'fa-lock' : 'fa-lock-open'} text-[10px]`}></i>
-                          }
-                        </button>
-                      )}
+                      <button
+                        onClick={() => handleTogglePrivacy(client.householdId, client.isPrivate)}
+                        disabled={privacyLoading === client.householdId}
+                        className={`w-7 h-7 rounded-lg transition-all flex items-center justify-center disabled:opacity-50 ${
+                          client.isPrivate
+                            ? 'bg-yellow-600/20 text-yellow-500 hover:bg-yellow-600/30'
+                            : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300'
+                        }`}
+                        title={client.isPrivate ? 'Privado — clique para tornar visível à assistente' : 'Visível à assistente — clique para tornar privado'}
+                      >
+                        {privacyLoading === client.householdId
+                          ? <i className="fas fa-circle-notch animate-spin text-[10px]"></i>
+                          : <i className={`fas ${client.isPrivate ? 'fa-lock' : 'fa-lock-open'} text-[10px]`}></i>
+                        }
+                      </button>
 
                       <button
                         onClick={() => setDeleteConfirm(client.householdId)}
