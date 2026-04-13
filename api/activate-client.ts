@@ -79,6 +79,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     await db.from('households').update({ status: 'active' }).eq('id', householdId);
 
+    // Envia convite por email via Clerk (usa template "Convite" configurado no dashboard)
+    await fetch('https://api.clerk.com/v1/invitations', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${CLERK_SECRET_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email_address: email,
+        redirect_url: 'https://kashim-gilt.vercel.app',
+        notify: true,
+        ignore_existing: true,
+      }),
+    });
+
     return res.status(200).json({ success: true, clientId: clientClerkId });
   } catch (err: any) {
     console.error('activate-client error:', err);
