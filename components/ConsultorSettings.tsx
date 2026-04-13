@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { UserProfile, useUser, useClerk } from '@clerk/clerk-react';
+import { UserProfile, useUser, useClerk, useAuth } from '@clerk/clerk-react';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 interface ConsultorSettingsProps {
@@ -11,6 +11,7 @@ interface ConsultorSettingsProps {
 const ConsultorSettings: React.FC<ConsultorSettingsProps> = ({ db, onClose }) => {
   const { user } = useUser();
   const { signOut } = useClerk();
+  const { getToken } = useAuth();
   const [assistants, setAssistants] = useState<{ id: string; email: string; name: string }[]>([]);
   const [newEmail, setNewEmail] = useState('');
   const [newName, setNewName] = useState('');
@@ -34,19 +35,25 @@ const ConsultorSettings: React.FC<ConsultorSettingsProps> = ({ db, onClose }) =>
     setAddSuccess('');
 
     try {
-      const { error } = await db.from('admin_users').insert({
-        email: newEmail.toLowerCase().trim(),
-        name: newName.trim(),
-        added_by: user?.id,
+      const token = await getToken({ template: 'supabase' });
+      const res = await fetch('/api/invite-assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ email: newEmail, name: newName }),
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Erro ao enviar convite');
 
-      if (error) throw error;
-      setAddSuccess(`${newName} adicionada com sucesso! Ela precisa criar uma conta no Kashim com o e-mail ${newEmail}.`);
+      if (data.alreadyExists) {
+        setAddSuccess(`${newName} já tem conta no Kashim e foi adicionada à equipe!`);
+      } else {
+        setAddSuccess(`Convite enviado para ${newEmail}! Ela vai receber um e-mail para criar a conta.`);
+      }
       setNewEmail('');
       setNewName('');
       await loadAssistants();
     } catch (e: any) {
-      setAddError(e.message?.includes('duplicate') ? 'Este e-mail já está cadastrado.' : 'Erro ao adicionar. Tente novamente.');
+      setAddError(e.message ?? 'Erro ao adicionar. Tente novamente.');
     } finally {
       setAdding(false);
     }

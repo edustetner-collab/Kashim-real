@@ -5,20 +5,28 @@ const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY!;
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!;
 const ADMIN_IDS = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean);
-const ASSISTANT_IDS = (process.env.ASSISTANT_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean);
 
-function getRequester(authHeader: string): { userId: string; isSuperAdmin: boolean } | null {
+function getUserId(authHeader: string): string | null {
   const token = (authHeader ?? '').replace('Bearer ', '').trim();
   if (!token) return null;
   try {
     const parts = token.split('.');
     if (parts.length !== 3) return null;
     const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
-    const userId: string = payload.sub;
-    if (!userId) return null;
-    if (ADMIN_IDS.includes(userId)) return { userId, isSuperAdmin: true };
-    if (ASSISTANT_IDS.includes(userId)) return { userId, isSuperAdmin: false };
+    return payload.sub ?? null;
+  } catch {
     return null;
+  }
+}
+
+async function getClerkEmail(userId: string): Promise<string | null> {
+  try {
+    const r = await fetch(`https://api.clerk.com/v1/users/${userId}`, {
+      headers: { Authorization: `Bearer ${CLERK_SECRET_KEY}` },
+    });
+    if (!r.ok) return null;
+    const u = await r.json();
+    return u.email_addresses?.[0]?.email_address ?? null;
   } catch {
     return null;
   }
@@ -27,14 +35,28 @@ function getRequester(authHeader: string): { userId: string; isSuperAdmin: boole
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
-  const requester = getRequester(req.headers.authorization ?? '');
-  if (!requester) return res.status(403).json({ error: 'Forbidden' });
+  const userId = getUserId(req.headers.authorization ?? '');
+  if (!userId) return res.status(403).json({ error: 'Forbidden' });
+
+  const isSuperAdmin = ADMIN_IDS.includes(userId);
 
   try {
     const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    // Assistente sempre usa o ID do super admin para buscar clientes vinculados
-    const coachId = requester.isSuperAdmin ? requester.userId : ADMIN_IDS[0];
+    // Se não é super admin, verifica se é assistente pela tabela admin_users
+    if (!isSuperAdmin) {
+      const email = await getClerkEmail(userId);
+      if (!email) return res.status(403).json({ error: 'Forbidden' });
+      const { data: assistant } = await db
+        .from('admin_users')
+        .select('id')
+        .eq('email', email.toLowerCase())
+        .single();
+      if (!assistant) return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    // Assistente usa o ID do super admin para buscar clientes vinculados
+    const coachId = isSuperAdmin ? userId : ADMIN_IDS[0];
 
     const { data: accesses } = await db
       .from('coach_access')
@@ -52,7 +74,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .in('id', householdIds);
 
     // Assistente não vê perfis privados
-    if (!requester.isSuperAdmin) {
+    if (!isSuperAdmin) {
       query = query.eq('is_private', false);
     }
 
@@ -102,7 +124,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
     );
 
-    return res.status(200).json({ clients, isSuperAdmin: requester.isSuperAdmin });
+    return res.status(200).json({ clients, isSuperAdmin });
   } catch (err) {
     console.error('list-clients error:', err);
     return res.status(500).json({ error: 'Internal server error' });
