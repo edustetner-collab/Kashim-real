@@ -41,6 +41,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
   const [activateSuccess, setActivateSuccess] = useState<string | null>(null);
   const [signInLinks, setSignInLinks] = useState<Record<string, string>>({});
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
+  const [generatingLink, setGeneratingLink] = useState<string | null>(null);
 
   useEffect(() => { loadClients(); }, []);
 
@@ -119,6 +120,27 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
       alert('Erro de conexão. Tente novamente.');
     } finally {
       setActivating(null);
+    }
+  }
+
+  async function handleGenLink(householdId: string) {
+    setGeneratingLink(householdId);
+    try {
+      const token = await getToken({ template: 'supabase' });
+      const res = await fetch('/api/gen-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ householdId }),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error ?? 'Erro ao gerar link'); return; }
+      if (data.signInUrl) {
+        setSignInLinks(prev => ({ ...prev, [householdId]: data.signInUrl }));
+      }
+    } catch {
+      alert('Erro de conexão. Tente novamente.');
+    } finally {
+      setGeneratingLink(null);
     }
   }
 
@@ -269,7 +291,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
                         <i className="fas fa-eye mr-1"></i> Acessar
                       </button>
 
-                      {isDraft && (
+                      {isDraft ? (
                         <button
                           onClick={() => handleActivateClient(client.householdId)}
                           disabled={activating === client.householdId}
@@ -278,6 +300,17 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
                           {activating === client.householdId
                             ? <i className="fas fa-circle-notch animate-spin"></i>
                             : <><i className="fas fa-paper-plane mr-1"></i> Ativar</>}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleGenLink(client.householdId)}
+                          disabled={generatingLink === client.householdId}
+                          className="bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 text-zinc-300 hover:text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase transition-all"
+                          title="Gerar link de acesso"
+                        >
+                          {generatingLink === client.householdId
+                            ? <i className="fas fa-circle-notch animate-spin"></i>
+                            : <i className="fas fa-link"></i>}
                         </button>
                       )}
 
