@@ -27,8 +27,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
   const { signOut } = useClerk();
   const db = useSupabase();
 
-  const isSuperAdmin = (import.meta.env.VITE_ADMIN_USER_IDS ?? '').split(',').map((s: string) => s.trim()).includes(user?.id ?? '');
-
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -59,6 +58,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient }) => {
       if (res.ok) {
         const data = await res.json();
         setClients(data.clients ?? []);
+        setIsSuperAdmin(data.isSuperAdmin ?? false);
       }
     } catch (e) {
       console.error(e);
