@@ -19,12 +19,13 @@ interface BlockSectionProps {
   onReplicateValue: (id: string, monthIdx: number) => void;
   onLinkCard?: (itemId: string, cardId: string, linkType?: LinkType) => void;
   onUpdateCardConfig?: (id: string, field: 'closingDay' | 'dueDay', value: number) => void;
+  onMoveItem?: (id: string, direction: 'up' | 'down') => void;
 }
 
 const BlockSection: React.FC<BlockSectionProps> = ({
   title, subtitle, category, items, allCards = [], months, totalIncome,
   onAddItem, onUpdateValue, onTogglePaid, onRemoveItem, onUpdateDescription, onReplicateValue, onLinkCard,
-  onUpdateCardConfig
+  onUpdateCardConfig, onMoveItem
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
   const [showInstructionModal, setShowInstructionModal] = useState(false);
@@ -227,13 +228,27 @@ const BlockSection: React.FC<BlockSectionProps> = ({
             {items.map((item) => (
               <tr key={item.id} className="border-b hover:bg-gray-50 transition-colors">
                 <td className="p-2 text-center">
-                  <button onClick={() => onRemoveItem(item.id)} className="text-gray-300 hover:text-red-500 transition-colors p-2"><i className="fas fa-trash-alt text-xs"></i></button>
+                  <div className="flex flex-col items-center gap-0.5">
+                    {onMoveItem && (
+                      <button onClick={() => onMoveItem(item.id, 'up')} className="text-gray-300 hover:text-yellow-500 transition-colors px-1" title="Mover para cima">
+                        <i className="fas fa-chevron-up text-[9px]"></i>
+                      </button>
+                    )}
+                    <button onClick={() => onRemoveItem(item.id)} className="text-gray-300 hover:text-red-500 transition-colors p-1"><i className="fas fa-trash-alt text-xs"></i></button>
+                    {onMoveItem && (
+                      <button onClick={() => onMoveItem(item.id, 'down')} className="text-gray-300 hover:text-yellow-500 transition-colors px-1" title="Mover para baixo">
+                        <i className="fas fa-chevron-down text-[9px]"></i>
+                      </button>
+                    )}
+                  </div>
                 </td>
                 <td className="p-2">
                   <div className="flex flex-col gap-1">
                     <input
                       type="text"
-                      value={item.description}
+                      defaultValue={item.description}
+                      key={item.id}
+                      onBlur={(e) => onUpdateDescription(item.id, e.target.value)}
                       onChange={(e) => onUpdateDescription(item.id, e.target.value)}
                       className="w-full bg-transparent border-b border-transparent focus:border-yellow-500 outline-none p-2 text-gray-900 font-medium"
                       placeholder="Nome do item..."

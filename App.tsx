@@ -365,6 +365,20 @@ const App: React.FC = () => {
     setItems(prev => prev.map(i => i.id === id ? { ...i, values: i.values.map((v, idx) => idx >= monthIdx ? i.values[monthIdx] : v) } : i));
   };
 
+  const handleMoveItem = (id: string, direction: 'up' | 'down') => {
+    setItems(prev => {
+      const idx = prev.findIndex(i => i.id === id);
+      if (idx === -1) return prev;
+      const next = [...prev];
+      const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+      if (swapIdx < 0 || swapIdx >= next.length) return prev;
+      // Só move dentro da mesma categoria
+      if (next[idx].category !== next[swapIdx].category) return prev;
+      [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
+      return next;
+    });
+  };
+
   const handleLinkCard = (itemId: string, cardId: string, linkType?: LinkType) => {
     setItems(prev => prev.map(item => item.id === itemId ? { ...item, linkedCardId: cardId || undefined, linkType: cardId ? (linkType || LinkType.RECURRING) : undefined } : item));
   };
@@ -547,7 +561,7 @@ const App: React.FC = () => {
             )}
           </div>
           <div className="flex gap-2 bg-zinc-900 p-1 rounded-xl border border-zinc-800">
-            <button onClick={() => setActiveTab('plan')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'plan' ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/20' : 'text-gray-400 hover:text-white'}`}>12 Meses</button>
+            <button onClick={() => setActiveTab('plan')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'plan' ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/20' : 'text-gray-400 hover:text-white'}`}>Gastos Mensais</button>
             <button id="tab-gastos-frequentes" onClick={() => setActiveTab('teto')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'teto' ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/20' : 'text-gray-400 hover:text-white'}`}>Gastos Frequentes</button>
             {coachViewHouseholdId && (
               <div className="flex items-center gap-2 bg-yellow-600/10 border border-yellow-600/30 px-3 py-1.5 rounded-xl">
@@ -604,10 +618,10 @@ const App: React.FC = () => {
                   key={block.type} title={block.title} subtitle={block.subtitle} category={block.type} 
                   items={items.filter(i => i.category === block.type)} allCards={allCards} months={months}
                   totalIncome={monthlySummaries[0].totalIncome}
-                  onAddItem={handleAddItem} onUpdateValue={handleUpdateValue} onTogglePaid={handleTogglePaid} 
-                  onRemoveItem={handleRemoveItem} onUpdateDescription={handleUpdateDescription} 
+                  onAddItem={handleAddItem} onUpdateValue={handleUpdateValue} onTogglePaid={handleTogglePaid}
+                  onRemoveItem={handleRemoveItem} onUpdateDescription={handleUpdateDescription}
                   onReplicateValue={handleReplicateValue} onLinkCard={handleLinkCard}
-                  onUpdateCardConfig={handleUpdateCardConfig}
+                  onUpdateCardConfig={handleUpdateCardConfig} onMoveItem={handleMoveItem}
                 />
               ))}
             </div>
