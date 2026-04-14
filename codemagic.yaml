@@ -10,6 +10,7 @@ workflows:
       vars:
         XCODE_SCHEME: "App"
         BUNDLE_ID: "com.kashim.app"
+      xcode: 16.3
       node: 22
 
     triggering:
