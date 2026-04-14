@@ -10,7 +10,7 @@ workflows:
       vars:
         XCODE_SCHEME: "App"
         BUNDLE_ID: "com.kashim.app"
-      node: 20
+      node: 22
 
     triggering:
       events:
