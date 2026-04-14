@@ -5,13 +5,11 @@ workflows:
     instance_type: mac_mini_m2
 
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.kashim.app
       groups:
         - kashim
       vars:
         XCODE_SCHEME: "App"
+        BUNDLE_ID: "com.kashim.app"
       node: 22
 
     triggering:
@@ -33,6 +31,28 @@ workflows:
       - name: Capacitor sync iOS
         script: |
           npx cap sync ios
+
+      - name: Set up code signing
+        script: |
+          keychain initialize
+          echo "$CERTIFICATE_PRIVATE_KEY" > /tmp/cert_key.pem
+          app-store-connect certificates create \
+            --type IOS_DISTRIBUTION \
+            --certificate-key /tmp/cert_key.pem \
+            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
+            --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
+            --private-key "$APP_STORE_CONNECT_PRIVATE_KEY" \
+            --save || true
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --certificate-key /tmp/cert_key.pem \
+            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
+            --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
+            --private-key "$APP_STORE_CONNECT_PRIVATE_KEY" \
+            --create
+          keychain add-certificates
+          xcode-project use-profiles
+          rm -f /tmp/cert_key.pem
 
       - name: Build iOS
         script: |
