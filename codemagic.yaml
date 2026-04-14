@@ -5,11 +5,13 @@ workflows:
     instance_type: mac_mini_m2
 
     environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.kashim.app
       groups:
         - kashim
       vars:
         XCODE_SCHEME: "App"
-        BUNDLE_ID: "com.kashim.app"
       node: 22
 
     triggering:
@@ -32,44 +34,11 @@ workflows:
         script: |
           npx cap sync ios
 
-      - name: Set up code signing
-        script: |
-          keychain initialize
-          app-store-connect create-certificate \
-            --type IOS_DISTRIBUTION \
-            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
-            --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
-            --private-key "$APP_STORE_CONNECT_PRIVATE_KEY" \
-            --save
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
-            --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
-            --private-key "$APP_STORE_CONNECT_PRIVATE_KEY" \
-            --create
-          keychain add-certificates
-          xcode-project use-profiles
-
       - name: Build iOS
         script: |
-          PROFILE=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision 2>/dev/null | head -1)
-          if [ -n "$PROFILE" ]; then
-            TEMP=$(mktemp /tmp/profile.XXXXXX.plist)
-            security cms -D -i "$PROFILE" > "$TEMP" 2>/dev/null
-            UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" "$TEMP" 2>/dev/null)
-            rm -f "$TEMP"
-            echo "Using provisioning profile UUID: $UUID"
-            xcode-project build-ipa \
-              --project "ios/App/App.xcodeproj" \
-              --scheme "$XCODE_SCHEME" \
-              --archive-xcargs "DEVELOPMENT_TEAM=4HT3W2MZV6 PROVISIONING_PROFILE=$UUID CODE_SIGN_STYLE=Manual"
-          else
-            echo "No provisioning profile found, using xcode-project defaults"
-            xcode-project build-ipa \
-              --project "ios/App/App.xcodeproj" \
-              --scheme "$XCODE_SCHEME" \
-              --archive-xcargs "DEVELOPMENT_TEAM=4HT3W2MZV6"
-          fi
+          xcode-project build-ipa \
+            --project "ios/App/App.xcodeproj" \
+            --scheme "$XCODE_SCHEME"
 
     artifacts:
       - build/ios/ipa/*.ipa
@@ -82,4 +51,3 @@ workflows:
         issuer_id: $APP_STORE_CONNECT_ISSUER_ID
         submit_to_testflight: true
         submit_to_app_store: false
-        expire_build_submitted_for_review: true
