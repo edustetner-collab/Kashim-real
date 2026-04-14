@@ -6,10 +6,8 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   // Serve bundled web app with HTTPS scheme so Clerk auth works correctly
   server: {
-    hostname: 'app.kashim.com.br',
-    iosScheme: 'https',
-    androidScheme: 'https',
-    allowNavigation: ['*.clerk.accounts.dev', 'accounts.clerk.dev', '*.clerk.dev'],
+    url: 'https://app.kashim.com.br',
+    cleartext: false,
   },
   plugins: {
     SplashScreen: {
