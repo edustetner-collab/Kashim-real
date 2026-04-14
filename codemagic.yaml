@@ -53,12 +53,23 @@ workflows:
       - name: Build iOS
         script: |
           PROFILE=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision 2>/dev/null | head -1)
-          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" /dev/stdin < <(security cms -D -i "$PROFILE" 2>/dev/null) 2>/dev/null)
-          echo "Using provisioning profile UUID: $PROFILE_UUID"
-          xcode-project build-ipa \
-            --project "ios/App/App.xcodeproj" \
-            --scheme "$XCODE_SCHEME" \
-            --archive-xcargs "DEVELOPMENT_TEAM=4HT3W2MZV6 PROVISIONING_PROFILE=${PROFILE_UUID} CODE_SIGN_STYLE=Manual"
+          if [ -n "$PROFILE" ]; then
+            TEMP=$(mktemp /tmp/profile.XXXXXX.plist)
+            security cms -D -i "$PROFILE" > "$TEMP" 2>/dev/null
+            UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" "$TEMP" 2>/dev/null)
+            rm -f "$TEMP"
+            echo "Using provisioning profile UUID: $UUID"
+            xcode-project build-ipa \
+              --project "ios/App/App.xcodeproj" \
+              --scheme "$XCODE_SCHEME" \
+              --archive-xcargs "DEVELOPMENT_TEAM=4HT3W2MZV6 PROVISIONING_PROFILE=$UUID CODE_SIGN_STYLE=Manual"
+          else
+            echo "No provisioning profile found, using xcode-project defaults"
+            xcode-project build-ipa \
+              --project "ios/App/App.xcodeproj" \
+              --scheme "$XCODE_SCHEME" \
+              --archive-xcargs "DEVELOPMENT_TEAM=4HT3W2MZV6"
+          fi
 
     artifacts:
       - build/ios/ipa/*.ipa
