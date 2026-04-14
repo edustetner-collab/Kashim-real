@@ -34,6 +34,7 @@ const App: React.FC = () => {
   const { signIn, setActive: setSignInActive } = useSignIn();
   const db = useSupabase();
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [clerkTimeout, setClerkTimeout] = useState(false);
   const [showTutorial, setShowTutorial] = useState<boolean>(() => {
     return localStorage.getItem('tutorial_completed') !== 'true';
   });
@@ -46,6 +47,13 @@ const App: React.FC = () => {
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
   const [showSubscriptionGate, setShowSubscriptionGate] = useState(false);
   const itemIdMapRef = useRef<Record<string, string>>({}); // localId -> dbId
+
+  // Timeout: se Clerk não carregar em 12s, mostra tela de erro com retry
+  useEffect(() => {
+    if (isLoaded) return;
+    const t = setTimeout(() => setClerkTimeout(true), 12000);
+    return () => clearTimeout(t);
+  }, [isLoaded]);
 
   const isAdminByEnv = user ? ADMIN_IDS.includes(user.id) : false;
   const [isAdminByDb, setIsAdminByDb] = useState(false);
@@ -436,6 +444,20 @@ const App: React.FC = () => {
   }
 
   if (!isLoaded) {
+    if (clerkTimeout) {
+      return (
+        <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center gap-6 p-8">
+          <img src="/kashim-icon.png" alt="Kashim" className="w-16 h-16 rounded-2xl opacity-60" />
+          <p className="text-zinc-400 text-sm text-center">Falha ao conectar. Verifique sua internet e tente novamente.</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-6 py-3 bg-yellow-600 text-black font-bold rounded-xl text-sm"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen bg-[#050505] flex items-center justify-center">
         <div className="w-10 h-10 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin"></div>
