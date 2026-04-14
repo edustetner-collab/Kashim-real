@@ -9,6 +9,7 @@ const config: CapacitorConfig = {
     hostname: 'app.kashim.com.br',
     iosScheme: 'https',
     androidScheme: 'https',
+    allowNavigation: ['*.clerk.accounts.dev', 'accounts.clerk.dev', '*.clerk.dev'],
   },
   plugins: {
     SplashScreen: {
