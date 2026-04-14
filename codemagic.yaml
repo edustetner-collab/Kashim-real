@@ -5,13 +5,11 @@ workflows:
     instance_type: mac_mini_m2
 
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.kashim.app
       groups:
         - kashim
       vars:
         XCODE_SCHEME: "App"
+        BUNDLE_ID: "com.kashim.app"
       node: 20.11.0
 
     triggering:
@@ -37,8 +35,11 @@ workflows:
       - name: Set up code signing
         script: |
           keychain initialize
-          app-store-connect fetch-signing-files com.kashim.app \
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
+            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
+            --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
+            --private-key "$APP_STORE_CONNECT_PRIVATE_KEY" \
             --create
           keychain add-certificates
           xcode-project use-profiles
@@ -60,3 +61,4 @@ workflows:
         issuer_id: $APP_STORE_CONNECT_ISSUER_ID
         submit_to_testflight: true
         submit_to_app_store: false
+        expire_build_submitted_for_review: true
