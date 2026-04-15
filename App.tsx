@@ -552,14 +552,36 @@ const App: React.FC = () => {
           householdId={householdId}
           onClose={() => setShowSettings(false)}
         />
-      ) : showSettings && (
+      ) : showSettings && dbLoading ? (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowSettings(false)}>
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 text-center">
             <div className="w-10 h-10 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
             <p className="text-zinc-400 text-sm">Carregando perfil...</p>
           </div>
         </div>
-      )}
+      ) : showSettings ? (
+        <div className="fixed inset-0 z-[200] flex items-end justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowSettings(false)}>
+          <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-t-3xl p-6 pb-10" onClick={e => e.stopPropagation()}>
+            <div className="w-10 h-1 bg-zinc-700 rounded-full mx-auto mb-6"></div>
+            {user && (
+              <div className="flex items-center gap-3 mb-6 p-4 bg-zinc-800 rounded-2xl">
+                <img src={user.imageUrl} className="w-12 h-12 rounded-full border-2 border-yellow-500/30" alt="Avatar" />
+                <div>
+                  <p className="text-white font-black text-sm uppercase italic">{user.firstName} {user.lastName}</p>
+                  <p className="text-zinc-500 text-xs">{user.emailAddresses[0]?.emailAddress}</p>
+                </div>
+              </div>
+            )}
+            <button
+              onClick={() => signOut()}
+              className="w-full bg-red-500/10 border border-red-500/20 active:bg-red-500/20 text-red-400 font-black py-3.5 rounded-2xl transition-all text-sm uppercase flex items-center justify-center gap-2"
+            >
+              <i className="fas fa-sign-out-alt"></i> Sair da conta
+            </button>
+            <button onClick={() => setShowSettings(false)} className="w-full mt-2 text-zinc-600 font-black py-2 text-xs uppercase">Fechar</button>
+          </div>
+        </div>
+      ) : null}
 
       {showInvitePanel && db && householdId && user && (
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-6 bg-black/70 backdrop-blur-sm">

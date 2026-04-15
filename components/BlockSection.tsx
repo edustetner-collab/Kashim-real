@@ -254,9 +254,9 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   {!isIncome && (
                     <button
                       onClick={() => onTogglePaid(item.id, mobileMonthIdx)}
-                      className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all shrink-0 ${isPaid ? 'bg-green-500 border-green-500' : 'border-zinc-600 active:border-green-400'}`}
+                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all shrink-0 ${isPaid ? 'bg-green-500 border-green-500' : 'border-zinc-700 active:border-green-400'}`}
                     >
-                      {isPaid && <i className="fas fa-check text-[8px] text-white"></i>}
+                      {isPaid && <i className="fas fa-check text-[7px] text-white"></i>}
                     </button>
                   )}
                 </div>
