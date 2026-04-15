@@ -17,37 +17,33 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
   const [loading, setLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
+  // Ref to always call the latest analyzeOrAction from stale speech callbacks
+  const analyzeOrActionRef = useRef<(text?: string) => void>(() => {});
 
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.lang = 'pt-BR';
-      recognitionRef.current.interimResults = true;
+    if (!SpeechRecognition) return;
+    recognitionRef.current = new SpeechRecognition();
+    recognitionRef.current.continuous = false;
+    recognitionRef.current.lang = 'pt-BR';
+    recognitionRef.current.interimResults = true;
 
-      recognitionRef.current.onresult = (event: any) => {
-        const transcript = Array.from(event.results)
-          .map((result: any) => result[0])
-          .map((result: any) => result.transcript)
-          .join('');
-        setPrompt(transcript);
-        
-        if (event.results[0].isFinal) {
-          setIsListening(false);
-          setTimeout(() => analyzeOrAction(transcript), 500);
-        }
-      };
-
-      recognitionRef.current.onend = () => {
+    recognitionRef.current.onresult = (event: any) => {
+      const transcript = Array.from(event.results)
+        .map((result: any) => result[0])
+        .map((result: any) => result.transcript)
+        .join('');
+      setPrompt(transcript);
+      if (event.results[0].isFinal) {
         setIsListening(false);
-      };
-
-      recognitionRef.current.onerror = (event: any) => {
-        console.error("Erro no reconhecimento de voz:", event.error);
-        setIsListening(false);
-      };
-    }
+        setTimeout(() => analyzeOrActionRef.current(transcript), 300);
+      }
+    };
+    recognitionRef.current.onend = () => setIsListening(false);
+    recognitionRef.current.onerror = (event: any) => {
+      console.error('Speech error:', event.error);
+      setIsListening(false);
+    };
   }, []);
 
   const toggleListening = () => {
@@ -63,11 +59,17 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
   const analyzeOrAction = async (textToProcess?: string) => {
     const finalPrompt = textToProcess || prompt;
     if (!finalPrompt.trim()) return;
-    
+
+    const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      setResponse('⚠️ Stets está temporariamente offline. Chave de API não configurada.');
+      return;
+    }
+
     setLoading(true);
     setResponse(null);
-    
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+    const ai = new GoogleGenAI({ apiKey });
     
     const fixedPercent = (summary.totalFixed / summary.totalIncome) * 100;
     const leisurePercent = (summary.totalLeisure / summary.totalIncome) * 100;
@@ -107,7 +109,7 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
 
     try {
       const result = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.0-flash',
         contents: finalPrompt,
         config: {
           systemInstruction: systemInstruction,
@@ -136,12 +138,16 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
       } else {
         setResponse(result.text || "Estou à disposição. Como posso ajudar no seu planejamento hoje?");
       }
-    } catch (error) {
-      setResponse("Tive um problema momentâneo em processar essa informação. Pode repetir o comando para o Stets?");
+    } catch (error: any) {
+      console.error('Stets error:', error);
+      setResponse('Tive um problema momentâneo em processar essa informação. Pode repetir o comando para o Stets?');
     } finally {
       setLoading(false);
     }
   };
+
+  // Keep ref in sync so speech recognition callbacks always call the latest version
+  analyzeOrActionRef.current = analyzeOrAction;
 
   return (
     <div className="bg-[#0a0a0a] border border-zinc-800 rounded-3xl p-6 mb-8 shadow-2xl relative overflow-hidden group">

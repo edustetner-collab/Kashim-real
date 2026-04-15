@@ -784,29 +784,6 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* ── MOBILE MONTH NAVIGATOR ────────────────────────────────── */}
-      {activeTab === 'plan' && (
-        <div className="lg:hidden sticky top-[57px] z-40 bg-zinc-900/95 backdrop-blur-sm border-b border-zinc-800">
-          <div className="flex items-center justify-between px-2 py-2">
-            <button onClick={() => setMobileMonthIdx(i => Math.max(0, i - 1))} disabled={mobileMonthIdx === 0} className="w-11 h-11 flex items-center justify-center text-zinc-400 disabled:opacity-20 active:text-yellow-500 rounded-xl active:bg-zinc-800">
-              <i className="fas fa-chevron-left text-base"></i>
-            </button>
-            <div className="text-center">
-              <div className="text-white font-black uppercase italic tracking-tight text-base">{months[mobileMonthIdx].monthName} {months[mobileMonthIdx].year}</div>
-              {mobileMonthIdx === 0 && <div className="text-yellow-500 text-[9px] font-black uppercase tracking-widest -mt-0.5">Mês atual</div>}
-            </div>
-            <button onClick={() => setMobileMonthIdx(i => Math.min(11, i + 1))} disabled={mobileMonthIdx === 11} className="w-11 h-11 flex items-center justify-center text-zinc-400 disabled:opacity-20 active:text-yellow-500 rounded-xl active:bg-zinc-800">
-              <i className="fas fa-chevron-right text-base"></i>
-            </button>
-          </div>
-          {/* Month dots indicator */}
-          <div className="flex justify-center gap-1 pb-2">
-            {months.map((_, i) => (
-              <button key={i} onClick={() => setMobileMonthIdx(i)} className={`rounded-full transition-all ${i === mobileMonthIdx ? 'w-4 h-1.5 bg-yellow-500' : 'w-1.5 h-1.5 bg-zinc-700'}`} />
-            ))}
-          </div>
-        </div>
-      )}
 
       <main className={`${activeTab === 'plan' ? 'max-w-[1600px]' : 'w-full px-2'} mx-auto px-2 lg:px-8 mt-2 lg:mt-8`} style={activeTab === 'desempenho' ? { maxWidth: '100%' } : {}}>
         {activeTab === 'desempenho' ? (
@@ -827,12 +804,33 @@ const App: React.FC = () => {
                 <div className="text-red-400 font-black font-mono text-base">{formatCurrency(monthlySummaries[mobileMonthIdx].totalCost)}</div>
               </div>
               <div className={`border rounded-2xl p-4 ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'bg-green-950/60 border-green-900/50' : 'bg-red-900/20 border-red-800/40'}`}>
-                <div className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-1">Sobra / Falta</div>
+                <div className={`text-[9px] font-black uppercase tracking-widest mb-1 ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'text-white/60' : 'text-zinc-500'}`}>Sobra / Falta</div>
                 <div className={`font-black font-mono text-base ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'text-green-400' : 'text-red-400 animate-pulse'}`}>{formatCurrency(monthlySummaries[mobileMonthIdx].balance)}</div>
               </div>
               <div className="bg-yellow-500/10 border border-yellow-600/30 rounded-2xl p-4">
                 <div className="text-[9px] font-black uppercase text-yellow-600 tracking-widest mb-1">Acumulado Rico</div>
                 <div className="text-yellow-500 font-black font-mono text-base">{formatCurrency(monthlySummaries[mobileMonthIdx].accumulated)}</div>
+              </div>
+            </div>
+
+            {/* ── MOBILE MONTH NAVIGATOR (between cards and blocks) ── */}
+            <div className="lg:hidden bg-zinc-900/95 border border-zinc-800 rounded-2xl mx-1 mb-4">
+              <div className="flex items-center justify-between px-2 py-2">
+                <button onClick={() => setMobileMonthIdx(i => Math.max(0, i - 1))} disabled={mobileMonthIdx === 0} className="w-11 h-11 flex items-center justify-center text-zinc-400 disabled:opacity-20 active:text-yellow-500 rounded-xl active:bg-zinc-800">
+                  <i className="fas fa-chevron-left text-base"></i>
+                </button>
+                <div className="text-center">
+                  <div className="text-white font-black uppercase italic tracking-tight text-base">{months[mobileMonthIdx].monthName} {months[mobileMonthIdx].year}</div>
+                  {mobileMonthIdx === 0 && <div className="text-yellow-500 text-[9px] font-black uppercase tracking-widest -mt-0.5">Mês atual</div>}
+                </div>
+                <button onClick={() => setMobileMonthIdx(i => Math.min(11, i + 1))} disabled={mobileMonthIdx === 11} className="w-11 h-11 flex items-center justify-center text-zinc-400 disabled:opacity-20 active:text-yellow-500 rounded-xl active:bg-zinc-800">
+                  <i className="fas fa-chevron-right text-base"></i>
+                </button>
+              </div>
+              <div className="flex justify-center gap-1 pb-2">
+                {months.map((_, i) => (
+                  <button key={i} onClick={() => setMobileMonthIdx(i)} className={`rounded-full transition-all ${i === mobileMonthIdx ? 'w-4 h-1.5 bg-yellow-500' : 'w-1.5 h-1.5 bg-zinc-700'}`} />
+                ))}
               </div>
             </div>
 
