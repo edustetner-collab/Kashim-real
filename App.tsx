@@ -73,6 +73,7 @@ const App: React.FC = () => {
   const [pendingStartMonth, setPendingStartMonth] = useState<{month: number, year: number} | null>(null);
   const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '' });
   const [activeTab, setActiveTab] = useState<'plan' | 'teto'>('plan');
+  const [mobileMonthIdx, setMobileMonthIdx] = useState(0);
 
   const [startMonth, setStartMonth] = useState<number>(() => new Date().getMonth());
   const [startYear, setStartYear] = useState<number>(() => new Date().getFullYear());
@@ -517,12 +518,19 @@ const App: React.FC = () => {
         <SubscriptionGate onClose={() => setShowSubscriptionGate(false)} />
       )}
 
-      {showSettings && db && householdId && (
+      {showSettings && db && householdId ? (
         <ClientSettings
           db={db}
           householdId={householdId}
           onClose={() => setShowSettings(false)}
         />
+      ) : showSettings && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowSettings(false)}>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 text-center">
+            <div className="w-10 h-10 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-zinc-400 text-sm">Carregando perfil...</p>
+          </div>
+        </div>
       )}
 
       {showInvitePanel && db && householdId && user && (
@@ -646,11 +654,55 @@ const App: React.FC = () => {
         </div>
       </header>
 
+      {/* ── MOBILE MONTH NAVIGATOR ────────────────────────────────── */}
+      {activeTab === 'plan' && (
+        <div className="md:hidden sticky top-[57px] z-40 bg-zinc-900/95 backdrop-blur-sm border-b border-zinc-800">
+          <div className="flex items-center justify-between px-2 py-2">
+            <button onClick={() => setMobileMonthIdx(i => Math.max(0, i - 1))} disabled={mobileMonthIdx === 0} className="w-11 h-11 flex items-center justify-center text-zinc-400 disabled:opacity-20 active:text-yellow-500 rounded-xl active:bg-zinc-800">
+              <i className="fas fa-chevron-left text-base"></i>
+            </button>
+            <div className="text-center">
+              <div className="text-white font-black uppercase italic tracking-tight text-base">{months[mobileMonthIdx].monthName} {months[mobileMonthIdx].year}</div>
+              {mobileMonthIdx === 0 && <div className="text-yellow-500 text-[9px] font-black uppercase tracking-widest -mt-0.5">Mês atual</div>}
+            </div>
+            <button onClick={() => setMobileMonthIdx(i => Math.min(11, i + 1))} disabled={mobileMonthIdx === 11} className="w-11 h-11 flex items-center justify-center text-zinc-400 disabled:opacity-20 active:text-yellow-500 rounded-xl active:bg-zinc-800">
+              <i className="fas fa-chevron-right text-base"></i>
+            </button>
+          </div>
+          {/* Month dots indicator */}
+          <div className="flex justify-center gap-1 pb-2">
+            {months.map((_, i) => (
+              <button key={i} onClick={() => setMobileMonthIdx(i)} className={`rounded-full transition-all ${i === mobileMonthIdx ? 'w-4 h-1.5 bg-yellow-500' : 'w-1.5 h-1.5 bg-zinc-700'}`} />
+            ))}
+          </div>
+        </div>
+      )}
+
       <main className={`${activeTab === 'plan' ? 'max-w-[1600px]' : 'w-full px-2'} mx-auto px-2 md:px-8 mt-2 md:mt-8`}>
         {activeTab === 'plan' ? (
           <>
-            <div id="stets"><AICoach summary={monthlySummaries[0]} items={items} monthName={months[0].monthName} onAddPartial={handleAddPartial} /></div>
-            <div id="diagnosis"><Diagnosis summary={monthlySummaries[0]} monthName={months[0].monthName} /></div>
+            <div id="stets"><AICoach summary={monthlySummaries[mobileMonthIdx]} items={items} monthName={months[mobileMonthIdx].monthName} onAddPartial={handleAddPartial} /></div>
+            <div id="diagnosis" className="hidden md:block"><Diagnosis summary={monthlySummaries[0]} monthName={months[0].monthName} /></div>
+
+            {/* ── MOBILE SUMMARY CARDS ──────────────────────────────── */}
+            <div className="md:hidden grid grid-cols-2 gap-3 px-1 mb-4">
+              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
+                <div className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-1">Entradas</div>
+                <div className="text-green-400 font-black font-mono text-base">{formatCurrency(monthlySummaries[mobileMonthIdx].totalIncome)}</div>
+              </div>
+              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
+                <div className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-1">Gastos</div>
+                <div className="text-red-400 font-black font-mono text-base">{formatCurrency(monthlySummaries[mobileMonthIdx].totalCost)}</div>
+              </div>
+              <div className={`border rounded-2xl p-4 ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'bg-green-900/20 border-green-800/40' : 'bg-red-900/20 border-red-800/40'}`}>
+                <div className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-1">Sobra / Falta</div>
+                <div className={`font-black font-mono text-base ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'text-green-400' : 'text-red-400 animate-pulse'}`}>{formatCurrency(monthlySummaries[mobileMonthIdx].balance)}</div>
+              </div>
+              <div className="bg-yellow-500/10 border border-yellow-600/30 rounded-2xl p-4">
+                <div className="text-[9px] font-black uppercase text-yellow-600 tracking-widest mb-1">Acumulado Rico</div>
+                <div className="text-yellow-500 font-black font-mono text-base">{formatCurrency(monthlySummaries[mobileMonthIdx].accumulated)}</div>
+              </div>
+            </div>
 
             <div id="blocks">
               {[
@@ -660,10 +712,11 @@ const App: React.FC = () => {
                 { title: "CONTAS VARIÁVEIS", type: CategoryType.VARIABLE_EXPENSE },
                 { title: "LAZER E GASTOS PESSOAIS", type: CategoryType.PERSONAL_LEISURE }
               ].map(block => (
-                <BlockSection 
-                  key={block.type} title={block.title} subtitle={block.subtitle} category={block.type} 
+                <BlockSection
+                  key={block.type} title={block.title} subtitle={block.subtitle} category={block.type}
                   items={items.filter(i => i.category === block.type)} allCards={allCards} months={months}
                   totalIncome={monthlySummaries[0].totalIncome}
+                  mobileMonthIdx={mobileMonthIdx}
                   onAddItem={handleAddItem} onUpdateValue={handleUpdateValue} onTogglePaid={handleTogglePaid}
                   onRemoveItem={handleRemoveItem} onUpdateDescription={handleUpdateDescription}
                   onReplicateValue={handleReplicateValue} onLinkCard={handleLinkCard}
@@ -672,7 +725,7 @@ const App: React.FC = () => {
               ))}
             </div>
 
-            <div id="summary-section" className="bg-zinc-900 border border-yellow-600/30 rounded-[40px] p-8 mt-12 mb-8 shadow-2xl overflow-hidden">
+            <div id="summary-section" className="hidden md:block bg-zinc-900 border border-yellow-600/30 rounded-[40px] p-8 mt-12 mb-8 shadow-2xl overflow-hidden">
               <h3 className="text-yellow-500 font-black text-xl uppercase italic tracking-tighter mb-8 flex items-center gap-3"><i className="fas fa-vault"></i> Bússola do Enriquecimento</h3>
               <div className="overflow-x-auto pb-4">
                 <table className="w-full text-left text-sm">

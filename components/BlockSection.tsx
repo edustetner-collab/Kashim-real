@@ -11,6 +11,7 @@ interface BlockSectionProps {
   allCards?: FinanceItem[];
   months: any[];
   totalIncome: number;
+  mobileMonthIdx?: number;
   onAddItem: (category: CategoryType, customData?: Partial<FinanceItem>) => void;
   onUpdateValue: (id: string, monthIdx: number, value: string) => void;
   onTogglePaid: (id: string, monthIdx: number) => void;
@@ -23,7 +24,7 @@ interface BlockSectionProps {
 }
 
 const BlockSection: React.FC<BlockSectionProps> = ({
-  title, subtitle, category, items, allCards = [], months, totalIncome,
+  title, subtitle, category, items, allCards = [], months, totalIncome, mobileMonthIdx = 0,
   onAddItem, onUpdateValue, onTogglePaid, onRemoveItem, onUpdateDescription, onReplicateValue, onLinkCard,
   onUpdateCardConfig, onMoveItem
 }) => {
@@ -208,7 +209,103 @@ const BlockSection: React.FC<BlockSectionProps> = ({
         </button>
       </div>
       
-      <div className="overflow-x-auto">
+      {/* ── MOBILE LAYOUT ─────────────────────────────────────────── */}
+      <div className="block md:hidden bg-[#111] divide-y divide-zinc-800/60">
+        {items.map((item) => {
+          const monthData = months[mobileMonthIdx];
+          const monthKey = `${monthData.year}-${monthData.index}`;
+          const partials = item.partialExpenses?.[monthKey] || [];
+          const realSpent = partials.reduce((acc: number, p: any) => acc + p.value, 0);
+          const isOver = realSpent > item.values[mobileMonthIdx] && item.values[mobileMonthIdx] > 0;
+          const isPaid = item.paidStatus[mobileMonthIdx];
+          const isIncome = category === CategoryType.INCOME;
+
+          return (
+            <div key={item.id} className={`px-4 py-3 ${isPaid ? 'bg-green-900/10' : ''}`}>
+              <div className="flex items-center gap-3">
+                <button onClick={() => onRemoveItem(item.id)} className="text-zinc-600 active:text-red-500 shrink-0 p-1 -ml-1">
+                  <i className="fas fa-trash-alt text-xs"></i>
+                </button>
+                <input
+                  type="text"
+                  defaultValue={item.description}
+                  onBlur={(e) => onUpdateDescription(item.id, e.target.value)}
+                  onChange={(e) => onUpdateDescription(item.id, e.target.value)}
+                  className="flex-1 bg-transparent text-zinc-200 text-sm font-medium outline-none min-w-0 placeholder:text-zinc-600"
+                  placeholder="Nome do item..."
+                />
+                <div className="flex items-center gap-2 shrink-0">
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={item.values[mobileMonthIdx] === 0 ? '' : item.values[mobileMonthIdx]}
+                    onChange={(e) => {
+                      onUpdateValue(item.id, mobileMonthIdx, e.target.value);
+                      checkInstallments(item.id);
+                    }}
+                    className={`w-28 text-right rounded-xl px-3 py-2 text-sm font-mono outline-none border ${isPaid ? 'bg-green-900/20 text-green-400 border-green-800/60' : 'bg-zinc-800 text-white border-zinc-700'}`}
+                    placeholder="0,00"
+                  />
+                  {!isIncome && (
+                    <button
+                      onClick={() => onTogglePaid(item.id, mobileMonthIdx)}
+                      className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all shrink-0 ${isPaid ? 'bg-green-500 border-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'border-zinc-600 active:border-green-400'}`}
+                    >
+                      {isPaid && <i className="fas fa-check text-[10px] text-white"></i>}
+                    </button>
+                  )}
+                </div>
+              </div>
+              {realSpent > 0 && (
+                <div className="mt-1.5 ml-7 flex items-center gap-2">
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase ${isOver ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                    Realizado: {formatCurrency(realSpent)}
+                  </span>
+                </div>
+              )}
+              {category === CategoryType.CREDIT_CARD && onUpdateCardConfig && (
+                <div className="mt-2 ml-7 flex gap-4">
+                  <div className="flex items-center gap-2">
+                    <label className="text-[9px] font-black text-zinc-500 uppercase">Fecha</label>
+                    <input type="number" min="1" max="31" value={item.closingDay || ''} onChange={(e) => onUpdateCardConfig(item.id, 'closingDay', parseInt(e.target.value))} className="bg-zinc-800 rounded-lg px-2 py-1 text-[11px] w-12 outline-none border border-zinc-700 text-center text-zinc-300" placeholder="Dia" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-[9px] font-black text-zinc-500 uppercase">Vence</label>
+                    <input type="number" min="1" max="31" value={item.dueDay || ''} onChange={(e) => onUpdateCardConfig(item.id, 'dueDay', parseInt(e.target.value))} className="bg-zinc-800 rounded-lg px-2 py-1 text-[11px] w-12 outline-none border border-zinc-700 text-center text-zinc-300" placeholder="Dia" />
+                  </div>
+                </div>
+              )}
+              {showLinkOption && onLinkCard && (
+                <div className="mt-1.5 ml-7 flex items-center gap-2 flex-wrap">
+                  <i className="fas fa-credit-card text-[10px] text-zinc-600"></i>
+                  <select className="text-[11px] bg-zinc-800 border border-zinc-700 text-zinc-400 rounded-lg px-2 py-1 outline-none" value={item.linkedCardId || ''} onChange={(e) => onLinkCard(item.id, e.target.value, item.linkType || LinkType.RECURRING)}>
+                    <option value="">Dinheiro/Débito</option>
+                    {allCards.map(card => <option key={card.id} value={card.id}>Cartão: {card.description || 'S/N'}</option>)}
+                  </select>
+                  {item.linkedCardId && (
+                    <select className="text-[10px] bg-zinc-800 border border-zinc-700 text-zinc-400 rounded-lg px-2 py-1 outline-none" value={item.linkType || LinkType.RECURRING} onChange={(e) => onLinkCard(item.id, item.linkedCardId!, e.target.value as LinkType)}>
+                      <option value={LinkType.RECURRING}>Recorrente</option>
+                      <option value={LinkType.INSTALLMENT}>Parcelado</option>
+                    </select>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {items.length === 0 && (
+          <div className="px-4 py-8 text-center text-zinc-600 text-sm">Nenhum item adicionado</div>
+        )}
+        {items.length > 0 && (
+          <div className="px-4 py-3 flex justify-between items-center bg-zinc-900/60">
+            <span className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Total</span>
+            <span className="font-black font-mono text-yellow-500">{formatCurrency(items.reduce((sum, i) => sum + (i.values[mobileMonthIdx] || 0), 0))}</span>
+          </div>
+        )}
+      </div>
+
+      {/* ── DESKTOP TABLE ──────────────────────────────────────────── */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm text-left">
           <thead className="bg-gray-100 text-gray-700 uppercase font-semibold">
             <tr>
