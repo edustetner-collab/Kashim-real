@@ -5,6 +5,18 @@ const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY!;
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!;
 const ADMIN_IDS = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean);
+const APP_URL = 'https://app.kashim.com.br';
+
+async function shortenUrl(longUrl: string): Promise<string> {
+  try {
+    const r = await fetch(`https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`);
+    if (!r.ok) return longUrl;
+    const data = await r.json();
+    return data.shorturl ?? longUrl;
+  } catch {
+    return longUrl;
+  }
+}
 
 function getAdminId(authHeader: string): string | null {
   const token = (authHeader ?? '').replace('Bearer ', '').trim();
@@ -95,7 +107,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (tokenRes.ok) {
       const tokenData = await tokenRes.json();
       const token: string | null = tokenData.token ?? null;
-      signInUrl = token ? `https://kashim-gilt.vercel.app?sign_in_token=${token}` : null;
+      if (token) {
+        const longUrl = `https://app.kashim.com.br?sign_in_token=${token}`;
+        signInUrl = await shortenUrl(longUrl) ?? longUrl;
+      }
     }
 
     return res.status(200).json({ success: true, clientId: clientClerkId, signInUrl });
