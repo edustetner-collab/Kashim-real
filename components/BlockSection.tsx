@@ -50,7 +50,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
     if (!currentlyPaid) {
       const msg = PAID_MESSAGES[Math.floor(Math.random() * PAID_MESSAGES.length)];
       setPaidToast(msg);
-      setTimeout(() => setPaidToast(null), 2500);
+      setTimeout(() => setPaidToast(null), 3500);
     }
     onTogglePaid(itemId, monthIdx);
   };
@@ -127,7 +127,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
       {/* Paid celebration toast */}
       {paidToast && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[400] pointer-events-none animate-in slide-in-from-bottom-4 fade-in duration-300">
-          <div className="bg-green-500 text-white font-black text-xs uppercase tracking-widest px-5 py-3 rounded-full shadow-2xl shadow-green-500/40 flex items-center gap-2 whitespace-nowrap">
+          <div className="bg-green-500 text-white font-black text-xs uppercase tracking-widest px-5 py-3 rounded-2xl shadow-2xl shadow-green-500/40 flex items-center gap-2 text-center max-w-[280px]">
             <i className="fas fa-check-circle text-sm"></i>
             {paidToast}
           </div>

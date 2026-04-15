@@ -29,12 +29,12 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
     recognitionRef.current.interimResults = true;
 
     recognitionRef.current.onresult = (event: any) => {
-      const transcript = Array.from(event.results)
-        .map((result: any) => result[0])
-        .map((result: any) => result.transcript)
-        .join('');
+      const results = Array.from(event.results) as any[];
+      const transcript = results.map((r: any) => r[0].transcript).join('');
       setPrompt(transcript);
-      if (event.results[0].isFinal) {
+      // Check the last result for isFinal — earlier interim results stay false
+      const lastResult = results[results.length - 1];
+      if (lastResult?.[0]?.isFinal) {
         setIsListening(false);
         setTimeout(() => analyzeOrActionRef.current(transcript), 300);
       }
