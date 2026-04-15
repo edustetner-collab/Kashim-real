@@ -219,9 +219,9 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-8">
+      <main className="max-w-5xl mx-auto px-4 py-6">
         {/* Topo */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-5">
           <div>
             <h1 className="text-2xl font-black uppercase italic tracking-tighter text-white">Clientes</h1>
             <p className="text-zinc-500 text-xs mt-0.5">
@@ -231,7 +231,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
           </div>
           <button
             onClick={() => setShowCreateForm(true)}
-            className="bg-yellow-600 hover:bg-yellow-500 text-black font-black px-5 py-2.5 rounded-xl transition-all shadow-lg flex items-center gap-2 uppercase text-xs"
+            className="bg-yellow-600 active:bg-yellow-500 text-black font-black px-4 py-2.5 rounded-xl transition-all shadow-lg flex items-center gap-2 uppercase text-xs"
           >
             <i className="fas fa-plus"></i> Criar novo perfil
           </button>
@@ -249,15 +249,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
             <p className="text-xs mt-2">Clique em "Criar novo perfil" para começar</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
-            {/* Cabeçalho da tabela */}
-            <div className="grid grid-cols-[1fr_180px_90px_auto] gap-3 px-4 py-2 text-[10px] font-black uppercase text-zinc-600 tracking-widest">
-              <span>Cliente</span>
-              <span>Status</span>
-              <span className="text-center">Consulta</span>
-              <span></span>
-            </div>
-
+          <div className="flex flex-col gap-3">
             {clients.map(client => {
               const days = daysRemaining(client.coachingEndsAt);
               const isExpiring = days < 30;
@@ -266,98 +258,89 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
 
               return (
                 <div key={client.householdId}>
-                  <div className={`grid grid-cols-[1fr_180px_90px_auto] gap-3 items-center px-4 py-3 rounded-2xl border transition-all ${
-                    isDraft ? 'bg-zinc-900/60 border-zinc-800' : 'bg-zinc-900 border-zinc-800 hover:border-yellow-600/20'
+                  <div className={`rounded-2xl border p-4 transition-all ${
+                    isDraft ? 'bg-zinc-900/60 border-zinc-800' : 'bg-zinc-900 border-zinc-800'
                   }`}>
-                    {/* Nome + e-mail */}
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-white font-black text-sm uppercase italic truncate">{client.clientName}</p>
-                        {isDraft && (
-                          <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full bg-zinc-700 text-zinc-400 shrink-0">Rascunho</span>
-                        )}
-                        {justActivated && (
-                          <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 shrink-0">
-                            <i className="fas fa-check mr-1"></i>Ativado!
+                    {/* Linha 1: Nome + badges */}
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-white font-black text-sm uppercase italic">{client.clientName}</p>
+                          {isDraft && (
+                            <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-zinc-700 text-zinc-400">Rascunho</span>
+                          )}
+                          {justActivated && (
+                            <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">
+                              <i className="fas fa-check mr-1"></i>Ativado!
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-zinc-500 text-xs mt-0.5">{client.clientEmail}</p>
+                      </div>
+                      {/* Status consulta */}
+                      <div className="shrink-0 text-right">
+                        {isDraft ? (
+                          <span className="text-zinc-600 text-[10px]">Aguardando ativação</span>
+                        ) : (
+                          <span className={`text-xs font-bold ${isExpiring ? 'text-red-400' : 'text-green-400'}`}>
+                            {days}d restantes
                           </span>
                         )}
+                        <div className="text-zinc-700 text-[9px] mt-0.5">{new Date(client.createdAt).toLocaleDateString('pt-BR')}</div>
                       </div>
-                      <p className="text-zinc-500 text-xs truncate">{client.clientEmail}</p>
                     </div>
 
-                    {/* Status de consultoria */}
-                    <div>
-                      {isDraft ? (
-                        <span className="text-zinc-500 text-xs">Aguardando ativação</span>
-                      ) : (
-                        <span className={`text-xs font-bold ${isExpiring ? 'text-red-400' : 'text-green-400'}`}>
-                          {days}d restantes
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Data de criação */}
-                    <div className="text-center">
-                      <span className="text-zinc-600 text-[10px]">
-                        {new Date(client.createdAt).toLocaleDateString('pt-BR')}
-                      </span>
-                    </div>
-
-                    {/* Ações */}
-                    <div className="flex items-center gap-1.5">
+                    {/* Linha 2: Ações */}
+                    <div className="flex items-center gap-2 mt-3 flex-wrap">
                       <button
                         onClick={() => onEnterClient(client.householdId, client.clientName)}
-                        className="bg-yellow-600 hover:bg-yellow-500 text-black font-black px-3 py-1.5 rounded-lg text-[10px] uppercase transition-all"
+                        className="bg-yellow-600 active:bg-yellow-500 text-black font-black px-4 py-2 rounded-xl text-xs uppercase transition-all flex items-center gap-1.5"
                       >
-                        <i className="fas fa-eye mr-1"></i> Acessar
+                        <i className="fas fa-eye text-xs"></i> Acessar
                       </button>
 
                       {isDraft ? (
                         <button
                           onClick={() => handleActivateClient(client.householdId)}
                           disabled={activating === client.householdId}
-                          className="bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase transition-all"
+                          className="bg-green-600 active:bg-green-500 disabled:opacity-50 text-white font-black px-4 py-2 rounded-xl text-xs uppercase transition-all flex items-center gap-1.5"
                         >
                           {activating === client.householdId
                             ? <i className="fas fa-circle-notch animate-spin"></i>
-                            : <><i className="fas fa-paper-plane mr-1"></i> Ativar</>}
+                            : <><i className="fas fa-paper-plane text-xs"></i> Ativar</>}
                         </button>
                       ) : (
                         <button
                           onClick={() => handleGenLink(client.householdId)}
                           disabled={generatingLink === client.householdId}
-                          className="bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 text-zinc-300 hover:text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase transition-all"
-                          title="Gerar link de acesso"
+                          className="bg-zinc-700 active:bg-zinc-600 disabled:opacity-50 text-zinc-300 font-black px-4 py-2 rounded-xl text-xs uppercase transition-all flex items-center gap-1.5"
                         >
                           {generatingLink === client.householdId
                             ? <i className="fas fa-circle-notch animate-spin"></i>
-                            : <i className="fas fa-link"></i>}
+                            : <><i className="fas fa-link text-xs"></i> Link</>}
                         </button>
                       )}
 
-                      <button
-                        onClick={() => handleTogglePrivacy(client.householdId, client.isPrivate)}
-                        disabled={privacyLoading === client.householdId}
-                        className={`w-7 h-7 rounded-lg transition-all flex items-center justify-center disabled:opacity-50 ${
-                          client.isPrivate
-                            ? 'bg-yellow-600/20 text-yellow-500 hover:bg-yellow-600/30'
-                            : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300'
-                        }`}
-                        title={client.isPrivate ? 'Privado — clique para tornar visível à assistente' : 'Visível à assistente — clique para tornar privado'}
-                      >
-                        {privacyLoading === client.householdId
-                          ? <i className="fas fa-circle-notch animate-spin text-[10px]"></i>
-                          : <i className={`fas ${client.isPrivate ? 'fa-lock' : 'fa-lock-open'} text-[10px]`}></i>
-                        }
-                      </button>
-
-                      <button
-                        onClick={() => setDeleteConfirm(client.householdId)}
-                        className="w-7 h-7 bg-zinc-800 hover:bg-red-500/20 text-zinc-500 hover:text-red-400 rounded-lg transition-all flex items-center justify-center"
-                        title="Excluir"
-                      >
-                        <i className="fas fa-trash-alt text-[10px]"></i>
-                      </button>
+                      <div className="flex gap-1.5 ml-auto">
+                        <button
+                          onClick={() => handleTogglePrivacy(client.householdId, client.isPrivate)}
+                          disabled={privacyLoading === client.householdId}
+                          className={`w-9 h-9 rounded-xl transition-all flex items-center justify-center disabled:opacity-50 ${
+                            client.isPrivate ? 'bg-yellow-600/20 text-yellow-500' : 'bg-zinc-800 text-zinc-500'
+                          }`}
+                        >
+                          {privacyLoading === client.householdId
+                            ? <i className="fas fa-circle-notch animate-spin text-xs"></i>
+                            : <i className={`fas ${client.isPrivate ? 'fa-lock' : 'fa-lock-open'} text-xs`}></i>
+                          }
+                        </button>
+                        <button
+                          onClick={() => setDeleteConfirm(client.householdId)}
+                          className="w-9 h-9 bg-zinc-800 active:bg-red-500/20 text-zinc-500 active:text-red-400 rounded-xl transition-all flex items-center justify-center"
+                        >
+                          <i className="fas fa-trash-alt text-xs"></i>
+                        </button>
+                      </div>
                     </div>
                   </div>
 

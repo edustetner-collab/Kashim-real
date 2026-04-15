@@ -90,49 +90,45 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   };
 
   return (
-    <div className="p-2 md:p-6 animate-in fade-in zoom-in-95 duration-500">
-      <div className="mb-6 flex justify-end">
-        <button 
+    <div className="p-3 lg:p-6 animate-in fade-in zoom-in-95 duration-500">
+      <div className="mb-4 flex justify-end">
+        <button
           onClick={addColumn}
-          className="bg-yellow-600 hover:bg-yellow-500 text-black font-black px-6 py-3 rounded-xl text-xs uppercase transition-all shadow-lg flex items-center gap-2"
+          className="bg-yellow-600 active:bg-yellow-500 text-black font-black px-5 py-2.5 rounded-xl text-xs uppercase transition-all shadow-lg flex items-center gap-2"
         >
-          <i className="fas fa-plus-circle"></i> Adicionar Coluna
+          <i className="fas fa-plus-circle"></i> Adicionar
         </button>
       </div>
 
-      <div className="flex gap-4 overflow-x-auto pb-8 pt-2 px-2 scrollbar-thin scrollbar-thumb-yellow-600 scrollbar-track-zinc-900">
+      <div className="flex gap-3 overflow-x-auto pb-6 pt-1 px-1 snap-x snap-mandatory">
         {columns.map((col) => {
           const linkedItem = items.find(i => i.id === col.linkedItemId);
-
           const teto = linkedItem ? (linkedItem.values[0] || 0) : 0;
-
           const partials = linkedItem?.partialExpenses?.[monthKey] || [];
           const totalSpent = partials.reduce((acc, p) => acc + p.value, 0);
           const isOverLimit = totalSpent > teto && teto > 0;
+          const progressPct = teto > 0 ? Math.min(100, (totalSpent / teto) * 100) : 0;
 
-          // Credit card billing month notice
           const card = linkedItem?.linkedCardId ? items.find(i => i.id === linkedItem.linkedCardId) : null;
           const todayDay = new Date().getDate();
           const isAfterClosing = card?.closingDay ? todayDay >= card.closingDay : false;
-          const billingMonthIdx = isAfterClosing
-            ? (currentMonthIdx + 1) % 12
-            : currentMonthIdx;
-          const billingYear = isAfterClosing && currentMonthIdx === 11 ? currentYear + 1 : currentYear;
+          const billingMonthIdx = isAfterClosing ? (currentMonthIdx + 1) % 12 : currentMonthIdx;
           const billingMonthName = MONTHS_BR[billingMonthIdx];
-          
+
           return (
-            <div key={col.id} className="min-w-[260px] flex-shrink-0 flex flex-col group relative transition-all duration-300">
-              
-              <div className="bg-yellow-500 rounded-t-2xl p-1 border-b border-yellow-600">
-                <select 
-                  className="w-full bg-transparent border-none text-[10px] font-black uppercase p-3 text-center text-black outline-none cursor-pointer"
+            <div key={col.id} className="w-[calc(100vw-48px)] lg:w-64 flex-shrink-0 snap-start flex flex-col rounded-2xl border border-zinc-800 overflow-hidden relative group">
+
+              {/* Header: link + name */}
+              <div className="bg-yellow-500">
+                <select
+                  className="w-full bg-transparent border-none text-[10px] font-black uppercase px-3 pt-3 pb-1 text-center text-black outline-none cursor-pointer"
                   value={col.linkedItemId}
                   onChange={(e) => updateColumn(col.id, 'linkedItemId', e.target.value)}
                 >
                   <option value="" className="bg-yellow-500">VINCULAR ITEM</option>
-                  {items.filter(i => 
-                    i.category === CategoryType.FIXED_EXPENSE || 
-                    i.category === CategoryType.VARIABLE_EXPENSE || 
+                  {items.filter(i =>
+                    i.category === CategoryType.FIXED_EXPENSE ||
+                    i.category === CategoryType.VARIABLE_EXPENSE ||
                     i.category === CategoryType.PERSONAL_LEISURE
                   ).map(i => (
                     <option key={i.id} value={i.id} className="bg-yellow-100">
@@ -140,32 +136,40 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                     </option>
                   ))}
                 </select>
-              </div>
-
-              <div className="bg-zinc-900 border-x border-zinc-800">
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={col.title}
                   onChange={(e) => updateColumn(col.id, 'title', e.target.value)}
-                  className="w-full bg-transparent border-none text-center font-black text-[11px] uppercase p-3 text-white outline-none tracking-widest"
+                  className="w-full bg-transparent border-none text-center font-black text-xs uppercase px-3 pb-3 pt-0.5 text-black outline-none tracking-widest"
                   placeholder="NOME DA COLUNA"
                 />
               </div>
 
-              <div className={`border-x border-zinc-700 p-4 text-center ${isOverLimit ? 'bg-red-950/30' : 'bg-zinc-800'}`}>
-                <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest mb-1 italic">Teto Planejado</p>
-                <div className={`text-lg font-black font-mono ${isOverLimit ? 'text-red-500 animate-pulse' : 'text-yellow-500'}`}>
-                  {formatCurrency(teto)}
+              {/* Budget bar */}
+              <div className={`px-4 py-3 ${isOverLimit ? 'bg-red-950/40' : 'bg-zinc-900'}`}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Teto</span>
+                  <span className={`text-xs font-black font-mono ${isOverLimit ? 'text-red-400' : 'text-zinc-400'}`}>{formatCurrency(teto)}</span>
                 </div>
+                {teto > 0 && (
+                  <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${isOverLimit ? 'bg-red-500' : progressPct > 80 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                      style={{ width: `${progressPct}%` }}
+                    />
+                  </div>
+                )}
               </div>
 
-              <div className="bg-white border-x border-zinc-200 shadow-inner">
+              {/* Entry input */}
+              <div className="bg-white border-t border-zinc-100">
                 <div className="relative">
-                   <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-300 text-[10px] font-bold">R$</div>
-                   <input 
-                    type="number" 
-                    placeholder="Digitar valor e ENTER"
-                    className="w-full p-4 pl-8 text-center text-sm outline-none bg-transparent focus:bg-yellow-50/50 font-black text-zinc-900 transition-all placeholder:text-zinc-300 placeholder:font-normal"
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-[10px] font-bold">R$</div>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="Lançar valor..."
+                    className="w-full py-3 pl-8 pr-4 text-sm outline-none bg-transparent focus:bg-yellow-50/50 font-black text-zinc-900 transition-all placeholder:text-zinc-300 placeholder:font-normal placeholder:text-xs"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         handleValueEntry(col.linkedItemId, e.currentTarget.value);
@@ -176,56 +180,55 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                 </div>
               </div>
 
-              <div className="flex-grow flex flex-col bg-white border-x border-zinc-100 min-h-[350px]">
-                {Array.from({ length: Math.max(12, partials.length) }).map((_, idx) => {
-                  const p = partials[idx];
-                  return (
-                    <div key={idx} className={`border-b border-zinc-50 h-10 flex items-center justify-center relative group/row ${p ? 'hover:bg-zinc-50' : ''}`}>
-                      {p ? (
-                        <div className="w-full flex justify-between items-center px-4 animate-in fade-in">
-                          <span className="text-[9px] text-zinc-400 font-bold uppercase">{p.date}</span>
-                          <span className="text-xs font-black text-zinc-800 font-mono">{formatCurrency(p.value)}</span>
-                          <button 
-                            onClick={() => onRemovePartial(col.linkedItemId, p.id)}
-                            className="opacity-0 group-hover/row:opacity-100 text-red-500 transition-all p-1"
-                          >
-                            <i className="fas fa-times-circle"></i>
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="w-full h-[1px] bg-zinc-50/50 mx-4"></div>
-                      )}
+              {/* Expense list */}
+              <div className="flex flex-col bg-white border-t border-zinc-100">
+                {partials.length === 0 ? (
+                  <div className="py-4 text-center text-zinc-300 text-[10px] uppercase font-bold tracking-wider">
+                    Nenhum lançamento
+                  </div>
+                ) : (
+                  partials.map((p) => (
+                    <div key={p.id} className="border-b border-zinc-50 flex items-center justify-between px-3 py-2">
+                      <span className="text-[9px] text-zinc-400 font-bold uppercase">{p.date}</span>
+                      <span className="text-xs font-black text-zinc-800 font-mono">{formatCurrency(p.value)}</span>
+                      <button
+                        onClick={() => onRemovePartial(col.linkedItemId, p.id)}
+                        className="text-red-400 active:text-red-600 p-1 ml-1"
+                      >
+                        <i className="fas fa-times-circle text-xs"></i>
+                      </button>
                     </div>
-                  );
-                })}
+                  ))
+                )}
               </div>
 
-              <div className={`p-5 border border-zinc-200 text-center shadow-lg transition-all ${isOverLimit ? 'bg-red-50' : 'bg-zinc-900'} ${card ? '' : 'rounded-b-2xl'}`}>
-                <p className={`text-[9px] font-black uppercase mb-1 ${isOverLimit ? 'text-red-600' : 'text-zinc-500'}`}>Total Lançado</p>
-                <p className={`text-xl font-black font-mono tracking-tighter ${isOverLimit ? 'text-red-600' : 'text-yellow-500'}`}>
+              {/* Total footer */}
+              <div className={`px-4 py-3 text-center mt-auto ${isOverLimit ? 'bg-red-50' : 'bg-zinc-900'} ${card ? '' : 'rounded-b-2xl'}`}>
+                <p className={`text-[9px] font-black uppercase mb-0.5 ${isOverLimit ? 'text-red-500' : 'text-zinc-500'}`}>Total Lançado</p>
+                <p className={`text-lg font-black font-mono tracking-tighter ${isOverLimit ? 'text-red-500' : 'text-yellow-500'}`}>
                   {formatCurrency(totalSpent)}
                 </p>
+                {isOverLimit && teto > 0 && (
+                  <p className="text-red-400 text-[9px] font-bold mt-0.5">+{formatCurrency(totalSpent - teto)} acima do teto</p>
+                )}
               </div>
 
               {card && (
-                <div className="rounded-b-2xl border border-t-0 border-zinc-700 bg-zinc-800 px-4 py-3 text-center">
-                  <p className="text-[10px] text-zinc-400 leading-relaxed">
+                <div className="rounded-b-2xl border-t border-zinc-700 bg-zinc-800 px-3 py-2 text-center">
+                  <p className="text-[9px] text-zinc-400 leading-relaxed">
                     <i className="fas fa-credit-card mr-1 text-yellow-500"></i>
-                    Gastos no <span className="text-white font-black">{card.description}</span>
-                    {isAfterClosing ? (
-                      <> entram na <span className="text-yellow-400 font-black">fatura de {billingMonthName}</span></>
-                    ) : (
-                      <> entram na <span className="text-yellow-400 font-black">fatura de {billingMonthName}</span> (fatura aberta)</>
-                    )}
+                    Fatura <span className="text-yellow-400 font-black">{billingMonthName}</span>
+                    {!isAfterClosing && <span className="text-zinc-600"> (aberta)</span>}
                   </p>
                 </div>
               )}
 
-              <button 
+              {/* Delete col button */}
+              <button
                 onClick={() => removeColumn(col.id)}
-                className="absolute -top-3 -right-3 w-8 h-8 bg-zinc-900 text-zinc-500 hover:text-red-500 rounded-full border border-zinc-800 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-xl z-20"
+                className="absolute top-2 right-2 w-6 h-6 bg-black/20 active:bg-red-500/40 text-black/40 active:text-red-600 rounded-full flex items-center justify-center transition-all lg:opacity-0 lg:group-hover:opacity-100 z-20"
               >
-                <i className="fas fa-trash-alt text-xs"></i>
+                <i className="fas fa-times text-[9px]"></i>
               </button>
             </div>
           );

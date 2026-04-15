@@ -518,7 +518,35 @@ const App: React.FC = () => {
         <SubscriptionGate onClose={() => setShowSubscriptionGate(false)} />
       )}
 
-      {showSettings && db && householdId ? (
+      {showSettings && isAdmin ? (
+        <div className="fixed inset-0 z-[200] flex items-end justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowSettings(false)}>
+          <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-t-3xl p-6 pb-10" onClick={e => e.stopPropagation()}>
+            <div className="w-10 h-1 bg-zinc-700 rounded-full mx-auto mb-6"></div>
+            {user && (
+              <div className="flex items-center gap-3 mb-6 p-4 bg-zinc-800 rounded-2xl">
+                <img src={user.imageUrl} className="w-12 h-12 rounded-full border-2 border-yellow-500/30" alt="Avatar" />
+                <div>
+                  <p className="text-white font-black text-sm uppercase italic">{user.firstName} {user.lastName}</p>
+                  <p className="text-zinc-500 text-xs">{user.emailAddresses[0]?.emailAddress}</p>
+                  <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 mt-1 inline-block">Consultor</span>
+                </div>
+              </div>
+            )}
+            <button
+              onClick={() => signOut()}
+              className="w-full bg-red-500/10 border border-red-500/20 active:bg-red-500/20 text-red-400 font-black py-3.5 rounded-2xl transition-all text-sm uppercase flex items-center justify-center gap-2"
+            >
+              <i className="fas fa-sign-out-alt"></i> Sair da conta
+            </button>
+            <button
+              onClick={() => setShowSettings(false)}
+              className="w-full mt-2 text-zinc-600 font-black py-2 rounded-2xl transition-all text-xs uppercase"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      ) : showSettings && db && householdId ? (
         <ClientSettings
           db={db}
           householdId={householdId}
@@ -849,18 +877,18 @@ const App: React.FC = () => {
 
           {isAdmin && (
             <button
-              onClick={() => signOut()}
+              onClick={() => setShowSettings(true)}
               className="flex-1 flex flex-col items-center justify-center py-3 gap-1 text-zinc-500 transition-colors active:scale-95"
             >
-              <i className="fas fa-sign-out-alt text-xl"></i>
-              <span className="text-[9px] font-black uppercase tracking-wide">Sair</span>
+              <i className="fas fa-user-circle text-xl"></i>
+              <span className="text-[9px] font-black uppercase tracking-wide">Perfil</span>
             </button>
           )}
         </div>
       </nav>
 
       {/* Spacer so bottom tab bar doesn't cover content on mobile */}
-      <div className="md:hidden h-20"></div>
+      <div className="lg:hidden h-20"></div>
     </div>
   );
 };

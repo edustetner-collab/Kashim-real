@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { useUser } from '@clerk/clerk-react';
+import { useUser, useClerk } from '@clerk/clerk-react';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 interface ClientSettingsProps {
@@ -13,6 +13,7 @@ type PasswordView = 'idle' | 'set' | 'change' | 'reset_sent';
 
 const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClose }) => {
   const { user } = useUser();
+  const { signOut } = useClerk();
 
   // Coach access
   const [coachAccess, setCoachAccess] = useState<any[]>([]);
@@ -288,6 +289,29 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
               </p>
             </div>
           )}
+        </div>
+
+        {/* Conta */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 mb-4">
+          <h3 className="text-white font-black uppercase italic tracking-tight mb-4 flex items-center gap-2">
+            <i className="fas fa-user text-yellow-500"></i>
+            Conta
+          </h3>
+          {user && (
+            <div className="flex items-center gap-3 mb-4 p-4 bg-zinc-800 rounded-2xl">
+              <img src={user.imageUrl} className="w-10 h-10 rounded-full border border-yellow-500/20" alt="Avatar" />
+              <div className="min-w-0">
+                <p className="text-white font-bold text-sm truncate">{user.firstName} {user.lastName}</p>
+                <p className="text-zinc-500 text-xs truncate">{user.emailAddresses[0]?.emailAddress}</p>
+              </div>
+            </div>
+          )}
+          <button
+            onClick={() => signOut()}
+            className="w-full bg-red-500/10 border border-red-500/20 active:bg-red-500/20 text-red-400 font-black py-3 rounded-2xl transition-all text-sm uppercase flex items-center justify-center gap-2"
+          >
+            <i className="fas fa-sign-out-alt"></i> Sair da conta
+          </button>
         </div>
 
         {/* Acesso do Coach */}
