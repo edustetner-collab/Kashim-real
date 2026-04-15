@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useUser, useClerk } from '@clerk/clerk-react';
 import { SupabaseClient } from '@supabase/supabase-js';
 
@@ -33,6 +33,11 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+
+  // Photo upload
+  const [photoLoading, setPhotoLoading] = useState(false);
+  const [photoError, setPhotoError] = useState('');
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const hasPassword = user?.passwordEnabled ?? false;
 
@@ -126,6 +131,21 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
   }
 
   const hasActiveCoach = coachAccess.length > 0;
+
+  async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoError('');
+    setPhotoLoading(true);
+    try {
+      await user?.setProfileImage({ file });
+    } catch (err: any) {
+      setPhotoError(err?.errors?.[0]?.longMessage ?? err?.message ?? 'Erro ao atualizar foto.');
+    } finally {
+      setPhotoLoading(false);
+      if (photoInputRef.current) photoInputRef.current.value = '';
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-[200] overflow-y-auto bg-black/80 backdrop-blur-sm flex items-start justify-center p-4 pt-10">
@@ -298,12 +318,50 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
             Conta
           </h3>
           {user && (
-            <div className="flex items-center gap-3 mb-4 p-4 bg-zinc-800 rounded-2xl">
-              <img src={user.imageUrl} className="w-10 h-10 rounded-full border border-yellow-500/20" alt="Avatar" />
-              <div className="min-w-0">
+            <div className="flex items-center gap-4 mb-4 p-4 bg-zinc-800 rounded-2xl">
+              {/* Avatar + upload trigger */}
+              <div className="relative shrink-0">
+                <img
+                  src={user.imageUrl}
+                  className="w-16 h-16 rounded-full border-2 border-yellow-500/30 object-cover"
+                  alt="Avatar"
+                />
+                <button
+                  onClick={() => photoInputRef.current?.click()}
+                  disabled={photoLoading}
+                  className="absolute -bottom-1 -right-1 w-6 h-6 bg-yellow-600 hover:bg-yellow-500 rounded-full flex items-center justify-center shadow-lg transition-all active:scale-90"
+                  title="Alterar foto"
+                >
+                  {photoLoading
+                    ? <i className="fas fa-circle-notch animate-spin text-[9px] text-black"></i>
+                    : <i className="fas fa-camera text-[9px] text-black"></i>
+                  }
+                </button>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handlePhotoChange}
+                />
+              </div>
+              <div className="min-w-0 flex-1">
                 <p className="text-white font-bold text-sm truncate">{user.firstName} {user.lastName}</p>
                 <p className="text-zinc-500 text-xs truncate">{user.emailAddresses[0]?.emailAddress}</p>
+                <button
+                  onClick={() => photoInputRef.current?.click()}
+                  disabled={photoLoading}
+                  className="text-yellow-600 hover:text-yellow-500 text-[10px] font-bold uppercase tracking-widest mt-1 transition-colors"
+                >
+                  Alterar foto
+                </button>
               </div>
+            </div>
+          )}
+          {photoError && (
+            <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-4">
+              <i className="fas fa-exclamation-circle text-red-400 text-sm"></i>
+              <span className="text-red-400 text-xs">{photoError}</span>
             </div>
           )}
           <button

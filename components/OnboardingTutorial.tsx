@@ -16,7 +16,7 @@ const steps: TutorialStep[] = [
   {
     target: 'header',
     title: 'Bem-vindo ao seu novo estilo de vida!',
-    content: 'Este é o "Rico nessa vida". A forma mais simples de você se manter organizado/a financeiramente está aqui.',
+    content: 'Este é o Kashim. A forma mais simples de você se manter organizado financeiramente está aqui.',
     icon: 'fa-rocket'
   },
   {
@@ -68,8 +68,12 @@ const OnboardingTutorial: React.FC<OnboardingTutorialProps> = ({ onComplete }) =
         </div>
 
         <div className="text-center mt-4">
-          <div className="w-20 h-20 bg-yellow-500/10 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-yellow-500/20">
-            <i className={`fas ${steps[currentStep].icon} text-4xl text-yellow-500`}></i>
+          <div className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-8 overflow-hidden bg-yellow-500/10 border border-yellow-500/20">
+            {currentStep === 0 ? (
+              <img src="/kashim-icon.png" alt="Kashim" className="w-14 h-14 object-contain" />
+            ) : (
+              <i className={`fas ${steps[currentStep].icon} text-4xl text-yellow-500`}></i>
+            )}
           </div>
           
           <h3 className="text-white text-2xl font-black italic uppercase tracking-tighter mb-4 leading-tight">
