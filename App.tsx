@@ -15,6 +15,7 @@ import InvitePartner from './components/InvitePartner';
 import CoachDashboard from './components/CoachDashboard';
 import ClientSettings from './components/ClientSettings';
 import SubscriptionGate from './components/SubscriptionGate';
+import OnboardingWizard, { WizardResult } from './components/OnboardingWizard';
 
 const ADMIN_IDS = (import.meta.env.VITE_ADMIN_USER_IDS ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
 
@@ -46,6 +47,7 @@ const App: React.FC = () => {
   const [coachViewClientName, setCoachViewClientName] = useState<string>('');
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
   const [showSubscriptionGate, setShowSubscriptionGate] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const itemIdMapRef = useRef<Record<string, string>>({}); // localId -> dbId
 
   // Timeout: se Clerk não carregar em 12s, mostra tela de erro com retry
@@ -144,6 +146,18 @@ const App: React.FC = () => {
 
         if (dbItems.length > 0) {
           setItems(dbItems);
+        }
+
+        // Detecta se é cliente sem coach que precisa do wizard de onboarding
+        const onboardingKey = `onboarding_done_${user!.id}`;
+        if (localStorage.getItem(onboardingKey) !== 'true') {
+          const hasCoach = !!coachAccessData?.data;
+          const hasData = dbItems.some(i => i.values.some(v => v > 0));
+          if (!hasCoach && !hasData) {
+            setShowOnboarding(true);
+          } else {
+            localStorage.setItem(onboardingKey, 'true');
+          }
         }
       } catch (e) {
         console.error('Erro ao carregar dados:', e);
@@ -286,6 +300,63 @@ const App: React.FC = () => {
     setStartMonth(newStartMonth);
     setStartYear(newStartYear);
     setShowProjectionModal(false);
+  };
+
+  const handleWizardComplete = async (result: WizardResult) => {
+    const allUpdated: FinanceItem[] = [];
+
+    setItems(prev => {
+      const next = prev.map(item => {
+        // Update income
+        if (item.category === CategoryType.INCOME && result.income > 0) {
+          const updated = { ...item, values: new Array(12).fill(result.income) };
+          allUpdated.push(updated);
+          return updated;
+        }
+        // Update fixed expense by description
+        const expVal = result.expenses[item.description];
+        if (expVal !== undefined && expVal > 0) {
+          const updated = { ...item, values: new Array(12).fill(expVal) };
+          allUpdated.push(updated);
+          return updated;
+        }
+        return item;
+      });
+
+      // Add income item if none exists
+      const hasIncome = prev.some(i => i.category === CategoryType.INCOME);
+      if (!hasIncome && result.income > 0) {
+        const newIncome: FinanceItem = { id: crypto.randomUUID(), description: 'Salário', category: CategoryType.INCOME, values: new Array(12).fill(result.income), paidStatus: new Array(12).fill(false) };
+        allUpdated.push(newIncome);
+        next.push(newIncome);
+      }
+
+      // Add extra custom items
+      for (const extra of result.extraItems) {
+        const newItem: FinanceItem = { id: crypto.randomUUID(), description: extra.description, category: CategoryType.FIXED_EXPENSE, values: new Array(12).fill(extra.value), paidStatus: new Array(12).fill(false) };
+        allUpdated.push(newItem);
+        next.push(newItem);
+      }
+
+      // Add leisure item
+      if (result.leisure > 0) {
+        const leisure: FinanceItem = { id: crypto.randomUUID(), description: 'Lazer e Despesas Pessoais', category: CategoryType.PERSONAL_LEISURE, values: new Array(12).fill(result.leisure), paidStatus: new Array(12).fill(false) };
+        allUpdated.push(leisure);
+        next.push(leisure);
+      }
+
+      return next;
+    });
+
+    // Save all to DB
+    if (db && householdId) {
+      for (const item of allUpdated) {
+        await saveFinanceItem(db, householdId, item).catch(console.error);
+      }
+    }
+
+    localStorage.setItem(`onboarding_done_${user!.id}`, 'true');
+    setShowOnboarding(false);
   };
 
   const handleAddItem = (category: CategoryType, customData?: Partial<FinanceItem>) => {
@@ -512,7 +583,14 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
-      {showTutorial && <OnboardingTutorial onComplete={handleCompleteTutorial} />}
+      {showOnboarding && user && (
+        <OnboardingWizard
+          userName={user.firstName || user.emailAddresses[0]?.emailAddress.split('@')[0] || ''}
+          onComplete={handleWizardComplete}
+        />
+      )}
+
+      {!showOnboarding && showTutorial && <OnboardingTutorial onComplete={handleCompleteTutorial} />}
 
       {showSubscriptionGate && (
         <SubscriptionGate onClose={() => setShowSubscriptionGate(false)} />
