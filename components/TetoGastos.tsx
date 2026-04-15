@@ -182,22 +182,31 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
               {/* Header: link + name */}
               <div className="bg-yellow-500">
-                <select
-                  className="w-full bg-transparent border-none text-[10px] font-black uppercase px-3 pt-3 pb-1 text-center text-black outline-none cursor-pointer"
-                  value={col.linkedItemId}
-                  onChange={(e) => updateColumn(col.id, 'linkedItemId', e.target.value)}
-                >
-                  <option value="" className="bg-yellow-500">VINCULAR ITEM</option>
-                  {items.filter(i =>
-                    i.category === CategoryType.FIXED_EXPENSE ||
-                    i.category === CategoryType.VARIABLE_EXPENSE ||
-                    i.category === CategoryType.PERSONAL_LEISURE
-                  ).map(i => (
-                    <option key={i.id} value={i.id} className="bg-yellow-100">
-                      {i.description || 'Sem nome'}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-1 px-2 pt-2 pb-0.5">
+                  <button
+                    onClick={() => removeColumn(col.id)}
+                    className="w-5 h-5 bg-black/10 active:bg-red-500/40 text-black/40 active:text-red-700 rounded-full flex items-center justify-center shrink-0 transition-all"
+                    title="Remover coluna"
+                  >
+                    <i className="fas fa-times text-[8px]"></i>
+                  </button>
+                  <select
+                    className="flex-1 bg-transparent border-none text-[10px] font-black uppercase text-center text-black outline-none cursor-pointer"
+                    value={col.linkedItemId}
+                    onChange={(e) => updateColumn(col.id, 'linkedItemId', e.target.value)}
+                  >
+                    <option value="" className="bg-yellow-500">VINCULAR ITEM</option>
+                    {items.filter(i =>
+                      i.category === CategoryType.FIXED_EXPENSE ||
+                      i.category === CategoryType.VARIABLE_EXPENSE ||
+                      i.category === CategoryType.PERSONAL_LEISURE
+                    ).map(i => (
+                      <option key={i.id} value={i.id} className="bg-yellow-100">
+                        {i.description || 'Sem nome'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <input
                   type="text"
                   value={col.title}
@@ -285,13 +294,6 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                 </div>
               )}
 
-              {/* Delete col button */}
-              <button
-                onClick={() => removeColumn(col.id)}
-                className="absolute top-2 right-2 w-6 h-6 bg-black/20 active:bg-red-500/40 text-black/40 active:text-red-600 rounded-full flex items-center justify-center transition-all lg:opacity-0 lg:group-hover:opacity-100 z-20"
-              >
-                <i className="fas fa-times text-[9px]"></i>
-              </button>
             </div>
           );
         })}

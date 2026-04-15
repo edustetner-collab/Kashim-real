@@ -70,7 +70,7 @@ const OnboardingTutorial: React.FC<OnboardingTutorialProps> = ({ onComplete }) =
         <div className="text-center mt-4">
           <div className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-8 overflow-hidden bg-yellow-500/10 border border-yellow-500/20">
             {currentStep === 0 ? (
-              <img src="/kashim-icon.png" alt="Kashim" className="w-14 h-14 object-contain" />
+              <img src="/kashim-icon.png" alt="Kashim" className="w-20 h-20 object-cover rounded-3xl" />
             ) : (
               <i className={`fas ${steps[currentStep].icon} text-4xl text-yellow-500`}></i>
             )}

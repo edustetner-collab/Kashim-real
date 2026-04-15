@@ -95,9 +95,9 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
 
     const registrarGastoTool = {
       name: 'registrar_gasto',
+      description: 'Registra um novo gasto nas planilhas de lançamento diário (Gastos Frequentes)',
       parameters: {
         type: Type.OBJECT,
-        description: 'Registra um novo gasto nas planilhas de lançamento diário (Gastos Frequentes)',
         properties: {
           itemId: { type: Type.STRING, description: 'O ID do item/coluna correspondente da lista disponível' },
           valor: { type: Type.NUMBER, description: 'O valor numérico do gasto sem R$' },
@@ -140,7 +140,8 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
       }
     } catch (error: any) {
       console.error('Stets error:', error);
-      setResponse('Tive um problema momentâneo em processar essa informação. Pode repetir o comando para o Stets?');
+      const detail = error?.message || error?.toString() || '';
+      setResponse(`⚠️ ${detail || 'Erro ao processar. Tente novamente.'}`);
     } finally {
       setLoading(false);
     }
