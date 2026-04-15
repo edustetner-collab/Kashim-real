@@ -173,7 +173,7 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
                 onChange={(e) => setPrompt(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && analyzeOrAction()}
                 placeholder={isListening ? 'Pode falar...' : 'Ex: "Lançar 50 reais em cinema", ou peça um diagnóstico financeiro.'}
-                className={`w-full bg-zinc-900 border ${isListening ? 'border-red-500/50 ring-1 ring-red-500/20' : 'border-zinc-800'} rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-yellow-500 transition-all shadow-inner`}
+                className={`w-full bg-zinc-900 border ${isListening ? 'border-red-500/50 ring-1 ring-red-500/20' : 'border-zinc-800'} rounded-2xl px-5 py-4 pr-14 text-white text-sm outline-none focus:border-yellow-500 transition-all shadow-inner`}
               />
               <button 
                 onClick={toggleListening}

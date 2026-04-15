@@ -184,13 +184,18 @@ const BlockSection: React.FC<BlockSectionProps> = ({
         </div>
       )}
 
-      <div className="bg-zinc-900 p-4 flex justify-between items-center border-b border-yellow-600/20">
-        <div className="flex flex-col">
+      <div className="bg-zinc-900 px-4 py-3 flex items-center justify-between gap-3 border-b border-yellow-600/20">
+        <div className="flex flex-col min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="text-yellow-500 font-black text-lg uppercase tracking-widest italic">{title}</h3>
+            <h3 className="text-yellow-500 font-black text-base uppercase tracking-widest italic leading-tight">{title}</h3>
             {tooltip && (
-              <div className="relative">
-                <button onMouseEnter={() => setShowTooltip(true)} onMouseLeave={() => setShowTooltip(false)} className="text-yellow-500/50 hover:text-yellow-500 transition-colors">
+              <div className="relative shrink-0">
+                <button
+                  onMouseEnter={() => setShowTooltip(true)}
+                  onMouseLeave={() => setShowTooltip(false)}
+                  onClick={() => setShowTooltip(v => !v)}
+                  className="text-yellow-500/40 hover:text-yellow-500 active:text-yellow-500 transition-colors"
+                >
                   <i className="fas fa-question-circle text-sm"></i>
                 </button>
                 {showTooltip && (
@@ -202,15 +207,15 @@ const BlockSection: React.FC<BlockSectionProps> = ({
               </div>
             )}
           </div>
-          {subtitle && <p className="text-yellow-500/60 text-[10px] uppercase font-bold tracking-wider">{subtitle}</p>}
+          {subtitle && <p className="text-yellow-500/50 text-[9px] uppercase font-bold tracking-wider mt-0.5">{subtitle}</p>}
         </div>
-        <button onClick={handleAddWithInstruction} className="bg-yellow-600 hover:bg-yellow-400 text-black font-bold px-4 py-1.5 rounded-md transition-all shadow-lg flex items-center gap-2 text-sm">
-          <i className="fas fa-plus"></i> ADICIONAR
+        <button onClick={handleAddWithInstruction} className="shrink-0 bg-yellow-600 active:bg-yellow-400 text-black font-bold px-4 py-2 rounded-xl transition-all shadow-lg flex items-center gap-1.5 text-xs">
+          <i className="fas fa-plus text-xs"></i> ADICIONAR
         </button>
       </div>
       
       {/* ── MOBILE LAYOUT ─────────────────────────────────────────── */}
-      <div className="block md:hidden bg-[#111] divide-y divide-zinc-800/60">
+      <div className="block lg:hidden bg-[#111] divide-y divide-zinc-800/60">
         {items.map((item) => {
           const monthData = months[mobileMonthIdx];
           const monthKey = `${monthData.year}-${monthData.index}`;
@@ -221,20 +226,20 @@ const BlockSection: React.FC<BlockSectionProps> = ({
           const isIncome = category === CategoryType.INCOME;
 
           return (
-            <div key={item.id} className={`px-4 py-3 ${isPaid ? 'bg-green-900/10' : ''}`}>
-              <div className="flex items-center gap-3">
-                <button onClick={() => onRemoveItem(item.id)} className="text-zinc-600 active:text-red-500 shrink-0 p-1 -ml-1">
-                  <i className="fas fa-trash-alt text-xs"></i>
+            <div key={item.id} className={`px-3 py-2.5 ${isPaid ? 'bg-green-900/10' : ''}`}>
+              <div className="flex items-center gap-2">
+                <button onClick={() => onRemoveItem(item.id)} className="text-zinc-700 active:text-red-500 shrink-0 p-1">
+                  <i className="fas fa-trash-alt text-[11px]"></i>
                 </button>
                 <input
                   type="text"
                   defaultValue={item.description}
                   onBlur={(e) => onUpdateDescription(item.id, e.target.value)}
                   onChange={(e) => onUpdateDescription(item.id, e.target.value)}
-                  className="flex-1 bg-transparent text-zinc-200 text-sm font-medium outline-none min-w-0 placeholder:text-zinc-600"
+                  className="flex-1 bg-transparent text-zinc-300 text-sm outline-none min-w-0 placeholder:text-zinc-600"
                   placeholder="Nome do item..."
                 />
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-1.5 shrink-0">
                   <input
                     type="number"
                     step="0.01"
@@ -243,15 +248,15 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                       onUpdateValue(item.id, mobileMonthIdx, e.target.value);
                       checkInstallments(item.id);
                     }}
-                    className={`w-28 text-right rounded-xl px-3 py-2 text-sm font-mono outline-none border ${isPaid ? 'bg-green-900/20 text-green-400 border-green-800/60' : 'bg-zinc-800 text-white border-zinc-700'}`}
+                    className={`w-24 text-right rounded-lg px-2.5 py-1.5 text-sm font-mono outline-none border ${isPaid ? 'bg-green-900/20 text-green-400 border-green-800/60' : 'bg-zinc-800 text-white border-zinc-700'}`}
                     placeholder="0,00"
                   />
                   {!isIncome && (
                     <button
                       onClick={() => onTogglePaid(item.id, mobileMonthIdx)}
-                      className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all shrink-0 ${isPaid ? 'bg-green-500 border-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'border-zinc-600 active:border-green-400'}`}
+                      className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all shrink-0 ${isPaid ? 'bg-green-500 border-green-500' : 'border-zinc-600 active:border-green-400'}`}
                     >
-                      {isPaid && <i className="fas fa-check text-[10px] text-white"></i>}
+                      {isPaid && <i className="fas fa-check text-[8px] text-white"></i>}
                     </button>
                   )}
                 </div>
@@ -305,7 +310,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
       </div>
 
       {/* ── DESKTOP TABLE ──────────────────────────────────────────── */}
-      <div className="hidden md:block overflow-x-auto">
+      <div className="hidden lg:block overflow-x-auto">
         <table className="w-full text-sm text-left">
           <thead className="bg-gray-100 text-gray-700 uppercase font-semibold">
             <tr>

@@ -585,7 +585,7 @@ const App: React.FC = () => {
       <header id="header" className="bg-[#0f0f0f] text-white safe-top shadow-2xl sticky top-0 z-50 border-b-2 border-yellow-600/50">
 
         {/* Mobile header */}
-        <div className="md:hidden flex items-center justify-between px-4 py-3">
+        <div className="lg:hidden flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
             <img src="/kashim-icon.png" alt="Kashim" className="h-8 w-8 rounded-xl" />
             <span className="text-white font-black text-sm uppercase italic tracking-tight">Kashim</span>
@@ -617,7 +617,7 @@ const App: React.FC = () => {
         </div>
 
         {/* Desktop header */}
-        <div className="hidden md:flex max-w-[1600px] mx-auto px-8 py-3 flex-col md:flex-row items-center justify-between gap-4">
+        <div className="hidden lg:flex max-w-[1600px] mx-auto px-8 py-3 flex-col lg:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <img src="/kashim-icon.png" alt="Kashim" className="h-10 w-10 rounded-xl shadow-lg" />
             {user && (
@@ -656,7 +656,7 @@ const App: React.FC = () => {
 
       {/* ── MOBILE MONTH NAVIGATOR ────────────────────────────────── */}
       {activeTab === 'plan' && (
-        <div className="md:hidden sticky top-[57px] z-40 bg-zinc-900/95 backdrop-blur-sm border-b border-zinc-800">
+        <div className="lg:hidden sticky top-[57px] z-40 bg-zinc-900/95 backdrop-blur-sm border-b border-zinc-800">
           <div className="flex items-center justify-between px-2 py-2">
             <button onClick={() => setMobileMonthIdx(i => Math.max(0, i - 1))} disabled={mobileMonthIdx === 0} className="w-11 h-11 flex items-center justify-center text-zinc-400 disabled:opacity-20 active:text-yellow-500 rounded-xl active:bg-zinc-800">
               <i className="fas fa-chevron-left text-base"></i>
@@ -678,14 +678,14 @@ const App: React.FC = () => {
         </div>
       )}
 
-      <main className={`${activeTab === 'plan' ? 'max-w-[1600px]' : 'w-full px-2'} mx-auto px-2 md:px-8 mt-2 md:mt-8`}>
+      <main className={`${activeTab === 'plan' ? 'max-w-[1600px]' : 'w-full px-2'} mx-auto px-2 lg:px-8 mt-2 lg:mt-8`}>
         {activeTab === 'plan' ? (
           <>
             <div id="stets"><AICoach summary={monthlySummaries[mobileMonthIdx]} items={items} monthName={months[mobileMonthIdx].monthName} onAddPartial={handleAddPartial} /></div>
-            <div id="diagnosis" className="hidden md:block"><Diagnosis summary={monthlySummaries[0]} monthName={months[0].monthName} /></div>
+            <div id="diagnosis" className="hidden lg:block"><Diagnosis summary={monthlySummaries[0]} monthName={months[0].monthName} /></div>
 
             {/* ── MOBILE SUMMARY CARDS ──────────────────────────────── */}
-            <div className="md:hidden grid grid-cols-2 gap-3 px-1 mb-4">
+            <div className="lg:hidden grid grid-cols-2 gap-3 px-1 mb-4">
               <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
                 <div className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-1">Entradas</div>
                 <div className="text-green-400 font-black font-mono text-base">{formatCurrency(monthlySummaries[mobileMonthIdx].totalIncome)}</div>
@@ -725,7 +725,7 @@ const App: React.FC = () => {
               ))}
             </div>
 
-            <div id="summary-section" className="hidden md:block bg-zinc-900 border border-yellow-600/30 rounded-[40px] p-8 mt-12 mb-8 shadow-2xl overflow-hidden">
+            <div id="summary-section" className="hidden lg:block bg-zinc-900 border border-yellow-600/30 rounded-[40px] p-8 mt-12 mb-8 shadow-2xl overflow-hidden">
               <h3 className="text-yellow-500 font-black text-xl uppercase italic tracking-tighter mb-8 flex items-center gap-3"><i className="fas fa-vault"></i> Bússola do Enriquecimento</h3>
               <div className="overflow-x-auto pb-4">
                 <table className="w-full text-left text-sm">
@@ -817,7 +817,7 @@ const App: React.FC = () => {
       </main>
 
       {/* ── MOBILE BOTTOM TAB BAR ──────────────────────────────────────── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0f0f0f] border-t border-zinc-800 safe-bottom">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0f0f0f] border-t border-zinc-800 safe-bottom">
         <div className="flex">
           <button
             onClick={() => setActiveTab('plan')}
