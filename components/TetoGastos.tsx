@@ -28,6 +28,25 @@ const DEFAULT_COLUMNS: ColumnData[] = [
   { id: crypto.randomUUID(), title: 'EXTRAS', linkedItemId: '' },
 ];
 
+// Keywords that suggest a fixed expense will have multiple purchases in a month
+const RECURRING_KEYWORDS = [
+  'mercado', 'supermercado', 'gasolina', 'combustiv', 'uber', 'ifood',
+  'lazer', 'alimentaç', 'alimentac', 'restaurante', 'lanche', 'comida',
+  'farmácia', 'farmacia', 'remédio', 'remedio', 'pet', 'diarista',
+  'estética', 'estetica', 'cabelo', 'sobrancelha', 'unha', 'transporte',
+  'delivery', 'padaria', 'açougue', 'acougue',
+];
+
+function isRecurringItem(item: FinanceItem): boolean {
+  if (item.category === CategoryType.PERSONAL_LEISURE) return true;
+  if (item.category === CategoryType.VARIABLE_EXPENSE) return true;
+  if (item.category === CategoryType.FIXED_EXPENSE) {
+    const desc = item.description.toLowerCase();
+    return RECURRING_KEYWORDS.some(kw => desc.includes(kw));
+  }
+  return false;
+}
+
 const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, currentYear, onAddPartial, onRemovePartial, db, householdId }) => {
   const monthKey = `${currentYear}-${currentMonthIdx}`;
   const [columnsLoaded, setColumnsLoaded] = useState(false);
@@ -62,6 +81,49 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       saveTetoColumns(db, householdId, columns).catch(console.error);
     }
   }, [columns, columnsLoaded]);
+
+  // Auto-link recurring items that aren't linked to any column yet (runs once after initial load)
+  const autoLinkedRef = useRef(false);
+  useEffect(() => {
+    if (!columnsLoaded || autoLinkedRef.current || items.length === 0) return;
+    autoLinkedRef.current = true;
+
+    setColumns(prev => {
+      const alreadyLinked = new Set(prev.map(c => c.linkedItemId).filter(Boolean));
+
+      // Find recurring items that have a value set and aren't linked yet
+      const toAdd = items.filter(item =>
+        isRecurringItem(item) &&
+        item.values.some(v => v > 0) &&
+        !alreadyLinked.has(item.id)
+      );
+
+      if (toAdd.length === 0) return prev;
+
+      // Also try to auto-link existing unlinked columns by matching title keywords
+      const updatedPrev = prev.map(col => {
+        if (col.linkedItemId) return col;
+        const colTitle = col.title.toLowerCase();
+        const match = toAdd.find(item => {
+          const desc = item.description.toLowerCase();
+          return desc.includes(colTitle) || colTitle.split(' ').some(word => word.length > 3 && desc.includes(word));
+        });
+        return match ? { ...col, linkedItemId: match.id } : col;
+      });
+
+      // After auto-linking existing columns, find what's still unlinked
+      const nowLinked = new Set(updatedPrev.map(c => c.linkedItemId).filter(Boolean));
+      const stillUnlinked = toAdd.filter(item => !nowLinked.has(item.id));
+
+      const newCols: ColumnData[] = stillUnlinked.map(item => ({
+        id: crypto.randomUUID(),
+        title: item.description.toUpperCase().slice(0, 24).trim(),
+        linkedItemId: item.id,
+      }));
+
+      return [...updatedPrev, ...newCols];
+    });
+  }, [columnsLoaded, items]);
 
   const addColumn = () => {
     setColumns(prev => [...prev, { id: crypto.randomUUID(), title: 'NOVA DESPESA', linkedItemId: '' }]);

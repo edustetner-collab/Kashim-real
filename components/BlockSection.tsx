@@ -31,9 +31,29 @@ const BlockSection: React.FC<BlockSectionProps> = ({
   const [showTooltip, setShowTooltip] = useState(false);
   const [showInstructionModal, setShowInstructionModal] = useState(false);
   const [installmentWarning, setInstallmentWarning] = useState<string | null>(null);
+  const [paidToast, setPaidToast] = useState<string | null>(null);
   const timersRef = useRef<Record<string, number>>({});
   const itemsRef = useRef<FinanceItem[]>(items);
   useEffect(() => { itemsRef.current = items; }, [items]);
+
+  const PAID_MESSAGES = [
+    'Menos uma conta! Você está no caminho certo.',
+    'Parabéns! Cada conta paga é um passo para a liberdade.',
+    'Conta quitada! Disciplina que constrói riqueza.',
+    'Boa! Você está no controle do seu dinheiro.',
+    'Missão cumprida! Continue assim.',
+    'Conta paga. Seu futuro agradece.',
+    'Excelente! Quem paga em dia, chega na frente.',
+  ];
+
+  const handleTogglePaid = (itemId: string, monthIdx: number, currentlyPaid: boolean) => {
+    if (!currentlyPaid) {
+      const msg = PAID_MESSAGES[Math.floor(Math.random() * PAID_MESSAGES.length)];
+      setPaidToast(msg);
+      setTimeout(() => setPaidToast(null), 2500);
+    }
+    onTogglePaid(itemId, monthIdx);
+  };
 
   const handleAddWithInstruction = () => {
     const skipModal = localStorage.getItem(`skip_modal_${category}`);
@@ -103,6 +123,17 @@ const BlockSection: React.FC<BlockSectionProps> = ({
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8 transition-all hover:shadow-md">
+
+      {/* Paid celebration toast */}
+      {paidToast && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[400] pointer-events-none animate-in slide-in-from-bottom-4 fade-in duration-300">
+          <div className="bg-green-500 text-white font-black text-xs uppercase tracking-widest px-5 py-3 rounded-full shadow-2xl shadow-green-500/40 flex items-center gap-2 whitespace-nowrap">
+            <i className="fas fa-check-circle text-sm"></i>
+            {paidToast}
+          </div>
+        </div>
+      )}
+
       {installmentWarning && (
         <div className="fixed bottom-6 right-6 z-[300] max-w-sm w-full bg-zinc-900 border border-yellow-600/40 rounded-2xl p-4 shadow-2xl animate-in slide-in-from-bottom-4">
           <div className="flex items-start gap-3">
@@ -253,7 +284,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   />
                   {!isIncome && (
                     <button
-                      onClick={() => onTogglePaid(item.id, mobileMonthIdx)}
+                      onClick={() => handleTogglePaid(item.id, mobileMonthIdx, isPaid)}
                       className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all shrink-0 ${isPaid ? 'bg-green-500 border-green-500' : 'border-zinc-700 active:border-green-400'}`}
                     >
                       {isPaid && <i className="fas fa-check text-[7px] text-white"></i>}
