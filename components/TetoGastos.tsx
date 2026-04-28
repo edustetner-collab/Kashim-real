@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { FinanceItem, PartialExpense, CategoryType } from '../types';
 import { formatCurrency, MONTHS_BR } from '../constants';
 import { SupabaseClient } from '@supabase/supabase-js';
@@ -48,8 +48,37 @@ function isRecurringItem(item: FinanceItem): boolean {
 }
 
 const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, currentYear, onAddPartial, onRemovePartial, db, householdId }) => {
-  const monthKey = `${currentYear}-${currentMonthIdx}`;
+  const currentMonthKey = `${currentYear}-${currentMonthIdx}`;
+  const [selectedMonthKey, setSelectedMonthKey] = useState(currentMonthKey);
   const [columnsLoaded, setColumnsLoaded] = useState(false);
+
+  // Sync selected month to current when month changes externally
+  useEffect(() => { setSelectedMonthKey(currentMonthKey); }, [currentMonthKey]);
+
+  // Collect all months that have any recorded expenses
+  const availableMonths = useMemo(() => {
+    const keys = new Set<string>();
+    keys.add(currentMonthKey);
+    items.forEach(item => {
+      if (!item.partialExpenses) return;
+      Object.entries(item.partialExpenses).forEach(([k, entries]) => {
+        if (entries && entries.length > 0) keys.add(k);
+      });
+    });
+    return Array.from(keys).sort((a, b) => {
+      const [ay, am] = a.split('-').map(Number);
+      const [by, bm] = b.split('-').map(Number);
+      return ay !== by ? by - ay : bm - am;
+    });
+  }, [items, currentMonthKey]);
+
+  function labelForKey(key: string): string {
+    const [year, mIdx] = key.split('-').map(Number);
+    return `${MONTHS_BR[mIdx]} ${year}`;
+  }
+
+  const isHistoricalView = selectedMonthKey !== currentMonthKey;
+  const monthKey = selectedMonthKey;
 
   const [columns, setColumns] = useState<ColumnData[]>(() => {
     const saved = localStorage.getItem('teto_columns_v3');
@@ -153,14 +182,42 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
   return (
     <div className="p-3 lg:p-6 animate-in fade-in zoom-in-95 duration-500">
-      <div className="mb-4 flex justify-end">
-        <button
-          onClick={addColumn}
-          className="bg-yellow-600 active:bg-yellow-500 text-black font-black px-5 py-2.5 rounded-xl text-xs uppercase transition-all shadow-lg flex items-center gap-2"
-        >
-          <i className="fas fa-plus-circle"></i> Adicionar
-        </button>
+      {/* ── Month history filter ── */}
+      <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pb-1">
+          {availableMonths.map(key => (
+            <button
+              key={key}
+              onClick={() => setSelectedMonthKey(key)}
+              className={`px-4 py-2 rounded-xl text-xs font-black uppercase whitespace-nowrap transition-all shrink-0 ${
+                key === selectedMonthKey
+                  ? 'bg-yellow-600 text-black shadow-lg'
+                  : 'bg-zinc-800 text-zinc-400 hover:text-white'
+              }`}
+            >
+              {labelForKey(key)}
+              {key === currentMonthKey && <span className="ml-1 text-[8px] opacity-60">●</span>}
+            </button>
+          ))}
+        </div>
+        {!isHistoricalView && (
+          <button
+            onClick={addColumn}
+            className="bg-yellow-600 active:bg-yellow-500 text-black font-black px-5 py-2.5 rounded-xl text-xs uppercase transition-all shadow-lg flex items-center gap-2 shrink-0"
+          >
+            <i className="fas fa-plus-circle"></i> Adicionar
+          </button>
+        )}
       </div>
+
+      {isHistoricalView && (
+        <div className="mb-3 flex items-center gap-2 bg-zinc-800/60 border border-zinc-700 rounded-xl px-4 py-2">
+          <i className="fas fa-history text-yellow-500 text-xs"></i>
+          <span className="text-zinc-400 text-xs font-bold uppercase tracking-widest">
+            Histórico: {labelForKey(selectedMonthKey)} — somente leitura
+          </span>
+        </div>
+      )}
 
       <div className="flex gap-3 overflow-x-auto pb-6 pt-1 px-1 snap-x snap-mandatory">
         {columns.map((col) => {
@@ -184,8 +241,8 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
               <div className="bg-yellow-500">
                 <div className="flex items-center gap-1 px-2 pt-2 pb-0.5">
                   <button
-                    onClick={() => removeColumn(col.id)}
-                    className="w-5 h-5 bg-black/10 active:bg-red-500/40 text-black/40 active:text-red-700 rounded-full flex items-center justify-center shrink-0 transition-all"
+                    onClick={() => !isHistoricalView && removeColumn(col.id)}
+                    className={`w-5 h-5 bg-black/10 rounded-full flex items-center justify-center shrink-0 transition-all ${isHistoricalView ? 'opacity-0 pointer-events-none' : 'active:bg-red-500/40 text-black/40 active:text-red-700'}`}
                     title="Remover coluna"
                   >
                     <i className="fas fa-times text-[8px]"></i>
@@ -232,24 +289,26 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                 )}
               </div>
 
-              {/* Entry input */}
-              <div className="bg-white border-t border-zinc-100">
-                <div className="relative">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-[10px] font-bold">R$</div>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    placeholder="Lançar valor..."
-                    className="w-full py-3 pl-8 pr-4 text-sm outline-none bg-transparent focus:bg-yellow-50/50 font-black text-zinc-900 transition-all placeholder:text-zinc-300 placeholder:font-normal placeholder:text-xs"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        handleValueEntry(col.linkedItemId, e.currentTarget.value);
-                        e.currentTarget.value = '';
-                      }
-                    }}
-                  />
+              {/* Entry input — hidden in historical view */}
+              {!isHistoricalView && (
+                <div className="bg-white border-t border-zinc-100">
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-[10px] font-bold">R$</div>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      placeholder="Lançar valor..."
+                      className="w-full py-3 pl-8 pr-4 text-sm outline-none bg-transparent focus:bg-yellow-50/50 font-black text-zinc-900 transition-all placeholder:text-zinc-300 placeholder:font-normal placeholder:text-xs"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleValueEntry(col.linkedItemId, e.currentTarget.value);
+                          e.currentTarget.value = '';
+                        }
+                      }}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Expense list */}
               <div className="flex flex-col bg-white border-t border-zinc-100">

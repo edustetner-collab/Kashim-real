@@ -282,6 +282,16 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                     className={`w-24 text-right rounded-lg px-2.5 py-1.5 text-sm font-mono outline-none border ${isPaid ? 'bg-green-900/20 text-green-400 border-green-800/60' : 'bg-zinc-800 text-white border-zinc-700'}`}
                     placeholder="0,00"
                   />
+                  {/* Replicate button — only for categories that repeat every month */}
+                  {(category === CategoryType.INCOME || category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE) && (
+                    <button
+                      onClick={() => onReplicateValue(item.id, mobileMonthIdx)}
+                      className="w-5 h-5 rounded-full bg-yellow-500 flex items-center justify-center shrink-0 active:scale-90 shadow-sm"
+                      title="Replicar para todos os meses"
+                    >
+                      <i className="fas fa-sync-alt text-[7px] text-black"></i>
+                    </button>
+                  )}
                   {!isIncome && (
                     <button
                       onClick={() => handleTogglePaid(item.id, mobileMonthIdx, isPaid)}
@@ -333,9 +343,13 @@ const BlockSection: React.FC<BlockSectionProps> = ({
           <div className="px-4 py-8 text-center text-zinc-600 text-sm">Nenhum item adicionado</div>
         )}
         {items.length > 0 && (
-          <div className="px-4 py-3 flex justify-between items-center bg-zinc-900/60">
-            <span className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Total</span>
-            <span className="font-black font-mono text-yellow-500">{formatCurrency(items.reduce((sum, i) => sum + (i.values[mobileMonthIdx] || 0), 0))}</span>
+          <div className={`px-4 py-3 flex justify-between items-center ${category === CategoryType.CREDIT_CARD ? 'bg-orange-500/10 border-t border-orange-500/30' : 'bg-zinc-900/60'}`}>
+            <span className={`text-[10px] font-black uppercase tracking-widest ${category === CategoryType.CREDIT_CARD ? 'text-orange-400' : 'text-zinc-500'}`}>
+              {category === CategoryType.CREDIT_CARD ? 'Total Faturas do Mês' : 'Total'}
+            </span>
+            <span className={`font-black font-mono ${category === CategoryType.CREDIT_CARD ? 'text-orange-400 text-base' : 'text-yellow-500'}`}>
+              {formatCurrency(items.reduce((sum, i) => sum + (i.values[mobileMonthIdx] || 0), 0))}
+            </span>
           </div>
         )}
       </div>
@@ -486,6 +500,21 @@ const BlockSection: React.FC<BlockSectionProps> = ({
               </tr>
             ))}
           </tbody>
+          {category === CategoryType.CREDIT_CARD && items.length > 0 && (
+            <tfoot>
+              <tr className="bg-orange-50/60 border-t-2 border-orange-200">
+                <td className="p-3"></td>
+                <td className="p-3 font-black text-xs uppercase text-orange-500 tracking-widest">
+                  <i className="fas fa-credit-card mr-2"></i>Total Faturas
+                </td>
+                {months.map((_, mIdx) => (
+                  <td key={mIdx} className="p-3 text-center border-l font-black font-mono text-orange-500">
+                    {formatCurrency(items.reduce((sum, i) => sum + (i.values[mIdx] || 0), 0))}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
     </div>
