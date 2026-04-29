@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useUser, useClerk, useSignIn, SignIn, SignUp } from '@clerk/clerk-react';
-import { CategoryType, FinanceItem, SummaryData, LinkType, PartialExpense } from './types';
+import { CategoryType, FinanceItem, SummaryData, LinkType, PartialExpense, Goal } from './types';
 import { getNext12Months, formatCurrency, MONTHS_BR } from './constants';
 import BlockSection from './components/BlockSection';
 import Diagnosis from './components/Diagnosis';
@@ -9,7 +9,7 @@ import TetoGastos from './components/TetoGastos';
 import AICoach from './components/AICoach';
 import OnboardingTutorial from './components/OnboardingTutorial';
 import { useSupabase } from './lib/useSupabase';
-import { getOrCreateHousehold, getHousehold, loadFinanceItems, saveFinanceItem, deleteFinanceItem, addPartialExpense, deletePartialExpense, updateHouseholdPlan } from './lib/db';
+import { getOrCreateHousehold, getHousehold, loadFinanceItems, saveFinanceItem, deleteFinanceItem, addPartialExpense, deletePartialExpense, updateHouseholdPlan, loadGoals } from './lib/db';
 import { processInviteFromUrl } from './lib/invites';
 import InvitePartner from './components/InvitePartner';
 import CoachDashboard from './components/CoachDashboard';
@@ -17,6 +17,7 @@ import ClientSettings from './components/ClientSettings';
 import SubscriptionGate from './components/SubscriptionGate';
 import OnboardingWizard, { WizardResult } from './components/OnboardingWizard';
 import Desempenho from './components/Desempenho';
+import Metas from './components/Metas';
 
 const ADMIN_IDS = (import.meta.env.VITE_ADMIN_USER_IDS ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
 
@@ -75,7 +76,10 @@ const App: React.FC = () => {
   const [showProjectionModal, setShowProjectionModal] = useState(false);
   const [pendingStartMonth, setPendingStartMonth] = useState<{month: number, year: number} | null>(null);
   const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '' });
-  const [activeTab, setActiveTab] = useState<'plan' | 'teto' | 'desempenho'>('plan');
+  const [activeTab, setActiveTab] = useState<'plan' | 'teto' | 'metas' | 'desempenho'>('plan');
+  const [goals, setGoals] = useState<Goal[]>(() => {
+    try { return JSON.parse(localStorage.getItem('kashim_goals') || '[]'); } catch { return []; }
+  });
   const [mobileMonthIdx, setMobileMonthIdx] = useState(0);
 
   const [startMonth, setStartMonth] = useState<number>(() => new Date().getMonth());
@@ -148,6 +152,11 @@ const App: React.FC = () => {
         if (dbItems.length > 0) {
           setItems(dbItems);
         }
+
+        // Carrega metas
+        loadGoals(db!, hId).then(g => {
+          if (g.length > 0) { setGoals(g); localStorage.setItem('kashim_goals', JSON.stringify(g)); }
+        }).catch(() => {});
 
         // Detecta se é cliente sem coach que precisa do wizard de onboarding
         const onboardingKey = `onboarding_done_${user!.id}`;
@@ -358,6 +367,11 @@ const App: React.FC = () => {
 
     localStorage.setItem(`onboarding_done_${user!.id}`, 'true');
     setShowOnboarding(false);
+  };
+
+  const handleGoalsChange = (next: Goal[]) => {
+    setGoals(next);
+    localStorage.setItem('kashim_goals', JSON.stringify(next));
   };
 
   const handleAddItem = (category: CategoryType, customData?: Partial<FinanceItem>) => {
@@ -630,6 +644,9 @@ const App: React.FC = () => {
           db={db}
           householdId={householdId}
           onClose={() => setShowSettings(false)}
+          summary={monthlySummaries[mobileMonthIdx]}
+          currentMonthIdx={months[mobileMonthIdx].index}
+          currentYear={months[mobileMonthIdx].year}
         />
       ) : showSettings && dbLoading ? (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowSettings(false)}>
@@ -758,6 +775,7 @@ const App: React.FC = () => {
           <div className="flex gap-2 bg-zinc-900 p-1 rounded-xl border border-zinc-800">
             <button onClick={() => setActiveTab('plan')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'plan' ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/20' : 'text-gray-400 hover:text-white'}`}>Gastos Mensais</button>
             <button id="tab-gastos-frequentes" onClick={() => setActiveTab('teto')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'teto' ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/20' : 'text-gray-400 hover:text-white'}`}>Gastos Frequentes</button>
+            <button onClick={() => setActiveTab('metas')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'metas' ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/20' : 'text-gray-400 hover:text-white'}`}>Metas</button>
             <button onClick={() => setActiveTab('desempenho')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'desempenho' ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/20' : 'text-gray-400 hover:text-white'}`}>Desempenho</button>
             {coachViewHouseholdId && (
               <div className="flex items-center gap-2 bg-yellow-600/10 border border-yellow-600/30 px-3 py-1.5 rounded-xl">
@@ -785,31 +803,41 @@ const App: React.FC = () => {
       </header>
 
 
-      <main className={`${activeTab === 'plan' ? 'max-w-[1600px]' : 'w-full px-2'} mx-auto px-2 lg:px-8 mt-2 lg:mt-8`} style={activeTab === 'desempenho' ? { maxWidth: '100%' } : {}}>
+      <main className={`${activeTab === 'plan' ? 'max-w-[1600px]' : 'w-full px-2'} mx-auto px-2 lg:px-8 mt-2 lg:mt-8`} style={(activeTab === 'desempenho' || activeTab === 'metas') ? { maxWidth: '100%' } : {}}>
         {activeTab === 'desempenho' ? (
-          <Desempenho summary={monthlySummaries[mobileMonthIdx]} />
+          <Desempenho summary={monthlySummaries[mobileMonthIdx]} summaries={monthlySummaries} items={items} goals={goals} />
+        ) : activeTab === 'metas' ? (
+          <Metas goals={goals} onGoalsChange={handleGoalsChange} db={db} householdId={householdId} />
         ) : activeTab === 'plan' ? (
           <>
             <div id="stets"><AICoach summary={monthlySummaries[mobileMonthIdx]} items={items} monthName={months[mobileMonthIdx].monthName} onAddPartial={handleAddPartial} /></div>
             <div id="diagnosis" className="hidden lg:block"><Diagnosis summary={monthlySummaries[0]} monthName={months[0].monthName} /></div>
 
             {/* ── MOBILE SUMMARY CARDS ──────────────────────────────── */}
-            <div className="lg:hidden grid grid-cols-2 gap-3 px-1 mb-4">
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
-                <div className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-1">Entradas</div>
-                <div className="text-green-400 font-black font-mono text-base">{formatCurrency(monthlySummaries[mobileMonthIdx].totalIncome)}</div>
+            {/* Acumulado Rico — destaque principal */}
+            <div className="lg:hidden px-1 mb-3">
+              <div className="bg-yellow-500/10 border border-yellow-600/30 rounded-2xl p-4 flex items-center justify-between">
+                <div>
+                  <div className="text-[9px] font-black uppercase text-yellow-600 tracking-widest mb-0.5">Acumulado Rico</div>
+                  <div className="text-yellow-500 font-black font-mono text-2xl leading-none">{formatCurrency(monthlySummaries[mobileMonthIdx].accumulated)}</div>
+                </div>
+                <div className="w-10 h-10 bg-yellow-500/10 rounded-xl flex items-center justify-center">
+                  <i className="fas fa-vault text-yellow-500 text-base"></i>
+                </div>
               </div>
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
-                <div className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-1">Gastos</div>
-                <div className="text-red-400 font-black font-mono text-base">{formatCurrency(monthlySummaries[mobileMonthIdx].totalCost)}</div>
+            </div>
+            <div className="lg:hidden grid grid-cols-3 gap-2 px-1 mb-4">
+              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3">
+                <div className="text-[8px] font-black uppercase text-zinc-500 tracking-widest mb-1">Entradas</div>
+                <div className="text-green-400 font-black font-mono text-sm">{formatCurrency(monthlySummaries[mobileMonthIdx].totalIncome)}</div>
               </div>
-              <div className={`border rounded-2xl p-4 ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'bg-green-950/60 border-green-900/50' : 'bg-red-900/20 border-red-800/40'}`}>
-                <div className={`text-[9px] font-black uppercase tracking-widest mb-1 ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'text-white/60' : 'text-zinc-500'}`}>Sobra / Falta</div>
-                <div className={`font-black font-mono text-base ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'text-green-400' : 'text-red-400 animate-pulse'}`}>{formatCurrency(monthlySummaries[mobileMonthIdx].balance)}</div>
+              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3">
+                <div className="text-[8px] font-black uppercase text-zinc-500 tracking-widest mb-1">Gastos</div>
+                <div className="text-red-400 font-black font-mono text-sm">{formatCurrency(monthlySummaries[mobileMonthIdx].totalCost)}</div>
               </div>
-              <div className="bg-yellow-500/10 border border-yellow-600/30 rounded-2xl p-4">
-                <div className="text-[9px] font-black uppercase text-yellow-600 tracking-widest mb-1">Acumulado Rico</div>
-                <div className="text-yellow-500 font-black font-mono text-base">{formatCurrency(monthlySummaries[mobileMonthIdx].accumulated)}</div>
+              <div className={`border rounded-2xl p-3 ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'bg-green-950/60 border-green-900/50' : 'bg-red-900/20 border-red-800/40'}`}>
+                <div className={`text-[8px] font-black uppercase tracking-widest mb-1 ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'text-white/60' : 'text-zinc-500'}`}>Sobra/Falta</div>
+                <div className={`font-black font-mono text-sm ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'text-green-400' : 'text-red-400 animate-pulse'}`}>{formatCurrency(monthlySummaries[mobileMonthIdx].balance)}</div>
               </div>
             </div>
 
@@ -966,6 +994,15 @@ const App: React.FC = () => {
               <i className={`fas fa-wallet text-xl ${activeTab === 'teto' ? 'text-yellow-500' : ''}`}></i>
               <span className="text-[9px] font-black uppercase tracking-wide">Gastos</span>
               {activeTab === 'teto' && <span className="absolute bottom-0 w-8 h-0.5 bg-yellow-500 rounded-full mb-1"></span>}
+            </button>
+
+            <button
+              onClick={() => setActiveTab('metas')}
+              className={`min-w-[72px] flex flex-col items-center justify-center py-3 gap-1 transition-colors active:scale-95 ${activeTab === 'metas' ? 'text-yellow-500' : 'text-zinc-500'}`}
+            >
+              <i className={`fas fa-bullseye text-xl ${activeTab === 'metas' ? 'text-yellow-500' : ''}`}></i>
+              <span className="text-[9px] font-black uppercase tracking-wide">Metas</span>
+              {activeTab === 'metas' && <span className="absolute bottom-0 w-8 h-0.5 bg-yellow-500 rounded-full mb-1"></span>}
             </button>
 
             <button

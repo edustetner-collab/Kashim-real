@@ -62,7 +62,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
     items.forEach(item => {
       if (!item.partialExpenses) return;
       Object.entries(item.partialExpenses).forEach(([k, entries]) => {
-        if (entries && entries.length > 0) keys.add(k);
+        if (entries && (entries as PartialExpense[]).length > 0) keys.add(k);
       });
     });
     return Array.from(keys).sort((a, b) => {
@@ -167,16 +167,17 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
     setColumns(columns.map(c => c.id === id ? { ...c, [field]: value } : c));
   };
 
-  const handleValueEntry = (itemId: string, value: string) => {
+  const [entryDescriptions, setEntryDescriptions] = useState<Record<string, string>>({});
+
+  const handleValueEntry = (colId: string, itemId: string, value: string, customDesc?: string) => {
     if (!itemId || value === '' || isNaN(parseFloat(value))) return;
+    const linkedItem = items.find(i => i.id === itemId);
     const expense: PartialExpense = {
       id: crypto.randomUUID(),
       date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-      description: 'Gasto mensal',
+      description: customDesc?.trim() || linkedItem?.description || 'Gasto',
       value: parseFloat(value)
     };
-
-    // Pass explicit year/month so handleAddPartial skips credit card shift logic
     onAddPartial(itemId, expense, currentYear, currentMonthIdx);
   };
 
@@ -292,17 +293,25 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
               {/* Entry input — hidden in historical view */}
               {!isHistoricalView && (
                 <div className="bg-white border-t border-zinc-100">
-                  <div className="relative">
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-[10px] font-bold">R$</div>
+                  <input
+                    type="text"
+                    placeholder="Descrição (opcional)"
+                    value={entryDescriptions[col.id] ?? ''}
+                    onChange={e => setEntryDescriptions(prev => ({ ...prev, [col.id]: e.target.value }))}
+                    className="w-full py-2 px-3 text-[11px] outline-none bg-zinc-50 text-zinc-600 border-b border-zinc-100 placeholder:text-zinc-300"
+                  />
+                  <div className="relative flex items-center">
+                    <div className="absolute left-3 text-zinc-400 text-[10px] font-bold">R$</div>
                     <input
                       type="number"
                       inputMode="decimal"
                       placeholder="Lançar valor..."
-                      className="w-full py-3 pl-8 pr-4 text-sm outline-none bg-transparent focus:bg-yellow-50/50 font-black text-zinc-900 transition-all placeholder:text-zinc-300 placeholder:font-normal placeholder:text-xs"
+                      className="flex-1 py-3 pl-8 pr-4 text-sm outline-none bg-transparent focus:bg-yellow-50/50 font-black text-zinc-900 transition-all placeholder:text-zinc-300 placeholder:font-normal placeholder:text-xs"
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
-                          handleValueEntry(col.linkedItemId, e.currentTarget.value);
+                          handleValueEntry(col.id, col.linkedItemId, e.currentTarget.value, entryDescriptions[col.id]);
                           e.currentTarget.value = '';
+                          setEntryDescriptions(prev => ({ ...prev, [col.id]: '' }));
                         }
                       }}
                     />

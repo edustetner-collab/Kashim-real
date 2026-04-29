@@ -48,3 +48,20 @@ export interface SummaryData {
   balance: number;
   accumulated: number;
 }
+
+export interface Goal {
+  id: string;
+  title: string;
+  emoji: string;
+  targetAmount: number;
+  currentAmount: number;
+  deadline?: string;
+  createdAt: string;
+}
+
+export interface NotificationPrefs {
+  weeklyEmail: boolean;
+  pushEnabled: boolean;
+  alertThresholdPct: number;
+  recurringReminderDay: number;
+}

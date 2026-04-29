@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { FinanceItem, CategoryType, LinkType, PartialExpense } from '../types';
+import { FinanceItem, CategoryType, LinkType, PartialExpense, Goal, NotificationPrefs } from '../types';
 
 // ─── HOUSEHOLD ────────────────────────────────────────────────────────────────
 
@@ -217,6 +217,78 @@ export async function saveSnapshot(
     balance: summary.balance,
     accumulated: summary.accumulated,
     snapshot_data: snapshotData,
+  });
+}
+
+// ─── GOALS ───────────────────────────────────────────────────────────────────
+
+export async function loadGoals(db: SupabaseClient, householdId: string): Promise<Goal[]> {
+  const { data } = await db
+    .from('goals')
+    .select('*')
+    .eq('household_id', householdId)
+    .order('created_at', { ascending: true });
+  if (!data) return [];
+  return data.map((r: any): Goal => ({
+    id: r.id,
+    title: r.title,
+    emoji: r.emoji ?? '🎯',
+    targetAmount: r.target_amount ?? 0,
+    currentAmount: r.current_amount ?? 0,
+    deadline: r.deadline ?? undefined,
+    createdAt: r.created_at,
+  }));
+}
+
+export async function saveGoal(db: SupabaseClient, householdId: string, goal: Goal): Promise<void> {
+  await db.from('goals').upsert({
+    id: goal.id,
+    household_id: householdId,
+    title: goal.title,
+    emoji: goal.emoji,
+    target_amount: goal.targetAmount,
+    current_amount: goal.currentAmount,
+    deadline: goal.deadline ?? null,
+    updated_at: new Date().toISOString(),
+  });
+}
+
+export async function deleteGoal(db: SupabaseClient, goalId: string): Promise<void> {
+  await db.from('goals').delete().eq('id', goalId);
+}
+
+// ─── NOTIFICATION PREFERENCES ────────────────────────────────────────────────
+
+export async function loadNotificationPrefs(
+  db: SupabaseClient,
+  clerkUserId: string
+): Promise<NotificationPrefs | null> {
+  const { data } = await db
+    .from('user_preferences')
+    .select('*')
+    .eq('clerk_user_id', clerkUserId)
+    .maybeSingle();
+  if (!data) return null;
+  return {
+    weeklyEmail: data.weekly_email ?? false,
+    pushEnabled: data.push_enabled ?? false,
+    alertThresholdPct: data.alert_threshold_pct ?? 80,
+    recurringReminderDay: data.recurring_reminder_day ?? 20,
+  };
+}
+
+export async function saveNotificationPrefs(
+  db: SupabaseClient,
+  clerkUserId: string,
+  prefs: NotificationPrefs
+): Promise<void> {
+  await db.from('user_preferences').upsert({
+    clerk_user_id: clerkUserId,
+    weekly_email: prefs.weeklyEmail,
+    push_enabled: prefs.pushEnabled,
+    alert_threshold_pct: prefs.alertThresholdPct,
+    recurring_reminder_day: prefs.recurringReminderDay,
+    updated_at: new Date().toISOString(),
   });
 }
 

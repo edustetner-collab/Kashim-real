@@ -16,6 +16,7 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
   const [response, setResponse] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(() => localStorage.getItem('stets_tts') !== 'false');
   const recognitionRef = useRef<any>(null);
   // Ref to always call the latest analyzeOrAction from stale speech callbacks
   const analyzeOrActionRef = useRef<(text?: string) => void>(() => {});
@@ -54,6 +55,21 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
       recognitionRef.current?.start();
       setIsListening(true);
     }
+  };
+
+  const speak = (text: string) => {
+    if (!ttsEnabled || !('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const clean = text.replace(/\*\*/g, '').replace(/[#*_~`]/g, '').replace(/✅|⚠️|🔥|💰|📘|🏆/g, '').trim();
+    const short = clean.length > 250 ? clean.slice(0, 250) + '...' : clean;
+    const utt = new SpeechSynthesisUtterance(short);
+    utt.lang = 'pt-BR';
+    utt.rate = 1.05;
+    utt.pitch = 1;
+    const voices = window.speechSynthesis.getVoices();
+    const ptVoice = voices.find(v => v.lang.startsWith('pt'));
+    if (ptVoice) utt.voice = ptVoice;
+    window.speechSynthesis.speak(utt);
   };
 
   const analyzeOrAction = async (textToProcess?: string) => {
@@ -132,11 +148,15 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
           };
 
           onAddPartial(itemId, expense);
-          setResponse(`✅ **Aqui é o Stets.**\n\nLançamento de **${formatCurrency(valor)}** processado com sucesso em **${categoriaEncontrada}**. Sua disciplina é o caminho para o topo!`);
+          const msg = `✅ **Aqui é o Stets.**\n\nLançamento de **${formatCurrency(valor)}** processado com sucesso em **${categoriaEncontrada}**. Sua disciplina é o caminho para o topo!`;
+          setResponse(msg);
+          speak(`Lançamento de ${formatCurrency(valor)} registrado em ${categoriaEncontrada}. Sua disciplina é o caminho para o topo!`);
           setPrompt('');
         }
       } else {
-        setResponse(result.text || "Estou à disposição. Como posso ajudar no seu planejamento hoje?");
+        const txt = result.text || "Estou à disposição. Como posso ajudar no seu planejamento hoje?";
+        setResponse(txt);
+        speak(txt);
       }
     } catch (error: any) {
       console.error('Stets error:', error);
@@ -169,6 +189,15 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
               </p>
             </div>
           </div>
+          {'speechSynthesis' in window && (
+            <button
+              onClick={() => { const v = !ttsEnabled; setTtsEnabled(v); localStorage.setItem('stets_tts', String(v)); if (!v) window.speechSynthesis.cancel(); }}
+              className={`shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${ttsEnabled ? 'bg-yellow-500/10 text-yellow-500' : 'bg-zinc-800 text-zinc-600'}`}
+              title={ttsEnabled ? 'Voz ativada' : 'Voz desativada'}
+            >
+              <i className={`fas ${ttsEnabled ? 'fa-volume-up' : 'fa-volume-mute'} text-sm`}></i>
+            </button>
+          )}
         </div>
 
         <div className="flex flex-col gap-4">

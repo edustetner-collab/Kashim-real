@@ -1,10 +1,17 @@
 
 import React from 'react';
-import { SummaryData } from '../types';
+import { SummaryData, FinanceItem, Goal } from '../types';
 import { formatCurrency } from '../constants';
+import {
+  calculateScore, getLevel, getNextLevel, getLevelProgress,
+  calculateStreak, checkBadges, BADGE_DEFS, LEVELS,
+} from '../lib/gamification';
 
 interface DesempenhoProps {
   summary: SummaryData;
+  summaries: SummaryData[];
+  items: FinanceItem[];
+  goals: Goal[];
 }
 
 interface Category {
@@ -17,7 +24,7 @@ interface Category {
   description: string;
 }
 
-const Desempenho: React.FC<DesempenhoProps> = ({ summary }) => {
+const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goals }) => {
   const { totalIncome, totalFixed, totalVariable, totalLeisure, totalCreditCard, balance } = summary;
 
   if (!totalIncome || totalIncome <= 0) {
@@ -31,6 +38,13 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary }) => {
     );
   }
 
+  const score = calculateScore(summary, goals);
+  const level = getLevel(score);
+  const nextLevel = getNextLevel(score);
+  const levelProgress = getLevelProgress(score);
+  const streak = calculateStreak(summaries);
+  const unlockedBadges = checkBadges(summaries, items, goals);
+
   const poupanca = Math.max(0, balance);
   const poupancaPct = (poupanca / totalIncome) * 100;
   const fixosPct = ((totalFixed + totalCreditCard) / totalIncome) * 100;
@@ -38,45 +52,12 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary }) => {
   const lazerPct = (totalLeisure / totalIncome) * 100;
 
   const categories: Category[] = [
-    {
-      label: 'Fixos + Cartão',
-      icon: 'fa-home',
-      actual: fixosPct,
-      ideal: 55,
-      color: 'bg-red-500',
-      idealColor: 'text-red-400',
-      description: 'Moradia, contas fixas e faturas de cartão',
-    },
-    {
-      label: 'Poupança',
-      icon: 'fa-piggy-bank',
-      actual: poupancaPct,
-      ideal: 20,
-      color: 'bg-green-500',
-      idealColor: 'text-green-400',
-      description: 'O que sobra depois de todas as despesas',
-    },
-    {
-      label: 'Lazer',
-      icon: 'fa-star',
-      actual: lazerPct,
-      ideal: 15,
-      color: 'bg-purple-500',
-      idealColor: 'text-purple-400',
-      description: 'Gastos pessoais e entretenimento',
-    },
-    {
-      label: 'Variáveis',
-      icon: 'fa-receipt',
-      actual: variaveisPct,
-      ideal: 10,
-      color: 'bg-cyan-500',
-      idealColor: 'text-cyan-400',
-      description: 'Despesas variáveis do mês',
-    },
+    { label: 'Fixos + Cartão', icon: 'fa-home', actual: fixosPct, ideal: 55, color: 'bg-red-500', idealColor: 'text-red-400', description: 'Moradia, contas fixas e faturas' },
+    { label: 'Poupança', icon: 'fa-piggy-bank', actual: poupancaPct, ideal: 20, color: 'bg-green-500', idealColor: 'text-green-400', description: 'O que sobra depois de tudo' },
+    { label: 'Lazer', icon: 'fa-star', actual: lazerPct, ideal: 15, color: 'bg-purple-500', idealColor: 'text-purple-400', description: 'Gastos pessoais e entretenimento' },
+    { label: 'Variáveis', icon: 'fa-receipt', actual: variaveisPct, ideal: 10, color: 'bg-cyan-500', idealColor: 'text-cyan-400', description: 'Despesas variáveis do mês' },
   ];
 
-  // Build suggestions
   const suggestions: string[] = [];
   const idealFixos = totalIncome * 0.55;
   const actualFixos = totalFixed + totalCreditCard;
@@ -89,26 +70,106 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary }) => {
   }
   const idealPoupanca = totalIncome * 0.20;
   if (poupanca < idealPoupanca) {
-    const deficit = idealPoupanca - poupanca;
-    suggestions.push(`Para guardar 20% da sua renda você precisa de mais ${formatCurrency(deficit)} de sobra. Reduza gastos ou aumente a renda.`);
+    suggestions.push(`Para guardar 20% da sua renda você precisa de mais ${formatCurrency(idealPoupanca - poupanca)} de sobra. Reduza gastos ou aumente a renda.`);
   }
   if (suggestions.length === 0) {
     suggestions.push('Parabéns! Sua distribuição está dentro dos parâmetros ideais. Continue assim!');
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 pt-4 pb-24">
+    <div className="max-w-2xl mx-auto px-4 pt-4 pb-28">
 
-      {/* Header */}
-      <div className="mb-6">
-        <h2 className="text-white text-xl font-black italic uppercase tracking-tighter">
-          <i className="fas fa-chart-pie text-yellow-500 mr-2"></i>
-          Desempenho
-        </h2>
-        <p className="text-zinc-500 text-xs mt-1">Comparativo com a distribuição ideal de renda</p>
+      {/* ── SCORE CARD ───────────────────────────────────────────────── */}
+      <div className={`relative rounded-3xl border p-5 mb-5 overflow-hidden ${level.bgClass} ${level.borderClass} shadow-lg ${level.glowClass}`}>
+        <div className="absolute top-0 right-0 bottom-0 w-1/2 flex items-center justify-end pr-4 pointer-events-none">
+          <span className="text-[80px] opacity-10 select-none">{level.emoji}</span>
+        </div>
+
+        <div className="relative z-10 flex items-start justify-between gap-4">
+          <div>
+            <div className="text-zinc-500 text-[10px] font-black uppercase tracking-widest mb-1">Score Financeiro</div>
+            <div className={`text-5xl font-black font-mono leading-none ${level.textClass}`}>{score}</div>
+            <div className="text-zinc-400 text-[10px] font-mono mt-0.5">/1000</div>
+          </div>
+
+          <div className="text-right">
+            <div className={`text-lg font-black uppercase italic tracking-tighter ${level.textClass}`}>
+              {level.emoji} {level.name}
+            </div>
+            {nextLevel && (
+              <div className="text-zinc-600 text-[10px] mt-0.5">próximo: {nextLevel.name} ({nextLevel.minScore} pts)</div>
+            )}
+            {!nextLevel && (
+              <div className="text-yellow-500 text-[10px] font-black mt-0.5">Nível máximo atingido!</div>
+            )}
+          </div>
+        </div>
+
+        {/* Level progress bar */}
+        {nextLevel && (
+          <div className="relative z-10 mt-4">
+            <div className="h-2 bg-black/30 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-700 ${score >= 900 ? 'bg-yellow-400' : score >= 700 ? 'bg-orange-400' : score >= 500 ? 'bg-cyan-400' : score >= 300 ? 'bg-purple-400' : score >= 150 ? 'bg-blue-400' : 'bg-zinc-500'}`}
+                style={{ width: `${levelProgress}%` }}
+              />
+            </div>
+            <div className="flex justify-between mt-1">
+              <span className="text-[9px] text-zinc-600 font-mono">{level.minScore}</span>
+              <span className="text-[9px] text-zinc-500 font-mono">{levelProgress}% para {nextLevel.name}</span>
+              <span className="text-[9px] text-zinc-600 font-mono">{nextLevel.minScore}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Streak */}
+        {streak > 0 && (
+          <div className="relative z-10 mt-3 flex items-center gap-2">
+            <div className="flex items-center gap-1.5 bg-orange-500/10 border border-orange-500/20 rounded-xl px-3 py-1.5">
+              <span className="text-base">🔥</span>
+              <span className="text-orange-400 font-black text-xs uppercase">{streak} {streak === 1 ? 'mês' : 'meses'} no verde</span>
+            </div>
+          </div>
+        )}
+
+        {/* All 6 levels mini bar */}
+        <div className="relative z-10 mt-4 flex gap-1">
+          {LEVELS.map((l, i) => (
+            <div key={i} className="flex-1 flex flex-col items-center gap-1">
+              <div className={`h-1 rounded-full w-full transition-all ${score >= l.minScore ? (score >= 900 ? 'bg-yellow-400' : score >= 700 ? 'bg-orange-400' : score >= 500 ? 'bg-cyan-400' : score >= 300 ? 'bg-purple-400' : score >= 150 ? 'bg-blue-400' : 'bg-zinc-500') : 'bg-zinc-800'}`} />
+              <span className={`text-[7px] font-black uppercase hidden sm:block ${score >= l.minScore ? l.textClass : 'text-zinc-700'}`}>{l.emoji}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Income reference */}
+      {/* ── BADGES ───────────────────────────────────────────────────── */}
+      <div className="mb-5">
+        <h3 className="text-zinc-500 text-[10px] font-black uppercase tracking-widest mb-3">
+          Conquistas — {unlockedBadges.size}/{BADGE_DEFS.length}
+        </h3>
+        <div className="grid grid-cols-4 gap-2">
+          {BADGE_DEFS.map(badge => {
+            const unlocked = unlockedBadges.has(badge.id);
+            return (
+              <div
+                key={badge.id}
+                className={`flex flex-col items-center gap-1.5 p-3 rounded-2xl border text-center transition-all ${
+                  unlocked
+                    ? 'bg-yellow-500/10 border-yellow-600/30 shadow-sm shadow-yellow-500/10'
+                    : 'bg-zinc-900 border-zinc-800 opacity-40 grayscale'
+                }`}
+                title={badge.description}
+              >
+                <span className="text-2xl leading-none">{badge.emoji}</span>
+                <span className={`text-[8px] font-black uppercase leading-tight ${unlocked ? 'text-yellow-400' : 'text-zinc-600'}`}>{badge.name}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── INCOME REFERENCE ─────────────────────────────────────────── */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 mb-4 flex items-center justify-between">
         <div>
           <div className="text-zinc-500 text-[10px] font-black uppercase tracking-widest">Renda do mês</div>
@@ -120,7 +181,7 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary }) => {
         </div>
       </div>
 
-      {/* Category bars */}
+      {/* ── CATEGORY BARS ────────────────────────────────────────────── */}
       <div className="flex flex-col gap-3 mb-6">
         {categories.map((cat) => {
           const actualCapped = Math.min(cat.actual, 100);
@@ -150,15 +211,8 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary }) => {
                   <div className="text-zinc-600 text-[10px]">ideal: {cat.ideal}%</div>
                 </div>
               </div>
-
-              {/* Bar container */}
               <div className="relative h-5 bg-zinc-800 rounded-full overflow-hidden">
-                {/* Ideal marker */}
-                <div
-                  className="absolute top-0 bottom-0 w-0.5 bg-white/30 z-10"
-                  style={{ left: `${idealCapped}%` }}
-                />
-                {/* Actual bar */}
+                <div className="absolute top-0 bottom-0 w-0.5 bg-white/30 z-10" style={{ left: `${idealCapped}%` }} />
                 <div
                   className={`h-full rounded-full transition-all duration-700 ${isOver ? 'bg-red-500' : isUnder ? 'bg-orange-500' : cat.color}`}
                   style={{ width: `${Math.max(actualCapped, 0.5)}%` }}
@@ -174,7 +228,7 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary }) => {
         })}
       </div>
 
-      {/* Suggestions */}
+      {/* ── SUGGESTIONS ──────────────────────────────────────────────── */}
       <div className="bg-zinc-900 border border-yellow-600/20 rounded-2xl p-4">
         <h3 className="text-yellow-500 font-black text-xs uppercase tracking-widest mb-3 flex items-center gap-2">
           <i className="fas fa-lightbulb"></i> Diagnóstico
