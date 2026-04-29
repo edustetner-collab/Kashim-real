@@ -215,7 +215,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
         </div>
       )}
 
-      <div className="bg-zinc-900 px-4 py-3 flex items-center justify-between gap-3 border-b border-yellow-600/20">
+      <div className="bg-zinc-900 px-4 py-3 flex items-center gap-3 border-b border-yellow-600/20">
         <div className="flex flex-col min-w-0">
           <div className="flex items-center gap-2">
             <h3 className="text-yellow-500 font-black text-base uppercase tracking-widest italic leading-tight">{title}</h3>
@@ -240,9 +240,6 @@ const BlockSection: React.FC<BlockSectionProps> = ({
           </div>
           {subtitle && <p className="text-yellow-500/50 text-[9px] uppercase font-bold tracking-wider mt-0.5">{subtitle}</p>}
         </div>
-        <button onClick={handleAddWithInstruction} className="shrink-0 bg-yellow-600 active:bg-yellow-400 text-black font-bold px-4 py-2 rounded-xl transition-all shadow-lg flex items-center gap-1.5 text-xs">
-          <i className="fas fa-plus text-xs"></i> ADICIONAR
-        </button>
       </div>
       
       {/* ── MOBILE LAYOUT ─────────────────────────────────────────── */}
@@ -339,8 +336,17 @@ const BlockSection: React.FC<BlockSectionProps> = ({
             </div>
           );
         })}
+        <div className="px-3 py-2">
+          <button
+            onClick={handleAddWithInstruction}
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 text-yellow-500/50 active:text-yellow-400 transition-colors"
+          >
+            <i className="fas fa-plus text-[10px]"></i>
+            <span className="text-[10px] font-bold uppercase tracking-wider">adicionar linha</span>
+          </button>
+        </div>
         {items.length === 0 && (
-          <div className="px-4 py-8 text-center text-zinc-600 text-sm">Nenhum item adicionado</div>
+          <div className="px-4 py-4 text-center text-zinc-600 text-sm">Nenhum item adicionado</div>
         )}
         {items.length > 0 && (
           <div className={`px-4 py-3 flex justify-between items-center ${category === CategoryType.CREDIT_CARD ? 'bg-orange-500/10 border-t border-orange-500/30' : 'bg-zinc-900/60'}`}>
@@ -499,6 +505,17 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                 })}
               </tr>
             ))}
+            <tr>
+              <td colSpan={months.length + 2} className="p-2 border-t border-zinc-100">
+                <button
+                  onClick={handleAddWithInstruction}
+                  className="flex items-center gap-1.5 text-yellow-500/50 hover:text-yellow-600 active:text-yellow-400 transition-colors"
+                >
+                  <i className="fas fa-plus text-[9px]"></i>
+                  <span className="text-[9px] font-bold uppercase tracking-wider">adicionar linha</span>
+                </button>
+              </td>
+            </tr>
           </tbody>
           {category === CategoryType.CREDIT_CARD && items.length > 0 && (
             <tfoot>
