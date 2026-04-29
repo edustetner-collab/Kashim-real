@@ -60,17 +60,23 @@ workflows:
       - name: Build iOS
         script: |
           mkdir -p /tmp/xcodebuild_logs
-          set -o pipefail
-          xcode-project build-ipa \
-            --project "ios/App/App.xcodeproj" \
-            --scheme "$XCODE_SCHEME" \
-            --verbose 2>&1 | tee /tmp/xcodebuild_logs/full_build.log
-          EXIT=${PIPESTATUS[0]}
-          if [ $EXIT -ne 0 ]; then
-            echo "=== BUILD ERRORS ==="
-            grep -E "^.*error:.*$" /tmp/xcodebuild_logs/full_build.log | head -30
-            exit $EXIT
-          fi
+          xcodebuild \
+            -project "ios/App/App.xcodeproj" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -archivePath "/Users/builder/clone/build/ios/xcarchive/App.xcarchive" \
+            archive \
+            CODE_SIGN_STYLE=Manual \
+            "CODE_SIGN_IDENTITY=iPhone Distribution" \
+            DEVELOPMENT_TEAM=4HT3W2MZV6 \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            > /tmp/xcodebuild_logs/build.log 2>&1 || true
+          echo "=== LAST 100 LINES OF BUILD LOG ==="
+          tail -100 /tmp/xcodebuild_logs/build.log
+          echo "=== LINES CONTAINING error/Error/ERROR ==="
+          grep -i "error" /tmp/xcodebuild_logs/build.log | grep -v "ErrorHandl\|noError\|errorCode\|0 error" | head -50
+          # Fail if archive didn't produce output
+          test -d "/Users/builder/clone/build/ios/xcarchive/App.xcarchive" || exit 65
 
     artifacts:
       - build/ios/ipa/*.ipa
