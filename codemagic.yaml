@@ -2,7 +2,7 @@ workflows:
   ios-release:
     name: Kashim iOS Release
     max_build_duration: 60
-    instance_type: mac_mini_m4
+    instance_type: mac_mini_m2
 
     environment:
       groups:
