@@ -179,12 +179,9 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
       <div className="relative z-10">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 ${isListening ? 'bg-red-500 animate-ping' : 'bg-yellow-500'} rounded-full flex items-center justify-center transition-colors shadow-lg shadow-yellow-500/20`}>
-              <i className={`fas ${isListening ? 'fa-microphone' : 'fa-brain'} text-black`}></i>
-            </div>
             <div>
               <h3 className="text-white font-black text-xl uppercase italic tracking-tighter leading-none">Stets - Seu Mentor</h3>
-              <p className="text-yellow-500/50 text-[10px] font-bold uppercase tracking-widest mt-1">
+              <p className={`text-[10px] font-bold uppercase tracking-widest mt-1 ${isListening ? 'text-red-400' : 'text-yellow-500/50'}`}>
                 {isListening ? 'Stets está ouvindo com atenção...' : 'Envie um comando para Stets'}
               </p>
             </div>

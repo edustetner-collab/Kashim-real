@@ -731,7 +731,7 @@ const App: React.FC = () => {
       <header id="header" className="bg-[#0f0f0f] text-white safe-top shadow-2xl sticky top-0 z-50 border-b-2 border-yellow-600/50">
 
         {/* Mobile header */}
-        <div className="lg:hidden flex items-center justify-between px-4 py-1.5">
+        <div className="lg:hidden flex items-center justify-between px-4 py-1">
           <div className="flex items-center gap-2">
             <img src="/kashim-icon.png" alt="Kashim" className="h-8 w-8 rounded-xl" />
             <span className="text-white font-black text-sm uppercase italic tracking-tight">Kashim</span>
@@ -980,7 +980,7 @@ const App: React.FC = () => {
           <div className="flex min-w-max">
             <button
               onClick={() => setActiveTab('plan')}
-              className={`min-w-[72px] flex flex-col items-center justify-center py-2 gap-0.5 transition-colors active:scale-95 ${activeTab === 'plan' ? 'text-yellow-500' : 'text-zinc-500'}`}
+              className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-0 gap-0.5 transition-colors active:scale-95 ${activeTab === 'plan' ? 'text-yellow-500' : 'text-zinc-500'}`}
             >
               <i className={`fas fa-chart-bar text-xl ${activeTab === 'plan' ? 'text-yellow-500' : ''}`}></i>
               <span className="text-[9px] font-black uppercase tracking-wide">Plano</span>
@@ -989,7 +989,7 @@ const App: React.FC = () => {
 
             <button
               onClick={() => setActiveTab('teto')}
-              className={`min-w-[72px] flex flex-col items-center justify-center py-2 gap-0.5 transition-colors active:scale-95 ${activeTab === 'teto' ? 'text-yellow-500' : 'text-zinc-500'}`}
+              className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-0 gap-0.5 transition-colors active:scale-95 ${activeTab === 'teto' ? 'text-yellow-500' : 'text-zinc-500'}`}
             >
               <i className={`fas fa-wallet text-xl ${activeTab === 'teto' ? 'text-yellow-500' : ''}`}></i>
               <span className="text-[9px] font-black uppercase tracking-wide">Gastos</span>
@@ -998,7 +998,7 @@ const App: React.FC = () => {
 
             <button
               onClick={() => setActiveTab('metas')}
-              className={`min-w-[72px] flex flex-col items-center justify-center py-2 gap-0.5 transition-colors active:scale-95 ${activeTab === 'metas' ? 'text-yellow-500' : 'text-zinc-500'}`}
+              className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-0 gap-0.5 transition-colors active:scale-95 ${activeTab === 'metas' ? 'text-yellow-500' : 'text-zinc-500'}`}
             >
               <i className={`fas fa-bullseye text-xl ${activeTab === 'metas' ? 'text-yellow-500' : ''}`}></i>
               <span className="text-[9px] font-black uppercase tracking-wide">Metas</span>
@@ -1007,7 +1007,7 @@ const App: React.FC = () => {
 
             <button
               onClick={() => setActiveTab('desempenho')}
-              className={`min-w-[80px] flex flex-col items-center justify-center py-2 gap-0.5 transition-colors active:scale-95 ${activeTab === 'desempenho' ? 'text-yellow-500' : 'text-zinc-500'}`}
+              className={`min-w-[80px] flex flex-col items-center justify-center pt-2 pb-0 gap-0.5 transition-colors active:scale-95 ${activeTab === 'desempenho' ? 'text-yellow-500' : 'text-zinc-500'}`}
             >
               <i className={`fas fa-chart-pie text-xl ${activeTab === 'desempenho' ? 'text-yellow-500' : ''}`}></i>
               <span className="text-[9px] font-black uppercase tracking-wide">Desempenho</span>
@@ -1016,7 +1016,7 @@ const App: React.FC = () => {
 
             <button
               onClick={() => setShowSettings(true)}
-              className="min-w-[72px] flex flex-col items-center justify-center py-2 gap-0.5 text-zinc-500 transition-colors active:scale-95"
+              className="min-w-[72px] flex flex-col items-center justify-center pt-2 pb-0 gap-0.5 text-zinc-500 transition-colors active:scale-95"
             >
               <i className="fas fa-user-circle text-xl"></i>
               <span className="text-[9px] font-black uppercase tracking-wide">Perfil</span>
