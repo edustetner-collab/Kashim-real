@@ -122,7 +122,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                         category === CategoryType.PERSONAL_LEISURE;
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8 transition-all hover:shadow-md">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-2 transition-all hover:shadow-md">
 
       {/* Paid celebration toast */}
       {paidToast && (

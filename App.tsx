@@ -731,7 +731,7 @@ const App: React.FC = () => {
       <header id="header" className="bg-[#0f0f0f] text-white safe-top shadow-2xl sticky top-0 z-50 border-b-2 border-yellow-600/50">
 
         {/* Mobile header */}
-        <div className="lg:hidden flex items-center justify-between px-4 py-1">
+        <div className="lg:hidden flex items-center justify-between px-4 py-0.5">
           <div className="flex items-center gap-2">
             <img src="/kashim-icon.png" alt="Kashim" className="h-8 w-8 rounded-xl" />
             <span className="text-white font-black text-sm uppercase italic tracking-tight">Kashim</span>
