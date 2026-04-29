@@ -57,11 +57,23 @@ workflows:
         script: |
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" ios/App/App/Info.plist
 
+      - name: Patch project for Xcode 26 compatibility
+        script: |
+          PBXPROJ="ios/App/App.xcodeproj/project.pbxproj"
+          # Force Swift 5 (avoids Swift 6 strict concurrency errors)
+          sed -i '' 's/SWIFT_VERSION = [0-9.]*;/SWIFT_VERSION = 5;/g' "$PBXPROJ"
+          # If no SWIFT_VERSION entry exists, this won't add one — handled by xcodebuild flag below
+          echo "Swift version entries in project:"
+          grep "SWIFT_VERSION" "$PBXPROJ" || echo "None found"
+
       - name: Build iOS
         script: |
           xcode-project build-ipa \
             --project "ios/App/App.xcodeproj" \
-            --scheme "$XCODE_SCHEME"
+            --scheme "$XCODE_SCHEME" \
+            -- \
+            SWIFT_VERSION=5 \
+            SWIFT_STRICT_CONCURRENCY=minimal
 
     artifacts:
       - build/ios/ipa/*.ipa
