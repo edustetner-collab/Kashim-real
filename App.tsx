@@ -731,7 +731,7 @@ const App: React.FC = () => {
       <header id="header" className="bg-[#0f0f0f] text-white safe-top shadow-2xl sticky top-0 z-50 border-b-2 border-yellow-600/50">
 
         {/* Mobile header */}
-        <div className="lg:hidden flex items-center justify-between px-4 py-3">
+        <div className="lg:hidden flex items-center justify-between px-4 py-1.5">
           <div className="flex items-center gap-2">
             <img src="/kashim-icon.png" alt="Kashim" className="h-8 w-8 rounded-xl" />
             <span className="text-white font-black text-sm uppercase italic tracking-tight">Kashim</span>
@@ -815,34 +815,34 @@ const App: React.FC = () => {
 
             {/* ── MOBILE SUMMARY CARDS ──────────────────────────────── */}
             {/* Acumulado Rico — destaque principal */}
-            <div className="lg:hidden px-1 mb-3">
-              <div className="bg-yellow-500/10 border border-yellow-600/30 rounded-2xl p-4 flex items-center justify-between">
+            <div className="lg:hidden px-1 mb-2">
+              <div className="bg-yellow-500/10 border border-yellow-600/30 rounded-2xl p-3 flex items-center justify-between">
                 <div>
-                  <div className="text-[9px] font-black uppercase text-yellow-600 tracking-widest mb-0.5">Acumulado Rico</div>
-                  <div className="text-yellow-500 font-black font-mono text-2xl leading-none">{formatCurrency(monthlySummaries[mobileMonthIdx].accumulated)}</div>
+                  <div className="text-[8px] font-black uppercase text-yellow-600 tracking-widest mb-0.5">Acumulado Rico</div>
+                  <div className="text-yellow-500 font-black font-mono text-xl leading-none">{formatCurrency(monthlySummaries[mobileMonthIdx].accumulated)}</div>
                 </div>
-                <div className="w-10 h-10 bg-yellow-500/10 rounded-xl flex items-center justify-center">
-                  <i className="fas fa-vault text-yellow-500 text-base"></i>
+                <div className="w-9 h-9 bg-yellow-500/10 rounded-xl flex items-center justify-center">
+                  <i className="fas fa-vault text-yellow-500 text-sm"></i>
                 </div>
               </div>
             </div>
-            <div className="lg:hidden grid grid-cols-3 gap-2 px-1 mb-4">
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3">
-                <div className="text-[8px] font-black uppercase text-zinc-500 tracking-widest mb-1">Entradas</div>
-                <div className="text-green-400 font-black font-mono text-sm">{formatCurrency(monthlySummaries[mobileMonthIdx].totalIncome)}</div>
+            <div className="lg:hidden grid grid-cols-3 gap-1.5 px-1 mb-2">
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 overflow-hidden">
+                <div className="text-[7px] font-black uppercase text-zinc-500 tracking-widest mb-0.5">Entradas</div>
+                <div className="text-green-400 font-black font-mono text-xs leading-tight truncate">{formatCurrency(monthlySummaries[mobileMonthIdx].totalIncome)}</div>
               </div>
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3">
-                <div className="text-[8px] font-black uppercase text-zinc-500 tracking-widest mb-1">Gastos</div>
-                <div className="text-red-400 font-black font-mono text-sm">{formatCurrency(monthlySummaries[mobileMonthIdx].totalCost)}</div>
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 overflow-hidden">
+                <div className="text-[7px] font-black uppercase text-zinc-500 tracking-widest mb-0.5">Gastos</div>
+                <div className="text-red-400 font-black font-mono text-xs leading-tight truncate">{formatCurrency(monthlySummaries[mobileMonthIdx].totalCost)}</div>
               </div>
-              <div className={`border rounded-2xl p-3 ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'bg-green-950/60 border-green-900/50' : 'bg-red-900/20 border-red-800/40'}`}>
-                <div className={`text-[8px] font-black uppercase tracking-widest mb-1 ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'text-white/60' : 'text-zinc-500'}`}>Sobra/Falta</div>
-                <div className={`font-black font-mono text-sm ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'text-green-400' : 'text-red-400 animate-pulse'}`}>{formatCurrency(monthlySummaries[mobileMonthIdx].balance)}</div>
+              <div className={`border rounded-xl p-2.5 overflow-hidden ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'bg-green-950/60 border-green-900/50' : 'bg-red-900/20 border-red-800/40'}`}>
+                <div className={`text-[7px] font-black uppercase tracking-widest mb-0.5 ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'text-white/60' : 'text-zinc-500'}`}>Sobra/Falta</div>
+                <div className={`font-black font-mono text-xs leading-tight truncate ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'text-green-400' : 'text-red-400 animate-pulse'}`}>{formatCurrency(monthlySummaries[mobileMonthIdx].balance)}</div>
               </div>
             </div>
 
             {/* ── MOBILE MONTH NAVIGATOR (between cards and blocks) ── */}
-            <div className="lg:hidden bg-zinc-900/95 border border-zinc-800 rounded-2xl mx-1 mb-4">
+            <div className="lg:hidden bg-zinc-900/95 border border-zinc-800 rounded-2xl mx-1 mb-2">
               <div className="flex items-center justify-between px-2 py-2">
                 <button onClick={() => setMobileMonthIdx(i => Math.max(0, i - 1))} disabled={mobileMonthIdx === 0} className="w-11 h-11 flex items-center justify-center text-zinc-400 disabled:opacity-20 active:text-yellow-500 rounded-xl active:bg-zinc-800">
                   <i className="fas fa-chevron-left text-base"></i>
@@ -980,7 +980,7 @@ const App: React.FC = () => {
           <div className="flex min-w-max">
             <button
               onClick={() => setActiveTab('plan')}
-              className={`min-w-[72px] flex flex-col items-center justify-center py-3 gap-1 transition-colors active:scale-95 ${activeTab === 'plan' ? 'text-yellow-500' : 'text-zinc-500'}`}
+              className={`min-w-[72px] flex flex-col items-center justify-center py-2 gap-0.5 transition-colors active:scale-95 ${activeTab === 'plan' ? 'text-yellow-500' : 'text-zinc-500'}`}
             >
               <i className={`fas fa-chart-bar text-xl ${activeTab === 'plan' ? 'text-yellow-500' : ''}`}></i>
               <span className="text-[9px] font-black uppercase tracking-wide">Plano</span>
@@ -989,7 +989,7 @@ const App: React.FC = () => {
 
             <button
               onClick={() => setActiveTab('teto')}
-              className={`min-w-[72px] flex flex-col items-center justify-center py-3 gap-1 transition-colors active:scale-95 ${activeTab === 'teto' ? 'text-yellow-500' : 'text-zinc-500'}`}
+              className={`min-w-[72px] flex flex-col items-center justify-center py-2 gap-0.5 transition-colors active:scale-95 ${activeTab === 'teto' ? 'text-yellow-500' : 'text-zinc-500'}`}
             >
               <i className={`fas fa-wallet text-xl ${activeTab === 'teto' ? 'text-yellow-500' : ''}`}></i>
               <span className="text-[9px] font-black uppercase tracking-wide">Gastos</span>
@@ -998,7 +998,7 @@ const App: React.FC = () => {
 
             <button
               onClick={() => setActiveTab('metas')}
-              className={`min-w-[72px] flex flex-col items-center justify-center py-3 gap-1 transition-colors active:scale-95 ${activeTab === 'metas' ? 'text-yellow-500' : 'text-zinc-500'}`}
+              className={`min-w-[72px] flex flex-col items-center justify-center py-2 gap-0.5 transition-colors active:scale-95 ${activeTab === 'metas' ? 'text-yellow-500' : 'text-zinc-500'}`}
             >
               <i className={`fas fa-bullseye text-xl ${activeTab === 'metas' ? 'text-yellow-500' : ''}`}></i>
               <span className="text-[9px] font-black uppercase tracking-wide">Metas</span>
@@ -1007,7 +1007,7 @@ const App: React.FC = () => {
 
             <button
               onClick={() => setActiveTab('desempenho')}
-              className={`min-w-[80px] flex flex-col items-center justify-center py-3 gap-1 transition-colors active:scale-95 ${activeTab === 'desempenho' ? 'text-yellow-500' : 'text-zinc-500'}`}
+              className={`min-w-[80px] flex flex-col items-center justify-center py-2 gap-0.5 transition-colors active:scale-95 ${activeTab === 'desempenho' ? 'text-yellow-500' : 'text-zinc-500'}`}
             >
               <i className={`fas fa-chart-pie text-xl ${activeTab === 'desempenho' ? 'text-yellow-500' : ''}`}></i>
               <span className="text-[9px] font-black uppercase tracking-wide">Desempenho</span>
@@ -1016,7 +1016,7 @@ const App: React.FC = () => {
 
             <button
               onClick={() => setShowSettings(true)}
-              className="min-w-[72px] flex flex-col items-center justify-center py-3 gap-1 text-zinc-500 transition-colors active:scale-95"
+              className="min-w-[72px] flex flex-col items-center justify-center py-2 gap-0.5 text-zinc-500 transition-colors active:scale-95"
             >
               <i className="fas fa-user-circle text-xl"></i>
               <span className="text-[9px] font-black uppercase tracking-wide">Perfil</span>
@@ -1026,7 +1026,7 @@ const App: React.FC = () => {
       </nav>
 
       {/* Spacer so bottom tab bar doesn't cover content on mobile */}
-      <div className="lg:hidden h-20"></div>
+      <div className="lg:hidden h-16"></div>
     </div>
   );
 };
