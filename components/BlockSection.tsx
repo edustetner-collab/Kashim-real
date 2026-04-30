@@ -336,13 +336,13 @@ const BlockSection: React.FC<BlockSectionProps> = ({
             </div>
           );
         })}
-        <div className="px-3 py-2">
+        <div className="px-3 py-2.5 flex justify-center">
           <button
             onClick={handleAddWithInstruction}
-            className="w-full flex items-center justify-center gap-1.5 py-1.5 text-yellow-500/50 active:text-yellow-400 transition-colors"
+            className="w-7 h-7 rounded-full bg-yellow-500 flex items-center justify-center active:scale-90 shadow-sm"
+            title="Adicionar linha"
           >
-            <i className="fas fa-plus text-[10px]"></i>
-            <span className="text-[10px] font-bold uppercase tracking-wider">adicionar linha</span>
+            <i className="fas fa-plus text-[10px] text-black"></i>
           </button>
         </div>
         {items.length === 0 && (
@@ -506,13 +506,13 @@ const BlockSection: React.FC<BlockSectionProps> = ({
               </tr>
             ))}
             <tr>
-              <td colSpan={months.length + 2} className="p-2 border-t border-zinc-100">
+              <td colSpan={months.length + 2} className="p-2 border-t border-zinc-100 text-center">
                 <button
                   onClick={handleAddWithInstruction}
-                  className="flex items-center gap-1.5 text-yellow-500/50 hover:text-yellow-600 active:text-yellow-400 transition-colors"
+                  className="w-6 h-6 rounded-full bg-yellow-500 inline-flex items-center justify-center active:scale-90 shadow-sm hover:bg-yellow-400 transition-colors"
+                  title="Adicionar linha"
                 >
-                  <i className="fas fa-plus text-[9px]"></i>
-                  <span className="text-[9px] font-bold uppercase tracking-wider">adicionar linha</span>
+                  <i className="fas fa-plus text-[9px] text-black"></i>
                 </button>
               </td>
             </tr>
