@@ -32,6 +32,12 @@ const BlockSection: React.FC<BlockSectionProps> = ({
   const [showInstructionModal, setShowInstructionModal] = useState(false);
   const [installmentWarning, setInstallmentWarning] = useState<string | null>(null);
   const [paidToast, setPaidToast] = useState<string | null>(null);
+  const [replicateToast, setReplicateToast] = useState(false);
+  const [varInstallModal, setVarInstallModal] = useState<{ step: 'ask' | 'count' } | null>(null);
+  const [varInstallCount, setVarInstallCount] = useState('');
+  const [cardInstallModal, setCardInstallModal] = useState<{
+    itemId: string; cardId: string; totalInput: string; currentInput: string;
+  } | null>(null);
   const timersRef = useRef<Record<string, number>>({});
   const itemsRef = useRef<FinanceItem[]>(items);
   useEffect(() => { itemsRef.current = items; }, [items]);
@@ -64,17 +70,42 @@ const BlockSection: React.FC<BlockSectionProps> = ({
     }
   };
 
-  const executeAdd = () => {
+  const executeAdd = (installments?: number) => {
     setShowInstructionModal(false);
+    setVarInstallModal(null);
     if (category === CategoryType.PERSONAL_LEISURE) {
       const suggestedLeisure = totalIncome * 0.15;
-      onAddItem(category, { 
+      onAddItem(category, {
         description: 'Lazer e Despesas Pessoais',
         values: new Array(12).fill(suggestedLeisure)
       });
+    } else if (category === CategoryType.VARIABLE_EXPENSE && installments && installments > 1) {
+      onAddItem(category, { values: new Array(12).fill(0) });
     } else {
       onAddItem(category);
     }
+  };
+
+  const handleReplicateWithToast = (itemId: string, monthIdx: number) => {
+    onReplicateValue(itemId, monthIdx);
+    setReplicateToast(true);
+    setTimeout(() => setReplicateToast(false), 2200);
+  };
+
+  const handleCardInstallConfirm = () => {
+    if (!cardInstallModal || !onLinkCard) return;
+    const total = parseInt(cardInstallModal.totalInput) || 0;
+    const current = parseInt(cardInstallModal.currentInput) || 1;
+    const remaining = total - current;
+    onLinkCard(cardInstallModal.itemId, cardInstallModal.cardId, LinkType.INSTALLMENT);
+    const item = items.find(i => i.id === cardInstallModal.itemId);
+    if (item && remaining > 0) {
+      const baseValue = item.values[mobileMonthIdx];
+      for (let i = 1; i <= remaining && (mobileMonthIdx + i) < 12; i++) {
+        onUpdateValue(cardInstallModal.itemId, mobileMonthIdx + i, String(baseValue));
+      }
+    }
+    setCardInstallModal(null);
   };
 
   const handleDontShowAgain = () => {
@@ -134,6 +165,107 @@ const BlockSection: React.FC<BlockSectionProps> = ({
         </div>
       )}
 
+      {/* Replicate toast */}
+      {replicateToast && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[400] pointer-events-none animate-in slide-in-from-bottom-4 fade-in duration-300">
+          <div className="bg-orange-500 text-white font-black text-xs uppercase tracking-widest px-5 py-3 rounded-2xl shadow-2xl shadow-orange-500/40 flex items-center gap-2">
+            <i className="fas fa-copy text-sm"></i>
+            Replicado para todos os meses!
+          </div>
+        </div>
+      )}
+
+      {/* Variable expense installment modal */}
+      {varInstallModal && (
+        <div className="fixed inset-0 z-[200] flex items-end p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-2xl">
+            {varInstallModal.step === 'ask' ? (
+              <>
+                <h3 className="text-white font-black uppercase italic tracking-tight text-lg mb-2">Este gasto é parcelado?</h3>
+                <p className="text-zinc-400 text-sm mb-6">Se sim, posso já preencher os meses automaticamente.</p>
+                <div className="flex gap-3">
+                  <button onClick={() => setVarInstallModal({ step: 'count' })} className="flex-1 bg-yellow-500 active:bg-yellow-400 text-black font-black py-3.5 rounded-2xl text-sm uppercase">Sim, é parcelado</button>
+                  <button onClick={() => executeAdd()} className="flex-1 bg-zinc-800 active:bg-zinc-700 text-zinc-300 font-black py-3.5 rounded-2xl text-sm uppercase">Não, gasto único</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="text-white font-black uppercase italic tracking-tight text-lg mb-2">Em quantas parcelas?</h3>
+                <p className="text-zinc-400 text-sm mb-4">O valor mensal será preenchido automaticamente nos próximos meses.</p>
+                <div className="bg-zinc-800 border-2 border-yellow-500 rounded-2xl flex items-center px-4 mb-5">
+                  <input
+                    type="number"
+                    min="2"
+                    max="48"
+                    value={varInstallCount}
+                    onChange={e => setVarInstallCount(e.target.value)}
+                    placeholder="Ex: 12"
+                    className="flex-1 bg-transparent py-3.5 text-white font-mono text-lg font-black outline-none placeholder:text-zinc-600 text-center"
+                    autoFocus
+                  />
+                  <span className="text-zinc-500 text-sm font-bold">x</span>
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => setVarInstallModal({ step: 'ask' })} className="w-12 h-12 bg-zinc-800 rounded-xl flex items-center justify-center shrink-0">
+                    <i className="fas fa-arrow-left text-zinc-400"></i>
+                  </button>
+                  <button
+                    onClick={() => { executeAdd(parseInt(varInstallCount) || 1); setVarInstallCount(''); }}
+                    className="flex-1 bg-yellow-500 active:bg-yellow-400 text-black font-black py-3.5 rounded-2xl text-sm uppercase"
+                  >Confirmar</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Credit card installment modal */}
+      {cardInstallModal && (
+        <div className="fixed inset-0 z-[200] flex items-end p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-2xl">
+            <h3 className="text-white font-black uppercase italic tracking-tight text-lg mb-1">Sobre o parcelamento</h3>
+            <p className="text-zinc-400 text-sm mb-5">Vou preencher os meses restantes automaticamente.</p>
+            <div className="flex flex-col gap-4 mb-5">
+              <div>
+                <label className="text-zinc-500 text-[10px] font-black uppercase tracking-wider mb-1.5 block">Total de parcelas</label>
+                <div className="bg-zinc-800 border border-zinc-700 rounded-xl flex items-center px-4">
+                  <input
+                    type="number" min="2" max="96"
+                    value={cardInstallModal.totalInput}
+                    onChange={e => setCardInstallModal(p => p ? { ...p, totalInput: e.target.value } : p)}
+                    placeholder="Ex: 24"
+                    className="flex-1 bg-transparent py-3 text-white font-mono text-base font-black outline-none placeholder:text-zinc-600 text-center"
+                  />
+                  <span className="text-zinc-500 text-sm font-bold">x</span>
+                </div>
+              </div>
+              <div>
+                <label className="text-zinc-500 text-[10px] font-black uppercase tracking-wider mb-1.5 block">Qual parcela você está pagando agora?</label>
+                <div className="bg-zinc-800 border border-zinc-700 rounded-xl flex items-center px-4">
+                  <input
+                    type="number" min="1"
+                    value={cardInstallModal.currentInput}
+                    onChange={e => setCardInstallModal(p => p ? { ...p, currentInput: e.target.value } : p)}
+                    placeholder="Ex: 5"
+                    className="flex-1 bg-transparent py-3 text-white font-mono text-base font-black outline-none placeholder:text-zinc-600 text-center"
+                  />
+                  <span className="text-zinc-500 text-xs">ª parcela</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setCardInstallModal(null)} className="w-12 h-12 bg-zinc-800 rounded-xl flex items-center justify-center shrink-0">
+                <i className="fas fa-times text-zinc-400"></i>
+              </button>
+              <button onClick={handleCardInstallConfirm} className="flex-1 bg-yellow-500 active:bg-yellow-400 text-black font-black py-3.5 rounded-2xl text-sm uppercase">
+                Confirmar e preencher
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {installmentWarning && (
         <div className="fixed bottom-6 right-6 z-[300] max-w-sm w-full bg-zinc-900 border border-yellow-600/40 rounded-2xl p-4 shadow-2xl animate-in slide-in-from-bottom-4">
           <div className="flex items-start gap-3">
@@ -185,8 +317,12 @@ const BlockSection: React.FC<BlockSectionProps> = ({
               )}
               {category === CategoryType.FIXED_EXPENSE && (
                 <div className="space-y-3">
-                  <p>1. Contas que você paga todos os meses sem data para acabar.</p>
+                  <p>1. Contas que você paga <b>todos os meses sem data para acabar</b>.</p>
                   <p>2. Gastos parcelados em <b>acima de 18 vezes</b>.</p>
+                  <div className="bg-orange-500/10 p-3 rounded-lg border border-orange-500/20 text-orange-300 text-xs">
+                    <p className="font-black mb-1 uppercase tracking-wide">⚠️ Esse gasto se repete todo mês?</p>
+                    <p>Se for algo eventual ou com <b>menos de 18 parcelas</b>, use <b className="text-white">Contas Variáveis</b> para manter seu diagnóstico correto.</p>
+                  </div>
                   <div className="bg-yellow-500/10 p-3 rounded-lg border border-yellow-500/20 text-yellow-200 text-xs italic">
                     Mesmo se estiver no cartão, cite aqui! O sistema abaterá do cartão automaticamente para evitar duplicidade.
                   </div>
@@ -208,7 +344,17 @@ const BlockSection: React.FC<BlockSectionProps> = ({
             </div>
 
             <div className="flex flex-col gap-3">
-              <button onClick={executeAdd} className="w-full bg-yellow-600 hover:bg-yellow-500 text-black font-black py-4 rounded-2xl transition-all uppercase text-xs tracking-widest">OK, Continuar</button>
+              <button
+                onClick={() => {
+                  if (category === CategoryType.VARIABLE_EXPENSE) {
+                    setShowInstructionModal(false);
+                    setVarInstallModal({ step: 'ask' });
+                  } else {
+                    executeAdd();
+                  }
+                }}
+                className="w-full bg-yellow-600 hover:bg-yellow-500 text-black font-black py-4 rounded-2xl transition-all uppercase text-xs tracking-widest"
+              >OK, Continuar</button>
               <button onClick={handleDontShowAgain} className="text-zinc-500 hover:text-white text-[10px] font-bold uppercase tracking-[0.2em] py-2 transition-colors">Não mostrar novamente</button>
             </div>
           </div>
@@ -256,7 +402,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
           return (
             <div key={item.id} className={`px-3 py-2.5 ${isPaid ? 'bg-green-900/10' : ''}`}>
               <div className="flex items-center gap-2">
-                <button onClick={() => onRemoveItem(item.id)} className="text-zinc-700 active:text-red-500 shrink-0 p-1">
+                <button onClick={() => onRemoveItem(item.id)} className="text-red-400/40 active:text-red-500 shrink-0 p-1">
                   <i className="fas fa-trash-alt text-[11px]"></i>
                 </button>
                 <input
@@ -282,19 +428,19 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   {/* Replicate button — only for categories that repeat every month */}
                   {(category === CategoryType.INCOME || category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE) && (
                     <button
-                      onClick={() => onReplicateValue(item.id, mobileMonthIdx)}
+                      onClick={() => handleReplicateWithToast(item.id, mobileMonthIdx)}
                       className="w-5 h-5 rounded-full bg-yellow-500 flex items-center justify-center shrink-0 active:scale-90 shadow-sm"
                       title="Replicar para todos os meses"
                     >
-                      <i className="fas fa-sync-alt text-[7px] text-black"></i>
+                      <i className="fas fa-copy text-[7px] text-black"></i>
                     </button>
                   )}
                   {!isIncome && (
                     <button
                       onClick={() => handleTogglePaid(item.id, mobileMonthIdx, isPaid)}
-                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all shrink-0 ${isPaid ? 'bg-green-500 border-green-500' : 'border-zinc-700 active:border-green-400'}`}
+                      className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase transition-all shrink-0 border ${isPaid ? 'bg-green-500/20 text-green-400 border-green-500/40' : 'border-zinc-700 text-zinc-600 active:text-green-400 active:border-green-500/40'}`}
                     >
-                      {isPaid && <i className="fas fa-check text-[7px] text-white"></i>}
+                      PG
                     </button>
                   )}
                 </div>
@@ -326,7 +472,18 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                     {allCards.map(card => <option key={card.id} value={card.id}>Cartão: {card.description || 'S/N'}</option>)}
                   </select>
                   {item.linkedCardId && (
-                    <select className="text-[10px] bg-zinc-800 border border-zinc-700 text-zinc-400 rounded-lg px-2 py-1 outline-none" value={item.linkType || LinkType.RECURRING} onChange={(e) => onLinkCard(item.id, item.linkedCardId!, e.target.value as LinkType)}>
+                    <select
+                      className="text-[10px] bg-zinc-800 border border-zinc-700 text-zinc-400 rounded-lg px-2 py-1 outline-none"
+                      value={item.linkType || LinkType.RECURRING}
+                      onChange={(e) => {
+                        const newType = e.target.value as LinkType;
+                        if (newType === LinkType.INSTALLMENT) {
+                          setCardInstallModal({ itemId: item.id, cardId: item.linkedCardId!, totalInput: '', currentInput: '1' });
+                        } else {
+                          onLinkCard!(item.id, item.linkedCardId!, newType);
+                        }
+                      }}
+                    >
                       <option value={LinkType.RECURRING}>Recorrente</option>
                       <option value={LinkType.INSTALLMENT}>Parcelado</option>
                     </select>
@@ -387,7 +544,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                         <i className="fas fa-chevron-up text-[9px]"></i>
                       </button>
                     )}
-                    <button onClick={() => onRemoveItem(item.id)} className="text-gray-300 hover:text-red-500 transition-colors p-1"><i className="fas fa-trash-alt text-xs"></i></button>
+                    <button onClick={() => onRemoveItem(item.id)} className="text-red-400/50 hover:text-red-500 transition-colors p-1"><i className="fas fa-trash-alt text-xs"></i></button>
                     {onMoveItem && (
                       <button onClick={() => onMoveItem(item.id, 'down')} className="text-gray-300 hover:text-yellow-500 transition-colors px-1" title="Mover para baixo">
                         <i className="fas fa-chevron-down text-[9px]"></i>
@@ -487,7 +644,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                             onClick={() => onReplicateValue(item.id, mIdx)}
                             className="absolute -right-1 -top-1 opacity-0 group-hover:opacity-100 bg-yellow-500 text-black w-4 h-4 rounded-full flex items-center justify-center text-[8px] shadow-sm transition-opacity hover:scale-110 z-10"
                           >
-                            <i className="fas fa-sync-alt"></i>
+                            <i className="fas fa-copy"></i>
                           </button>
                         </div>
                         {realSpent > 0 && <div className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase flex items-center gap-1 ${isOver ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>{formatCurrency(realSpent)}</div>}

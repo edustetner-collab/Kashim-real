@@ -4,7 +4,7 @@ import { formatCurrency } from '../constants';
 
 interface WizardStep {
   id: string;
-  type: 'welcome' | 'income' | 'expense' | 'leisure' | 'extra' | 'summary';
+  type: 'welcome' | 'transition' | 'income' | 'expense' | 'leisure' | 'extra' | 'summary';
   question?: string;
   explanation?: string;
   tip?: string;
@@ -15,6 +15,7 @@ interface WizardStep {
 
 const STEPS: WizardStep[] = [
   { id: 'welcome',     type: 'welcome' },
+  { id: 'transition',  type: 'transition' },
   { id: 'renda',       type: 'income',   question: 'Quanto você ganha por mês?',                           explanation: 'Tirando todos os descontos da folha, o que cai na sua conta. Não inclua empréstimos descontados em folha, vale-alimentação ou vale-refeição.' },
   { id: 'moradia',     type: 'expense',  itemKey: 'Moradia',                       question: 'Quanto você gasta com moradia?',                           explanation: 'O valor total que você paga por mês para morar.',                                                                                                skipLabel: 'Não gasto' },
   { id: 'condominio',  type: 'expense',  itemKey: 'Condominio',                    question: 'Quanto você paga de condomínio por mês?',                  explanation: 'A taxa mensal do prédio ou condomínio fechado.',                                                                                                skipLabel: 'Não pago' },
@@ -207,20 +208,56 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
               <i className="fas fa-chart-line text-black text-2xl"></i>
             </div>
             <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white mb-3 leading-tight">
-              Vamos descobrir onde<br/>seu dinheiro está indo?
+              Vamos montar seu plano<br/>financeiro agora?
             </h1>
-            <p className="text-zinc-400 text-sm leading-relaxed mb-8">
-              Um diagnóstico rápido para você enxergar sua vida financeira com clareza. Leva menos de 3 minutos.
+            <p className="text-zinc-400 text-sm leading-relaxed mb-4">
+              Vou te fazer algumas perguntas rápidas. As respostas já vão <span className="text-yellow-400 font-bold">preencher o seu app</span> automaticamente — renda, contas fixas e lazer tudo organizado em menos de 3 minutos.
             </p>
-            <div className="flex justify-center gap-6 mb-10 text-xs text-zinc-500">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 mb-8 flex items-start gap-3 text-left">
+              <i className="fas fa-info-circle text-yellow-500 mt-0.5 shrink-0"></i>
+              <p className="text-zinc-400 text-xs leading-relaxed">O que você preencher aqui fica salvo direto no seu Kashim. Não é um teste — é o seu planejamento real.</p>
+            </div>
+            <div className="flex justify-center gap-6 mb-8 text-xs text-zinc-500">
               <span><i className="fas fa-lock text-yellow-500 mr-1.5"></i>Dados seguros</span>
-              <span><i className="fas fa-bolt text-yellow-500 mr-1.5"></i>Resultado instantâneo</span>
+              <span><i className="fas fa-bolt text-yellow-500 mr-1.5"></i>Menos de 3 min</span>
             </div>
             <button
               onClick={handleAdvance}
               className="w-full bg-yellow-500 active:bg-yellow-400 text-black font-black py-4 rounded-2xl text-base uppercase tracking-widest transition-all shadow-lg shadow-yellow-500/20"
             >
-              Começar agora
+              Montar meu plano
+            </button>
+          </div>
+        )}
+
+        {/* TRANSITION */}
+        {step.type === 'transition' && (
+          <div className="text-center max-w-sm w-full">
+            <div className="w-16 h-16 bg-yellow-500/10 border border-yellow-500/20 rounded-2xl flex items-center justify-center mx-auto mb-8">
+              <i className="fas fa-pen text-yellow-500 text-2xl"></i>
+            </div>
+            <h2 className="text-2xl font-black uppercase italic tracking-tighter text-white mb-4 leading-tight">
+              Agora vamos preencher<br/>o seu app
+            </h2>
+            <div className="flex flex-col gap-3 mb-8 text-left">
+              <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3">
+                <i className="fas fa-check-circle text-yellow-500 shrink-0"></i>
+                <p className="text-zinc-300 text-sm">Vou perguntar suas <b className="text-white">rendas</b> e <b className="text-white">contas fixas</b></p>
+              </div>
+              <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3">
+                <i className="fas fa-check-circle text-yellow-500 shrink-0"></i>
+                <p className="text-zinc-300 text-sm">Se não souber o valor exato, <b className="text-white">coloca uma média</b> — dá pra ajustar depois</p>
+              </div>
+              <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3">
+                <i className="fas fa-check-circle text-yellow-500 shrink-0"></i>
+                <p className="text-zinc-300 text-sm">Se não tiver esse gasto, clica em <b className="text-white">"Não pago"</b> — ele não aparece no app</p>
+              </div>
+            </div>
+            <button
+              onClick={handleAdvance}
+              className="w-full bg-yellow-500 active:bg-yellow-400 text-black font-black py-4 rounded-2xl text-base uppercase tracking-widest transition-all shadow-lg shadow-yellow-500/20"
+            >
+              Entendido, vamos lá!
             </button>
           </div>
         )}
@@ -340,12 +377,21 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
               </div>
             </div>
 
-            <button
-              onClick={() => advance(0)}
-              className="w-full bg-zinc-800 active:bg-zinc-700 text-zinc-300 font-black py-4 rounded-2xl text-sm uppercase transition-all"
-            >
-              {step.skipLabel}
-            </button>
+            {extraItems.length > 0 ? (
+              <button
+                onClick={() => advance(0)}
+                className="w-full bg-yellow-500 active:bg-yellow-400 text-black font-black py-4 rounded-2xl text-sm uppercase tracking-widest transition-all shadow-lg shadow-yellow-500/20"
+              >
+                Pronto! Continuar <i className="fas fa-arrow-right ml-1.5"></i>
+              </button>
+            ) : (
+              <button
+                onClick={() => advance(0)}
+                className="w-full bg-zinc-800 active:bg-zinc-700 text-zinc-300 font-black py-4 rounded-2xl text-sm uppercase transition-all"
+              >
+                {step.skipLabel}
+              </button>
+            )}
           </div>
         )}
 

@@ -41,6 +41,10 @@ const App: React.FC = () => {
   const [showTutorial, setShowTutorial] = useState<boolean>(() => {
     return localStorage.getItem('tutorial_completed') !== 'true';
   });
+  const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
+  const [showWebNotice, setShowWebNotice] = useState<boolean>(() => {
+    return isNativeApp && localStorage.getItem('web_notice_dismissed') !== 'true';
+  });
   const [householdId, setHouseholdId] = useState<string | null>(null);
   const [dbLoading, setDbLoading] = useState(false);
   const [showInvitePanel, setShowInvitePanel] = useState(false);
@@ -358,7 +362,13 @@ const App: React.FC = () => {
         next.push(leisure);
       }
 
-      return next;
+      // Remove fixed/leisure items where all values are 0 (user skipped them in wizard)
+      return next.filter(item => {
+        if (item.category === CategoryType.FIXED_EXPENSE || item.category === CategoryType.PERSONAL_LEISURE) {
+          return item.values.some(v => v > 0);
+        }
+        return true;
+      });
     });
 
     // Save all to DB
@@ -369,6 +379,8 @@ const App: React.FC = () => {
     }
 
     localStorage.setItem(`onboarding_done_${user!.id}`, 'true');
+    localStorage.setItem('tutorial_completed', 'true');
+    setShowTutorial(false);
     setShowOnboarding(false);
   };
 
@@ -616,6 +628,23 @@ const App: React.FC = () => {
       )}
 
       {!showOnboarding && showTutorial && <OnboardingTutorial onComplete={handleCompleteTutorial} />}
+
+      {showWebNotice && (
+        <div className="fixed bottom-20 left-3 right-3 z-[90] animate-in slide-in-from-bottom-4 fade-in duration-300">
+          <div className="bg-zinc-900 border border-yellow-600/30 rounded-2xl px-4 py-3 shadow-2xl flex items-center gap-3">
+            <i className="fas fa-desktop text-yellow-500 shrink-0"></i>
+            <p className="text-zinc-300 text-xs leading-relaxed flex-1">
+              Sabia que você também acessa o Kashim pelo navegador em <span className="text-yellow-400 font-bold">app.kashim.com.br</span> com uma experiência ainda mais completa?
+            </p>
+            <button
+              onClick={() => { localStorage.setItem('web_notice_dismissed', 'true'); setShowWebNotice(false); }}
+              className="text-zinc-500 active:text-white shrink-0 p-1"
+            >
+              <i className="fas fa-times text-sm"></i>
+            </button>
+          </div>
+        </div>
+      )}
 
       {showSubscriptionGate && (
         <SubscriptionGate onClose={() => setShowSubscriptionGate(false)} />
