@@ -21,12 +21,6 @@ interface ColumnData {
   linkedItemId: string;
 }
 
-const DEFAULT_COLUMNS: ColumnData[] = [
-  { id: crypto.randomUUID(), title: 'SUPERMERCADO', linkedItemId: '' },
-  { id: crypto.randomUUID(), title: 'GASOLINA', linkedItemId: '' },
-  { id: crypto.randomUUID(), title: 'LAZER', linkedItemId: '' },
-  { id: crypto.randomUUID(), title: 'EXTRAS', linkedItemId: '' },
-];
 
 // Keywords that suggest a fixed expense will have multiple purchases in a month
 const RECURRING_KEYWORDS = [
@@ -82,7 +76,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
   const [columns, setColumns] = useState<ColumnData[]>(() => {
     const saved = localStorage.getItem('teto_columns_v3');
-    return saved ? JSON.parse(saved) : DEFAULT_COLUMNS;
+    return saved ? JSON.parse(saved) : [];
   });
 
   // Load columns from Supabase on mount

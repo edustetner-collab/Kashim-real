@@ -963,7 +963,7 @@ const App: React.FC = () => {
                     <tr className="border-b-2 border-zinc-800 bg-zinc-950/20">
                       <td className="p-4 font-black text-white uppercase italic">Sobras / Faltas</td>
                       {monthlySummaries.map((s, i) => (
-                        <td key={i} className={`p-4 text-center font-black font-mono ${s.balance >= 0 ? 'text-green-400' : 'text-red-500 animate-pulse'}`}>
+                        <td key={i} className={`p-4 text-center font-black font-mono whitespace-nowrap ${s.balance >= 0 ? 'text-green-400' : 'text-red-500 animate-pulse'}`}>
                           {formatCurrency(s.balance)}
                         </td>
                       ))}

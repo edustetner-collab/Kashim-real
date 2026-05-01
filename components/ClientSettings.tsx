@@ -48,6 +48,11 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
+  // Email verification for password (Clerk requires_verification flow)
+  const [verificationPending, setVerificationPending] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [verificationLoading, setVerificationLoading] = useState(false);
+
   // Photo upload
   const [photoLoading, setPhotoLoading] = useState(false);
   const [photoError, setPhotoError] = useState('');
@@ -94,6 +99,7 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
     setPasswordView('idle');
     setCurrentPassword(''); setNewPassword(''); setConfirmPassword('');
     setPasswordError(''); setPasswordSuccess('');
+    setVerificationPending(false); setVerificationCode('');
   }
 
   async function handleSavePassword() {
@@ -108,12 +114,43 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
       setPasswordView('idle');
       setCurrentPassword(''); setNewPassword(''); setConfirmPassword('');
     } catch (err: any) {
+      const code: string = err?.errors?.[0]?.code ?? '';
       const msg: string = err?.errors?.[0]?.longMessage ?? err?.message ?? 'Erro ao salvar senha.';
-      if (msg.toLowerCase().includes('incorrect') || msg.toLowerCase().includes('wrong')) setPasswordError('Senha atual incorreta.');
-      else if (msg.toLowerCase().includes('pwned') || msg.toLowerCase().includes('common')) setPasswordError('Essa senha é muito comum.');
-      else setPasswordError(msg);
+      if (code.includes('verification') || msg.toLowerCase().includes('additional verification') || msg.toLowerCase().includes('step_up')) {
+        try {
+          await user?.emailAddresses[0]?.prepareVerification({ strategy: 'email_code' });
+          setVerificationPending(true);
+        } catch {
+          setPasswordError('Por segurança, saia da conta e faça login novamente para definir uma senha.');
+        }
+      } else if (msg.toLowerCase().includes('incorrect') || msg.toLowerCase().includes('wrong')) {
+        setPasswordError('Senha atual incorreta.');
+      } else if (msg.toLowerCase().includes('pwned') || msg.toLowerCase().includes('common')) {
+        setPasswordError('Essa senha é muito comum.');
+      } else {
+        setPasswordError(msg);
+      }
     } finally {
       setPasswordLoading(false);
+    }
+  }
+
+  async function handleVerifyAndSavePassword() {
+    setPasswordError('');
+    setVerificationLoading(true);
+    try {
+      await user?.emailAddresses[0]?.attemptVerification({ code: verificationCode });
+      setVerificationPending(false);
+      setVerificationCode('');
+      await user?.updatePassword({ newPassword, ...(hasPassword ? { currentPassword } : {}), signOutOfOtherSessions: false });
+      setPasswordSuccess(hasPassword ? 'Senha alterada com sucesso!' : 'Senha cadastrada com sucesso!');
+      setPasswordView('idle');
+      setCurrentPassword(''); setNewPassword(''); setConfirmPassword('');
+    } catch (err: any) {
+      const msg: string = err?.errors?.[0]?.longMessage ?? err?.message ?? 'Código inválido.';
+      setPasswordError(msg);
+    } finally {
+      setVerificationLoading(false);
     }
   }
 
@@ -286,6 +323,34 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
                 <button onClick={openPasswordForm} className="w-full bg-yellow-600 hover:bg-yellow-500 text-black font-black py-3 rounded-2xl transition-all text-sm uppercase tracking-widest">
                   <i className={`fas ${hasPassword ? 'fa-key' : 'fa-plus'} mr-2`}></i>{hasPassword ? 'Alterar senha' : 'Cadastrar senha'}
                 </button>
+              ) : verificationPending ? (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2 bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-4 py-3">
+                    <i className="fas fa-envelope text-yellow-500 text-sm"></i>
+                    <span className="text-yellow-400 text-sm">Código enviado para seu e-mail. Insira-o abaixo para confirmar sua identidade.</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={verificationCode}
+                    onChange={e => setVerificationCode(e.target.value.replace(/\D/g, ''))}
+                    placeholder="Código de verificação"
+                    maxLength={6}
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-yellow-600 text-center tracking-[0.4em] font-mono"
+                    onKeyDown={e => { if (e.key === 'Enter') handleVerifyAndSavePassword(); }}
+                  />
+                  {passwordError && (
+                    <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+                      <i className="fas fa-exclamation-circle text-red-400 text-sm mt-0.5"></i>
+                      <span className="text-red-400 text-sm">{passwordError}</span>
+                    </div>
+                  )}
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={handleVerifyAndSavePassword} disabled={verificationLoading || verificationCode.length < 4} className="flex-1 bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50 text-black font-black py-3 rounded-2xl transition-all text-sm uppercase">
+                      {verificationLoading ? <i className="fas fa-circle-notch animate-spin"></i> : 'Confirmar'}
+                    </button>
+                    <button onClick={cancelPassword} className="flex-1 bg-zinc-800 text-white font-black py-3 rounded-2xl text-sm uppercase">Cancelar</button>
+                  </div>
+                </div>
               ) : (
                 <div className="flex flex-col gap-3">
                   {hasPassword && (

@@ -166,7 +166,7 @@ export function checkBadges(
   );
   if (hasAnyExpense) unlocked.add('primeiro_lancamento');
 
-  if (summaries.some(s => s.balance > 0)) unlocked.add('mes_verde');
+  if (summaries.some(s => s.balance > 0 && s.totalIncome > 0 && s.totalCost > 0)) unlocked.add('mes_verde');
 
   const current = summaries[0];
   if (current.totalIncome > 0) {

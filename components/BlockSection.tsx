@@ -390,7 +390,12 @@ const BlockSection: React.FC<BlockSectionProps> = ({
       
       {/* ── MOBILE LAYOUT ─────────────────────────────────────────── */}
       <div className="block lg:hidden bg-[#111] divide-y divide-zinc-800/60">
-        {items.map((item) => {
+        {items.filter(item => {
+          if (item.category === CategoryType.VARIABLE_EXPENSE) {
+            return item.values[mobileMonthIdx] > 0;
+          }
+          return true;
+        }).map((item) => {
           const monthData = months[mobileMonthIdx];
           const monthKey = `${monthData.year}-${monthData.index}`;
           const partials = item.partialExpenses?.[monthKey] || [];
