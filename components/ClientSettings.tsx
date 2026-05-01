@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useUser, useClerk } from '@clerk/clerk-react';
+import { useUser, useClerk, useSignIn } from '@clerk/clerk-react';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { NotificationPrefs, SummaryData } from '../types';
 import { saveNotificationPrefs, loadNotificationPrefs } from '../lib/db';
@@ -29,6 +29,7 @@ const DEFAULT_PREFS: NotificationPrefs = {
 const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClose, summary, currentMonthIdx, currentYear }) => {
   const { user } = useUser();
   const { signOut } = useClerk();
+  const { signIn, setActive } = useSignIn();
   const [tab, setTab] = useState<SettingsTab>('conta');
 
   // Coach access
@@ -125,7 +126,10 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
         msg.toLowerCase().includes('provide additional');
       if (isVerificationRequired) {
         try {
-          await user?.emailAddresses[0]?.prepareVerification({ strategy: 'email_code' });
+          const email = user?.emailAddresses[0]?.emailAddress;
+          if (!email || !signIn) throw new Error('unavailable');
+          await signIn.create({ identifier: email });
+          await signIn.prepareFirstFactor({ strategy: 'email_code', emailAddressId: user!.emailAddresses[0].id });
           setVerificationPending(true);
         } catch {
           setPasswordError('Por segurança, saia da conta e entre novamente com o link de e-mail. Depois tente definir a senha.');
@@ -146,7 +150,11 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
     setPasswordError('');
     setVerificationLoading(true);
     try {
-      await user?.emailAddresses[0]?.attemptVerification({ code: verificationCode });
+      if (!signIn) throw new Error('unavailable');
+      const result = await signIn.attemptFirstFactor({ strategy: 'email_code', code: verificationCode });
+      if (result.status === 'complete' && setActive) {
+        await setActive({ session: result.createdSessionId });
+      }
       setVerificationPending(false);
       setVerificationCode('');
       await user?.updatePassword({ newPassword, ...(hasPassword ? { currentPassword } : {}), signOutOfOtherSessions: false });
@@ -154,8 +162,12 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
       setPasswordView('idle');
       setCurrentPassword(''); setNewPassword(''); setConfirmPassword('');
     } catch (err: any) {
-      const msg: string = err?.errors?.[0]?.longMessage ?? err?.message ?? 'Código inválido.';
-      setPasswordError(msg);
+      const msg: string = err?.errors?.[0]?.longMessage ?? err?.errors?.[0]?.message ?? err?.message ?? 'Código inválido.';
+      if (msg.toLowerCase().includes('incorrect') || msg.toLowerCase().includes('invalid') || msg.toLowerCase().includes('inválido')) {
+        setPasswordError('Código incorreto. Verifique o e-mail e tente novamente.');
+      } else {
+        setPasswordError(msg);
+      }
     } finally {
       setVerificationLoading(false);
     }
@@ -402,25 +414,25 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
             {/* Coach access */}
             <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
               <h3 className="text-white font-black uppercase italic tracking-tight mb-4 flex items-center gap-2">
-                <i className="fas fa-user-shield text-yellow-500"></i>Acesso do Coach
+                <i className="fas fa-user-shield text-yellow-500"></i>Acesso do Consultor Financeiro
               </h3>
               {hasActiveCoach ? (
                 <div className="flex flex-col gap-4">
                   <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/20 rounded-2xl p-4">
                     <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center"><i className="fas fa-check text-green-400"></i></div>
                     <div>
-                      <p className="text-green-400 font-bold text-sm">Coach com acesso ativo</p>
-                      <p className="text-zinc-500 text-xs">Seu coach pode visualizar e editar seu plano</p>
+                      <p className="text-green-400 font-bold text-sm">Consultor financeiro com acesso ativo</p>
+                      <p className="text-zinc-500 text-xs">Seu consultor pode visualizar e editar seu plano</p>
                     </div>
                   </div>
                   {!revokeConfirm ? (
                     <button onClick={() => setRevokeConfirm(true)} className="w-full bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-red-400 font-black py-3 rounded-2xl text-sm uppercase">
-                      <i className="fas fa-user-slash mr-2"></i>Revogar acesso do coach
+                      <i className="fas fa-user-slash mr-2"></i>Revogar acesso do consultor
                     </button>
                   ) : (
                     <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4">
                       <p className="text-red-400 font-bold text-sm mb-1">Tem certeza?</p>
-                      <p className="text-zinc-500 text-xs mb-4">Seu coach não poderá mais acessar seus dados.</p>
+                      <p className="text-zinc-500 text-xs mb-4">Seu consultor não poderá mais acessar seus dados.</p>
                       <div className="flex gap-2">
                         <button onClick={handleRevokeCoach} disabled={revoking} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-black py-2.5 rounded-xl text-xs uppercase">
                           {revoking ? <i className="fas fa-circle-notch animate-spin"></i> : 'Sim, revogar'}
@@ -434,8 +446,8 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
                 <div className="flex items-center gap-3 bg-zinc-800/50 border border-zinc-700 rounded-2xl p-4">
                   <div className="w-10 h-10 bg-zinc-700 rounded-full flex items-center justify-center"><i className="fas fa-user-slash text-zinc-500"></i></div>
                   <div>
-                    <p className="text-zinc-400 font-bold text-sm">Sem coach ativo</p>
-                    <p className="text-zinc-600 text-xs">Nenhum coach tem acesso ao seu plano</p>
+                    <p className="text-zinc-400 font-bold text-sm">Sem consultor ativo</p>
+                    <p className="text-zinc-600 text-xs">Nenhum consultor tem acesso ao seu plano</p>
                   </div>
                 </div>
               )}
