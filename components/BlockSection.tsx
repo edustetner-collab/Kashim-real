@@ -38,6 +38,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
   const [cardInstallModal, setCardInstallModal] = useState<{
     itemId: string; cardId: string; totalInput: string; currentInput: string;
   } | null>(null);
+  const [openPaymentItemId, setOpenPaymentItemId] = useState<string | null>(null);
   const timersRef = useRef<Record<string, number>>({});
   const itemsRef = useRef<FinanceItem[]>(items);
   useEffect(() => { itemsRef.current = items; }, [items]);
@@ -469,32 +470,80 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   </div>
                 </div>
               )}
-              {showLinkOption && onLinkCard && (
-                <div className="mt-1.5 ml-7 flex items-center gap-2 flex-wrap">
-                  <i className="fas fa-credit-card text-[10px] text-zinc-600"></i>
-                  <select className="text-[11px] bg-zinc-800 border border-zinc-700 text-zinc-400 rounded-lg px-2 py-1 outline-none" value={item.linkedCardId || ''} onChange={(e) => onLinkCard(item.id, e.target.value, item.linkType || LinkType.RECURRING)}>
-                    <option value="">Dinheiro/Débito</option>
-                    {allCards.map(card => <option key={card.id} value={card.id}>Cartão: {card.description || 'S/N'}</option>)}
-                  </select>
-                  {item.linkedCardId && (
-                    <select
-                      className="text-[10px] bg-zinc-800 border border-zinc-700 text-zinc-400 rounded-lg px-2 py-1 outline-none"
-                      value={item.linkType || LinkType.RECURRING}
-                      onChange={(e) => {
-                        const newType = e.target.value as LinkType;
-                        if (newType === LinkType.INSTALLMENT) {
-                          setCardInstallModal({ itemId: item.id, cardId: item.linkedCardId!, totalInput: '', currentInput: '1' });
-                        } else {
-                          onLinkCard!(item.id, item.linkedCardId!, newType);
-                        }
-                      }}
-                    >
-                      <option value={LinkType.RECURRING}>Recorrente</option>
-                      <option value={LinkType.INSTALLMENT}>Parcelado</option>
-                    </select>
-                  )}
-                </div>
-              )}
+              {showLinkOption && onLinkCard && (() => {
+                const hasPayment = !!(item.linkType || item.linkedCardId);
+                const isOpen = openPaymentItemId === item.id;
+                let paymentLabel = '';
+                if (item.linkType === LinkType.DEBIT) paymentLabel = 'Débito / Dinheiro';
+                else if (item.linkedCardId) {
+                  const card = allCards.find(c => c.id === item.linkedCardId);
+                  paymentLabel = `${card?.description || 'Cartão'} · ${item.linkType === LinkType.INSTALLMENT ? 'Parcelado' : 'Recorrente'}`;
+                }
+                return (
+                  <div className="mt-2 ml-7">
+                    {!isOpen ? (
+                      <button
+                        onClick={() => setOpenPaymentItemId(item.id)}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all active:scale-95 ${
+                          hasPayment
+                            ? 'bg-green-500/15 border border-green-500/30 text-green-400'
+                            : 'bg-red-500/15 border border-red-500/40 text-red-400'
+                        }`}
+                      >
+                        <i className={`fas ${hasPayment ? 'fa-check-circle' : 'fa-exclamation-circle'} text-[10px]`}></i>
+                        {hasPayment ? paymentLabel : 'Forma de pagamento pendente'}
+                        <i className="fas fa-chevron-down text-[8px] opacity-50 ml-0.5"></i>
+                      </button>
+                    ) : (
+                      <div className="flex flex-col gap-1.5 bg-zinc-800/60 border border-zinc-700 rounded-xl p-2.5">
+                        <div className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Forma de pagamento</div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            onClick={() => { onLinkCard!(item.id, '', LinkType.DEBIT); setOpenPaymentItemId(null); }}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase active:scale-95 transition-all ${
+                              item.linkType === LinkType.DEBIT ? 'bg-green-500 text-black' : 'bg-zinc-700 border border-zinc-600 text-zinc-300'
+                            }`}
+                          >
+                            <i className="fas fa-wallet mr-1"></i>Débito
+                          </button>
+                          <select
+                            className="flex-1 text-[10px] bg-zinc-700 border border-zinc-600 text-zinc-300 rounded-lg px-2 py-1.5 outline-none focus:border-yellow-500"
+                            value={item.linkedCardId || ''}
+                            onChange={(e) => {
+                              if (e.target.value) onLinkCard!(item.id, e.target.value, LinkType.RECURRING);
+                            }}
+                          >
+                            <option value="">Crédito: selecionar cartão...</option>
+                            {allCards.map(card => <option key={card.id} value={card.id}>{card.description || 'Cartão S/N'}</option>)}
+                          </select>
+                          <button onClick={() => setOpenPaymentItemId(null)} className="text-zinc-500 active:text-white p-0.5 shrink-0">
+                            <i className="fas fa-times text-[10px]"></i>
+                          </button>
+                        </div>
+                        {item.linkedCardId && item.linkType !== LinkType.DEBIT && (
+                          <select
+                            className="text-[10px] bg-zinc-700 border border-zinc-600 text-zinc-300 rounded-lg px-2 py-1.5 outline-none focus:border-yellow-500 w-fit"
+                            value={item.linkType || LinkType.RECURRING}
+                            onChange={(e) => {
+                              const newType = e.target.value as LinkType;
+                              if (newType === LinkType.INSTALLMENT) {
+                                setCardInstallModal({ itemId: item.id, cardId: item.linkedCardId!, totalInput: '', currentInput: '1' });
+                                setOpenPaymentItemId(null);
+                              } else {
+                                onLinkCard!(item.id, item.linkedCardId!, newType);
+                                setOpenPaymentItemId(null);
+                              }
+                            }}
+                          >
+                            <option value={LinkType.RECURRING}>Recorrente</option>
+                            <option value={LinkType.INSTALLMENT}>Parcelado</option>
+                          </select>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
@@ -592,33 +641,73 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                         </div>
                       </div>
                     )}
-                    {showLinkOption && onLinkCard && (
+                    {showLinkOption && onLinkCard && (() => {
+                      const hasPayment = !!(item.linkType || item.linkedCardId);
+                      const isOpen = openPaymentItemId === item.id;
+                      let paymentLabel = '';
+                      if (item.linkType === LinkType.DEBIT) paymentLabel = 'Débito';
+                      else if (item.linkedCardId) {
+                        const card = allCards.find(c => c.id === item.linkedCardId);
+                        paymentLabel = `${card?.description || 'Cartão'} · ${item.linkType === LinkType.INSTALLMENT ? 'Parcelado' : 'Recorrente'}`;
+                      }
+                      return (
                       <div className="px-2 pb-1 flex flex-col gap-1">
-                        <div className="flex items-center gap-2">
-                          <i className="fas fa-credit-card text-[10px] text-gray-400"></i>
-                          <select 
-                            className="text-[10px] bg-transparent border-none text-gray-500 focus:ring-0 cursor-pointer hover:text-yellow-600 transition-colors p-0"
-                            value={item.linkedCardId || ''}
-                            onChange={(e) => onLinkCard(item.id, e.target.value, item.linkType || LinkType.RECURRING)}
+                        <button
+                          onClick={() => setOpenPaymentItemId(isOpen ? null : item.id)}
+                          className={`flex items-center gap-1 px-2 py-0.5 rounded text-[8px] font-black uppercase w-fit transition-all ${
+                            hasPayment
+                              ? 'bg-green-50 text-green-700 border border-green-200'
+                              : 'bg-red-50 text-red-500 border border-red-200'
+                          }`}
+                        >
+                          <i className={`fas ${hasPayment ? 'fa-check-circle' : 'fa-exclamation-circle'} text-[8px]`}></i>
+                          {hasPayment ? paymentLabel : 'Pagamento pendente'}
+                          <i className="fas fa-pen text-[7px] ml-0.5 opacity-50"></i>
+                        </button>
+                        {isOpen && (
+                        <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                          <button
+                            onClick={() => { onLinkCard(item.id, '', LinkType.DEBIT); setOpenPaymentItemId(null); }}
+                            className="px-2 py-0.5 rounded text-[9px] font-black bg-zinc-100 hover:bg-zinc-200 text-zinc-700 border border-zinc-300 transition-all"
                           >
-                            <option value="">Dinheiro/Débito</option>
-                            {allCards.map(card => (
-                              <option key={card.id} value={card.id}>Cartão: {card.description || 'S/N'}</option>
-                            ))}
+                            Débito
+                          </button>
+                          <select
+                            className="text-[9px] bg-zinc-50 border border-zinc-300 rounded px-1 py-0.5 outline-none focus:border-yellow-500"
+                            value={item.linkedCardId || ''}
+                            onChange={(e) => {
+                              if (e.target.value) { onLinkCard(item.id, e.target.value, item.linkType === LinkType.INSTALLMENT ? LinkType.INSTALLMENT : LinkType.RECURRING); }
+                            }}
+                          >
+                            <option value="">Crédito: cartão...</option>
+                            {allCards.map(card => <option key={card.id} value={card.id}>{card.description || 'S/N'}</option>)}
                           </select>
                           {item.linkedCardId && (
-                             <select 
-                               className="text-[9px] font-bold bg-zinc-100 rounded px-1 text-zinc-600 border-none focus:ring-0"
-                               value={item.linkType || LinkType.RECURRING}
-                               onChange={(e) => onLinkCard(item.id, item.linkedCardId!, e.target.value as LinkType)}
-                             >
-                               <option value={LinkType.RECURRING}>Recorrente</option>
-                               <option value={LinkType.INSTALLMENT}>Parcelado</option>
-                             </select>
+                            <select
+                              className="text-[9px] bg-zinc-50 border border-zinc-300 rounded px-1 py-0.5 outline-none"
+                              value={item.linkType || LinkType.RECURRING}
+                              onChange={(e) => {
+                                const t = e.target.value as LinkType;
+                                if (t === LinkType.INSTALLMENT) {
+                                  setCardInstallModal({ itemId: item.id, cardId: item.linkedCardId!, totalInput: '', currentInput: '1' });
+                                } else {
+                                  onLinkCard(item.id, item.linkedCardId!, t);
+                                }
+                                setOpenPaymentItemId(null);
+                              }}
+                            >
+                              <option value={LinkType.RECURRING}>Recorrente</option>
+                              <option value={LinkType.INSTALLMENT}>Parcelado</option>
+                            </select>
                           )}
+                          <button onClick={() => setOpenPaymentItemId(null)} className="text-zinc-400 hover:text-zinc-700 p-0.5">
+                            <i className="fas fa-times text-[9px]"></i>
+                          </button>
                         </div>
+                        )}
                       </div>
-                    )}
+                    );
+                    })()}
                   </div>
                 </td>
                 {item.values.map((val, mIdx) => {

@@ -498,7 +498,11 @@ const App: React.FC = () => {
   };
 
   const handleLinkCard = (itemId: string, cardId: string, linkType?: LinkType) => {
-    setItems(prev => prev.map(item => item.id === itemId ? { ...item, linkedCardId: cardId || undefined, linkType: cardId ? (linkType || LinkType.RECURRING) : undefined } : item));
+    setItems(prev => prev.map(item => {
+      if (item.id !== itemId) return item;
+      if (linkType === LinkType.DEBIT) return { ...item, linkedCardId: undefined, linkType: LinkType.DEBIT };
+      return { ...item, linkedCardId: cardId || undefined, linkType: cardId ? (linkType || LinkType.RECURRING) : undefined };
+    }));
   };
 
   const monthlySummaries = useMemo((): SummaryData[] => {
