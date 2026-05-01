@@ -497,10 +497,11 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                     ) : (
                       <div className="flex flex-col gap-1.5 bg-zinc-800/60 border border-zinc-700 rounded-xl p-2.5">
                         <div className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Forma de pagamento</div>
-                        <div className="flex items-center gap-2 flex-wrap">
+                        {/* Row 1: Débito | Cartão | ✕ */}
+                        <div className="flex items-center gap-2">
                           <button
                             onClick={() => { onLinkCard!(item.id, '', LinkType.DEBIT); setOpenPaymentItemId(null); }}
-                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase active:scale-95 transition-all ${
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase active:scale-95 transition-all shrink-0 ${
                               item.linkType === LinkType.DEBIT ? 'bg-green-500 text-black' : 'bg-zinc-700 border border-zinc-600 text-zinc-300'
                             }`}
                           >
@@ -510,7 +511,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                             className="flex-1 text-[10px] bg-zinc-700 border border-zinc-600 text-zinc-300 rounded-lg px-2 py-1.5 outline-none focus:border-yellow-500"
                             value={item.linkedCardId || ''}
                             onChange={(e) => {
-                              if (e.target.value) onLinkCard!(item.id, e.target.value, LinkType.RECURRING);
+                              if (e.target.value) onLinkCard!(item.id, e.target.value, item.linkType === LinkType.INSTALLMENT ? LinkType.INSTALLMENT : LinkType.RECURRING);
                             }}
                           >
                             <option value="">Crédito: selecionar cartão...</option>
@@ -520,24 +521,32 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                             <i className="fas fa-times text-[10px]"></i>
                           </button>
                         </div>
+                        {/* Row 2: Type selector + OK — appears only when a card is selected */}
                         {item.linkedCardId && item.linkType !== LinkType.DEBIT && (
-                          <select
-                            className="text-[10px] bg-zinc-700 border border-zinc-600 text-zinc-300 rounded-lg px-2 py-1.5 outline-none focus:border-yellow-500 w-fit"
-                            value={item.linkType || LinkType.RECURRING}
-                            onChange={(e) => {
-                              const newType = e.target.value as LinkType;
-                              if (newType === LinkType.INSTALLMENT) {
-                                setCardInstallModal({ itemId: item.id, cardId: item.linkedCardId!, totalInput: '', currentInput: '1' });
-                                setOpenPaymentItemId(null);
-                              } else {
-                                onLinkCard!(item.id, item.linkedCardId!, newType);
-                                setOpenPaymentItemId(null);
-                              }
-                            }}
-                          >
-                            <option value={LinkType.RECURRING}>Recorrente</option>
-                            <option value={LinkType.INSTALLMENT}>Parcelado</option>
-                          </select>
+                          <div className="flex items-center gap-2 pl-[72px]">
+                            <select
+                              className="flex-1 text-[10px] bg-zinc-700 border border-zinc-600 text-zinc-300 rounded-lg px-2 py-1.5 outline-none focus:border-yellow-500"
+                              value={item.linkType || LinkType.RECURRING}
+                              onChange={(e) => {
+                                const newType = e.target.value as LinkType;
+                                if (newType === LinkType.INSTALLMENT) {
+                                  setCardInstallModal({ itemId: item.id, cardId: item.linkedCardId!, totalInput: '', currentInput: '1' });
+                                  setOpenPaymentItemId(null);
+                                } else {
+                                  onLinkCard!(item.id, item.linkedCardId!, newType);
+                                }
+                              }}
+                            >
+                              <option value={LinkType.RECURRING}>Recorrente</option>
+                              <option value={LinkType.INSTALLMENT}>Parcelado</option>
+                            </select>
+                            <button
+                              onClick={() => setOpenPaymentItemId(null)}
+                              className="px-3 py-1.5 bg-yellow-500 active:bg-yellow-400 text-black font-black rounded-lg text-[10px] uppercase active:scale-95 transition-all shrink-0"
+                            >
+                              OK
+                            </button>
+                          </div>
                         )}
                       </div>
                     )}
