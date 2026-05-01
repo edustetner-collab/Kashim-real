@@ -844,7 +844,7 @@ const App: React.FC = () => {
 
       <main className={`${activeTab === 'plan' ? 'max-w-[1600px]' : 'w-full px-2'} mx-auto px-2 lg:px-8 mt-2 lg:mt-8`} style={(activeTab === 'desempenho' || activeTab === 'metas') ? { maxWidth: '100%' } : {}}>
         {activeTab === 'desempenho' ? (
-          <Desempenho summary={monthlySummaries[mobileMonthIdx]} summaries={monthlySummaries} items={items} goals={goals} />
+          <Desempenho summary={monthlySummaries[mobileMonthIdx]} summaries={monthlySummaries.slice(0, mobileMonthIdx + 1)} items={items} goals={goals} />
         ) : activeTab === 'metas' ? (
           <Metas goals={goals} onGoalsChange={handleGoalsChange} db={db} householdId={householdId} />
         ) : activeTab === 'plan' ? (
@@ -970,7 +970,7 @@ const App: React.FC = () => {
                     </tr>
                     <tr className="bg-yellow-600/5">
                       <td className="p-6 font-black text-yellow-500 uppercase italic text-base">ACUMULADO RICO</td>
-                      {monthlySummaries.map((s, i) => <td key={i} className="p-6 text-center font-black font-mono text-lg text-yellow-500 drop-shadow-lg">{formatCurrency(s.accumulated)}</td>)}
+                      {monthlySummaries.map((s, i) => <td key={i} className="p-6 text-center font-black font-mono text-lg text-yellow-500 drop-shadow-lg whitespace-nowrap">{formatCurrency(s.accumulated)}</td>)}
                     </tr>
                   </tbody>
                 </table>

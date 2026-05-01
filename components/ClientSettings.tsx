@@ -114,14 +114,21 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
       setPasswordView('idle');
       setCurrentPassword(''); setNewPassword(''); setConfirmPassword('');
     } catch (err: any) {
-      const code: string = err?.errors?.[0]?.code ?? '';
-      const msg: string = err?.errors?.[0]?.longMessage ?? err?.message ?? 'Erro ao salvar senha.';
-      if (code.includes('verification') || msg.toLowerCase().includes('additional verification') || msg.toLowerCase().includes('step_up')) {
+      const code: string = err?.errors?.[0]?.code ?? err?.code ?? '';
+      const msg: string = err?.errors?.[0]?.longMessage ?? err?.errors?.[0]?.message ?? err?.message ?? 'Erro ao salvar senha.';
+      const isVerificationRequired =
+        code.includes('verification') ||
+        code.includes('step_up') ||
+        code === 'requires_current_password' ||
+        msg.toLowerCase().includes('additional verification') ||
+        msg.toLowerCase().includes('verificação adicional') ||
+        msg.toLowerCase().includes('provide additional');
+      if (isVerificationRequired) {
         try {
           await user?.emailAddresses[0]?.prepareVerification({ strategy: 'email_code' });
           setVerificationPending(true);
         } catch {
-          setPasswordError('Por segurança, saia da conta e faça login novamente para definir uma senha.');
+          setPasswordError('Por segurança, saia da conta e entre novamente com o link de e-mail. Depois tente definir a senha.');
         }
       } else if (msg.toLowerCase().includes('incorrect') || msg.toLowerCase().includes('wrong')) {
         setPasswordError('Senha atual incorreta.');
