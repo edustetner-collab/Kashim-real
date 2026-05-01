@@ -90,19 +90,21 @@ export async function saveFinanceItem(
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item.id);
 
   if (isUuid) {
-    const { data } = await db
+    const { data, error } = await db
       .from('finance_items')
       .upsert({ id: item.id, ...payload })
       .select('id')
       .single();
+    if (error) throw error;
     return data?.id ?? item.id;
   } else {
     // ID local (não é UUID) — insere como novo
-    const { data } = await db
+    const { data, error } = await db
       .from('finance_items')
       .insert(payload)
       .select('id')
       .single();
+    if (error) throw error;
     return data?.id ?? item.id;
   }
 }

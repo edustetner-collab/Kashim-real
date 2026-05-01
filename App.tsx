@@ -51,6 +51,7 @@ const App: React.FC = () => {
   const [showSubscriptionGate, setShowSubscriptionGate] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const itemIdMapRef = useRef<Record<string, string>>({}); // localId -> dbId
+  const pendingDeletesRef = useRef<Set<string>>(new Set());
 
   // Timeout: se Clerk não carregar em 12s, mostra tela de erro com retry
   useEffect(() => {
@@ -211,16 +212,18 @@ const App: React.FC = () => {
 
     clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(async () => {
-      try {
-        for (let i = 0; i < items.length; i++) {
-          const item = items[i];
-          const dbId = await saveFinanceItem(db!, householdId, item, i);
-          if (dbId !== item.id) {
-            itemIdMapRef.current[item.id] = dbId;
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const dbId = itemIdMapRef.current[item.id] ?? item.id;
+        if (pendingDeletesRef.current.has(item.id) || pendingDeletesRef.current.has(dbId)) continue;
+        try {
+          const savedId = await saveFinanceItem(db!, householdId, item, i);
+          if (savedId !== item.id) {
+            itemIdMapRef.current[item.id] = savedId;
           }
+        } catch (e) {
+          console.error('Erro ao salvar item', item.id, e);
         }
-      } catch (e) {
-        console.error('Erro ao salvar dados:', e);
       }
     }, 1500);
   }, [items, db, householdId]);
@@ -399,10 +402,17 @@ const App: React.FC = () => {
   };
 
   const handleRemoveItem = (id: string) => {
+    const dbId = itemIdMapRef.current[id] ?? id;
+    pendingDeletesRef.current.add(id);
+    pendingDeletesRef.current.add(dbId);
     setItems(prev => prev.filter(item => item.id !== id));
     if (db) {
-      const dbId = itemIdMapRef.current[id] ?? id;
-      deleteFinanceItem(db, dbId).catch(console.error);
+      deleteFinanceItem(db, dbId)
+        .catch(console.error)
+        .finally(() => {
+          pendingDeletesRef.current.delete(id);
+          pendingDeletesRef.current.delete(dbId);
+        });
     }
   };
 
