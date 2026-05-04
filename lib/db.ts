@@ -122,7 +122,7 @@ export async function addPartialExpense(
   month: number,
   expense: PartialExpense
 ) {
-  await db.from('partial_expenses').insert({
+  const { error } = await db.from('partial_expenses').insert({
     id: expense.id,
     finance_item_id: financeItemId,
     year,
@@ -131,6 +131,7 @@ export async function addPartialExpense(
     description: expense.description,
     value: expense.value,
   });
+  if (error) throw error;
 }
 
 export async function deletePartialExpense(db: SupabaseClient, expenseId: string) {

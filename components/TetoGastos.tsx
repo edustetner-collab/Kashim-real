@@ -217,7 +217,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       <div className="flex gap-3 overflow-x-auto pb-6 pt-1 px-1 snap-x snap-mandatory">
         {columns.map((col) => {
           const linkedItem = items.find(i => i.id === col.linkedItemId);
-          const teto = linkedItem ? (linkedItem.values[0] || 0) : 0;
+          const teto = linkedItem ? (linkedItem.values[currentMonthIdx] || 0) : 0;
           const partials = linkedItem?.partialExpenses?.[monthKey] || [];
           const totalSpent = partials.reduce((acc, p) => acc + p.value, 0);
           const isOverLimit = totalSpent > teto && teto > 0;
@@ -303,6 +303,13 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                       className="flex-1 py-3 pl-8 pr-4 text-sm outline-none bg-transparent focus:bg-yellow-50/50 font-black text-zinc-900 transition-all placeholder:text-zinc-300 placeholder:font-normal placeholder:text-xs"
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
+                          handleValueEntry(col.id, col.linkedItemId, e.currentTarget.value, entryDescriptions[col.id]);
+                          e.currentTarget.value = '';
+                          setEntryDescriptions(prev => ({ ...prev, [col.id]: '' }));
+                        }
+                      }}
+                      onBlur={(e) => {
+                        if (e.currentTarget.value !== '') {
                           handleValueEntry(col.id, col.linkedItemId, e.currentTarget.value, entryDescriptions[col.id]);
                           e.currentTarget.value = '';
                           setEntryDescriptions(prev => ({ ...prev, [col.id]: '' }));

@@ -459,7 +459,14 @@ const App: React.FC = () => {
 
     if (db) {
       const dbId = itemIdMapRef.current[itemId] ?? itemId;
-      addPartialExpense(db, dbId, targetYear, targetMonth, expense).catch(console.error);
+      addPartialExpense(db, dbId, targetYear, targetMonth, expense).catch(() => {
+        // Retry once after 1s — item auto-save may still be debouncing
+        setTimeout(() => {
+          const retryDbId = itemIdMapRef.current[itemId] ?? itemId;
+          addPartialExpense(db!, retryDbId, targetYear, targetMonth, expense)
+            .catch(err => console.error('Falha ao salvar gasto frequente:', err));
+        }, 1000);
+      });
     }
   };
 
