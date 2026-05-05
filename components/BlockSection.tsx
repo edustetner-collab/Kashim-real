@@ -451,13 +451,6 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   )}
                 </div>
               </div>
-              {realSpent > 0 && (
-                <div className="mt-1.5 ml-7 flex items-center gap-2">
-                  <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase ${isOver ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                    Realizado: {formatCurrency(realSpent)}
-                  </span>
-                </div>
-              )}
               {category === CategoryType.CREDIT_CARD && onUpdateCardConfig && (
                 <div className="mt-2 ml-7 flex gap-4">
                   <div className="flex items-center gap-2">
@@ -569,6 +562,13 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   </div>
                 );
               })()}
+              {realSpent > 0 && (
+                <div className="mt-1.5 ml-7 flex items-center gap-2">
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase ${isOver ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                    Realizado: {formatCurrency(realSpent)}
+                  </span>
+                </div>
+              )}
             </div>
           );
         })}
