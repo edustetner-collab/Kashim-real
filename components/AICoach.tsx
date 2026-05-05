@@ -114,7 +114,6 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
     systemInstruction,
     tools: [{ functionDeclarations: [registrarGastoTool] }],
     toolConfig: { functionCallingConfig: { mode: 'AUTO' as any } },
-    thinkingConfig: { thinkingBudget: 0 },
   });
 
   const analyzeText = async (text?: string) => {
