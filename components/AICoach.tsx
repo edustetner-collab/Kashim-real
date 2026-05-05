@@ -110,6 +110,13 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
     return new GoogleGenAI({ apiKey });
   };
 
+  const geminiConfig = (systemInstruction: string, registrarGastoTool: any) => ({
+    systemInstruction,
+    tools: [{ functionDeclarations: [registrarGastoTool] }],
+    toolConfig: { functionCallingConfig: { mode: 'AUTO' as any } },
+    thinkingConfig: { thinkingBudget: 0 },
+  });
+
   const analyzeText = async (text?: string) => {
     const finalPrompt = text || prompt;
     if (!finalPrompt.trim()) return;
@@ -121,7 +128,7 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
       const result = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: finalPrompt,
-        config: { systemInstruction, tools: [{ functionDeclarations: [registrarGastoTool] }] }
+        config: geminiConfig(systemInstruction, registrarGastoTool)
       });
       processResult(result);
     } catch (error: any) {
@@ -146,7 +153,7 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
             { inlineData: { mimeType, data: base64Audio } }
           ]
         }] as any,
-        config: { systemInstruction, tools: [{ functionDeclarations: [registrarGastoTool] }] }
+        config: geminiConfig(systemInstruction, registrarGastoTool)
       });
       processResult(result);
     } catch (error: any) {
@@ -171,7 +178,7 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
             { inlineData: { mimeType, data: base64Image } }
           ]
         }] as any,
-        config: { systemInstruction, tools: [{ functionDeclarations: [registrarGastoTool] }] }
+        config: geminiConfig(systemInstruction, registrarGastoTool)
       });
       processResult(result);
     } catch (error: any) {
