@@ -479,13 +479,6 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   </select>
                 </div>
               )}
-              {realSpent > 0 && (
-                <div className="mt-1.5 ml-7 flex items-center gap-2">
-                  <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase ${isOver ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                    Realizado: {formatCurrency(realSpent)}
-                  </span>
-                </div>
-              )}
               {showLinkOption && onLinkCard && (() => {
                 const hasPayment = !!(item.linkType || item.linkedCardId);
                 const isOpen = openPaymentItemId === item.id;
@@ -498,18 +491,25 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                 return (
                   <div className="mt-2 ml-7">
                     {!isOpen ? (
-                      <button
-                        onClick={() => setOpenPaymentItemId(item.id)}
-                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all active:scale-95 ${
-                          hasPayment
-                            ? 'bg-green-500/15 border border-green-500/30 text-green-400'
-                            : 'bg-red-500/15 border border-red-500/40 text-red-400'
-                        }`}
-                      >
-                        <i className={`fas ${hasPayment ? 'fa-check-circle' : 'fa-exclamation-circle'} text-[10px]`}></i>
-                        {hasPayment ? paymentLabel : 'Forma de pagamento pendente'}
-                        <i className="fas fa-chevron-down text-[8px] opacity-50 ml-0.5"></i>
-                      </button>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {realSpent > 0 && (
+                          <span className={`text-[10px] font-black px-2 py-1 rounded-xl uppercase ${isOver ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                            Realizado: {formatCurrency(realSpent)}
+                          </span>
+                        )}
+                        <button
+                          onClick={() => setOpenPaymentItemId(item.id)}
+                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[9px] font-black uppercase transition-all active:scale-95 ${
+                            hasPayment
+                              ? 'bg-green-500/15 border border-green-500/30 text-green-400'
+                              : 'bg-red-500/15 border border-red-500/40 text-red-400'
+                          }`}
+                        >
+                          <i className={`fas ${hasPayment ? 'fa-check-circle' : 'fa-exclamation-circle'} text-[10px]`}></i>
+                          {hasPayment ? paymentLabel : 'Forma de pagamento pendente'}
+                          <i className="fas fa-chevron-down text-[8px] opacity-50 ml-0.5"></i>
+                        </button>
+                      </div>
                     ) : (
                       <div className="flex flex-col gap-1.5 bg-zinc-800/60 border border-zinc-700 rounded-xl p-2.5">
                         <div className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Forma de pagamento</div>
