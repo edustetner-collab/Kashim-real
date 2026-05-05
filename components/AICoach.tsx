@@ -11,18 +11,22 @@ interface AICoachProps {
   onAddPartial: (itemId: string, expense: PartialExpense) => void;
 }
 
+const hasSpeechRecognition = () =>
+  typeof window !== 'undefined' && !!(
+    (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+  );
+
 const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddPartial }) => {
   const [prompt, setPrompt] = useState('');
   const [response, setResponse] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(() => localStorage.getItem('stets_tts') !== 'false');
+  const recognitionRef = useRef<any>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
-  // Refs to capture latest closures for async callbacks
-  const analyzeAudioRef = useRef<(b64: string, mime: string) => void>(() => {});
   const analyzePhotoRef = useRef<(b64: string, mime: string) => void>(() => {});
 
   const speak = (text: string) => {
@@ -168,16 +172,43 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
     }
   };
 
-  // Keep refs in sync so MediaRecorder onstop callbacks always use latest version
-  analyzeAudioRef.current = analyzeAudio;
   analyzePhotoRef.current = analyzePhoto;
 
-  const toggleRecording = async () => {
-    if (isRecording) {
-      mediaRecorderRef.current?.stop();
+  const stopRecording = () => {
+    recognitionRef.current?.stop();
+    mediaRecorderRef.current?.stop();
+    setIsRecording(false);
+  };
+
+  const startSpeechRecognition = () => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const recognition = new SR();
+    recognition.lang = 'pt-BR';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onresult = (event: any) => {
+      let transcript = '';
+      for (let i = 0; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+      setPrompt(transcript);
+    };
+
+    recognition.onend = () => setIsRecording(false);
+    recognition.onerror = (event: any) => {
       setIsRecording(false);
-      return;
-    }
+      if (event.error !== 'no-speech' && event.error !== 'aborted') {
+        setResponse(`⚠️ Erro no reconhecimento de voz: ${event.error}. Tente digitar sua mensagem.`);
+      }
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsRecording(true);
+  };
+
+  const startMediaRecorder = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
@@ -185,7 +216,6 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
         : 'audio/mp4';
       const recorder = new MediaRecorder(stream, { mimeType });
       audioChunksRef.current = [];
-
       recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
       recorder.onstop = () => {
         stream.getTracks().forEach(t => t.stop());
@@ -194,16 +224,24 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
         const reader = new FileReader();
         reader.onloadend = () => {
           const base64 = (reader.result as string).split(',')[1];
-          analyzeAudioRef.current(base64, baseMime);
+          analyzeAudio(base64, baseMime);
         };
         reader.readAsDataURL(blob);
       };
-
       mediaRecorderRef.current = recorder;
       recorder.start();
       setIsRecording(true);
     } catch {
       setResponse('⚠️ Microfone não disponível. Verifique as permissões do dispositivo.');
+    }
+  };
+
+  const toggleRecording = () => {
+    if (isRecording) { stopRecording(); return; }
+    if (hasSpeechRecognition()) {
+      startSpeechRecognition();
+    } else {
+      startMediaRecorder();
     }
   };
 
@@ -231,7 +269,7 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
           <div>
             <h3 className="text-white font-black text-xl uppercase italic tracking-tighter leading-none">Stets — Seu Mentor</h3>
             <p className={`text-[10px] font-bold uppercase tracking-widest mt-1 ${isRecording ? 'text-red-400 animate-pulse' : 'text-yellow-500/50'}`}>
-              {isRecording ? '● Gravando... toque em Parar quando terminar' : 'Fale, escreva ou envie um comprovante'}
+              {isRecording ? '● Ouvindo... toque em Parar quando terminar' : 'Fale, escreva ou envie um comprovante'}
             </p>
           </div>
           {'speechSynthesis' in window && (
@@ -262,8 +300,8 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && analyzeText()}
-            placeholder={isRecording ? 'Gravando áudio...' : 'Ex: "gastei 45 reais no mercado" ou "como estou indo?"'}
-            disabled={isRecording || loading}
+            placeholder={isRecording ? 'Ouvindo... fale agora' : 'Ex: "gastei 45 reais no mercado" ou "como estou indo?"'}
+            disabled={loading}
             className={`w-full bg-zinc-900 border ${isRecording ? 'border-red-500/40' : 'border-zinc-800'} rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-yellow-500 transition-all shadow-inner disabled:opacity-60`}
           />
 
@@ -306,7 +344,7 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
             {/* Enviar */}
             <button
               onClick={() => analyzeText()}
-              disabled={loading || isRecording || !prompt.trim()}
+              disabled={loading || !prompt.trim()}
               className="ml-auto flex items-center gap-2 bg-gradient-to-br from-yellow-400 to-yellow-600 active:from-yellow-300 active:to-yellow-500 text-black font-black px-6 py-3 rounded-2xl text-xs uppercase transition-all disabled:opacity-40 shadow-lg active:scale-95"
             >
               {loading
