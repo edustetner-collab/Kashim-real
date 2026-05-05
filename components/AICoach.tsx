@@ -21,6 +21,7 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
   const [response, setResponse] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingMode, setRecordingMode] = useState<'speech' | 'audio'>('speech');
   const [ttsEnabled, setTtsEnabled] = useState(() => localStorage.getItem('stets_tts') !== 'false');
   const recognitionRef = useRef<any>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -198,13 +199,17 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
     recognition.onend = () => setIsRecording(false);
     recognition.onerror = (event: any) => {
       setIsRecording(false);
-      if (event.error !== 'no-speech' && event.error !== 'aborted') {
+      if (event.error === 'service-not-allowed' || event.error === 'not-allowed') {
+        // Web Speech API blocked in WKWebView — fall back to MediaRecorder silently
+        startMediaRecorder();
+      } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
         setResponse(`⚠️ Erro no reconhecimento de voz: ${event.error}. Tente digitar sua mensagem.`);
       }
     };
 
     recognitionRef.current = recognition;
     recognition.start();
+    setRecordingMode('speech');
     setIsRecording(true);
   };
 
@@ -230,6 +235,7 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
       };
       mediaRecorderRef.current = recorder;
       recorder.start();
+      setRecordingMode('audio');
       setIsRecording(true);
     } catch {
       setResponse('⚠️ Microfone não disponível. Verifique as permissões do dispositivo.');
@@ -269,7 +275,11 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
           <div>
             <h3 className="text-white font-black text-xl uppercase italic tracking-tighter leading-none">Stets — Seu Mentor</h3>
             <p className={`text-[10px] font-bold uppercase tracking-widest mt-1 ${isRecording ? 'text-red-400 animate-pulse' : 'text-yellow-500/50'}`}>
-              {isRecording ? '● Ouvindo... toque em Parar quando terminar' : 'Fale, escreva ou envie um comprovante'}
+              {isRecording
+            ? recordingMode === 'audio'
+              ? '● Gravando áudio — toque em Parar e o Stets processa'
+              : '● Ouvindo... toque em Parar quando terminar'
+            : 'Fale, escreva ou envie um comprovante'}
             </p>
           </div>
           {'speechSynthesis' in window && (
