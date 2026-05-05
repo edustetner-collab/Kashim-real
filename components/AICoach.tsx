@@ -113,7 +113,6 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
   const geminiConfig = (systemInstruction: string, registrarGastoTool: any) => ({
     systemInstruction,
     tools: [{ functionDeclarations: [registrarGastoTool] }],
-    toolConfig: { functionCallingConfig: { mode: 'AUTO' as any } },
   });
 
   const analyzeText = async (text?: string) => {
@@ -125,7 +124,7 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
     try {
       const ai = getAi();
       const result = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-2.5-flash-preview-05-20',
         contents: finalPrompt,
         config: geminiConfig(systemInstruction, registrarGastoTool)
       });
@@ -144,7 +143,7 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
     try {
       const ai = getAi();
       const result = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-2.5-flash-preview-05-20',
         contents: [{
           role: 'user',
           parts: [
@@ -169,7 +168,7 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
     try {
       const ai = getAi();
       const result = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-2.5-flash-preview-05-20',
         contents: [{
           role: 'user',
           parts: [
