@@ -111,7 +111,7 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
   };
 
   const handleAdvance = () => {
-    if (step.type === 'welcome') { advance(); return; }
+    if (step.type === 'welcome' || step.type === 'transition') { advance(); return; }
 
     if (step.type === 'income' || step.type === 'expense') {
       const val = parseFloat(inputValue.replace(',', '.'));
