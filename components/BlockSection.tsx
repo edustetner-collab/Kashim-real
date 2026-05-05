@@ -470,6 +470,22 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   </div>
                 </div>
               )}
+              {category === CategoryType.FIXED_EXPENSE && onUpdateCardConfig && (
+                <div className="mt-2 ml-7 flex items-center gap-2">
+                  <i className="fas fa-calendar-day text-zinc-600 text-[9px]"></i>
+                  <label className="text-[9px] font-black text-zinc-500 uppercase">Pagar dia</label>
+                  <select
+                    value={item.dueDay || ''}
+                    onChange={(e) => onUpdateCardConfig(item.id, 'dueDay', parseInt(e.target.value))}
+                    className="bg-zinc-800 rounded-lg px-2 py-1 text-[11px] outline-none border border-zinc-700 text-zinc-300 text-center"
+                  >
+                    <option value="">--</option>
+                    {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               {showLinkOption && onLinkCard && (() => {
                 const hasPayment = !!(item.linkType || item.linkedCardId);
                 const isOpen = openPaymentItemId === item.id;
@@ -630,7 +646,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                       <div className="flex gap-2 px-2 pb-1">
                         <div className="flex flex-col">
                           <label className="text-[8px] font-black text-zinc-400 uppercase">Fechamento</label>
-                          <input 
+                          <input
                             type="number" min="1" max="31"
                             value={item.closingDay || ''}
                             onChange={(e) => onUpdateCardConfig(item.id, 'closingDay', parseInt(e.target.value))}
@@ -640,7 +656,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                         </div>
                         <div className="flex flex-col">
                           <label className="text-[8px] font-black text-zinc-400 uppercase">Vencimento</label>
-                          <input 
+                          <input
                             type="number" min="1" max="31"
                             value={item.dueDay || ''}
                             onChange={(e) => onUpdateCardConfig(item.id, 'dueDay', parseInt(e.target.value))}
@@ -648,6 +664,22 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                             placeholder="Dia"
                           />
                         </div>
+                      </div>
+                    )}
+                    {category === CategoryType.FIXED_EXPENSE && onUpdateCardConfig && (
+                      <div className="flex items-center gap-2 px-2 pb-1">
+                        <i className="fas fa-calendar-day text-zinc-400 text-[9px]"></i>
+                        <label className="text-[8px] font-black text-zinc-400 uppercase">Pagar dia</label>
+                        <select
+                          value={item.dueDay || ''}
+                          onChange={(e) => onUpdateCardConfig(item.id, 'dueDay', parseInt(e.target.value))}
+                          className="bg-zinc-100 rounded px-1 text-[10px] outline-none border border-zinc-200 focus:border-yellow-500 text-zinc-700"
+                        >
+                          <option value="">--</option>
+                          {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
+                            <option key={d} value={d}>{d}</option>
+                          ))}
+                        </select>
                       </div>
                     )}
                     {showLinkOption && onLinkCard && (() => {

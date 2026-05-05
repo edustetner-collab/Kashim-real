@@ -162,17 +162,29 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   };
 
   const [entryDescriptions, setEntryDescriptions] = useState<Record<string, string>>({});
+  const [entryErrors, setEntryErrors] = useState<Record<string, boolean>>({});
+  const valueInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  const handleValueEntry = (colId: string, itemId: string, value: string, customDesc?: string) => {
-    if (!itemId || value === '' || isNaN(parseFloat(value))) return;
+  const handleSubmitEntry = (colId: string, itemId: string, value: string) => {
+    if (!itemId) return;
+    const desc = entryDescriptions[colId]?.trim();
+    if (!desc) {
+      setEntryErrors(prev => ({ ...prev, [colId]: true }));
+      return;
+    }
+    const parsed = parseFloat(value.replace(',', '.'));
+    if (!value || isNaN(parsed) || parsed <= 0) return;
     const linkedItem = items.find(i => i.id === itemId);
     const expense: PartialExpense = {
       id: crypto.randomUUID(),
       date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-      description: customDesc?.trim() || linkedItem?.description || 'Gasto',
-      value: parseFloat(value)
+      description: desc || linkedItem?.description || 'Gasto',
+      value: parsed
     };
     onAddPartial(itemId, expense, currentYear, currentMonthIdx);
+    if (valueInputRefs.current[colId]) valueInputRefs.current[colId]!.value = '';
+    setEntryDescriptions(prev => ({ ...prev, [colId]: '' }));
+    setEntryErrors(prev => ({ ...prev, [colId]: false }));
   };
 
   return (
@@ -289,33 +301,36 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                 <div className="bg-white border-t border-zinc-100">
                   <input
                     type="text"
-                    placeholder="Descrição (opcional)"
+                    placeholder={entryErrors[col.id] ? '⚠ Descrição obrigatória' : 'Descrição *'}
                     value={entryDescriptions[col.id] ?? ''}
-                    onChange={e => setEntryDescriptions(prev => ({ ...prev, [col.id]: e.target.value }))}
-                    className="w-full py-2 px-3 text-[11px] outline-none bg-zinc-50 text-zinc-600 border-b border-zinc-100 placeholder:text-zinc-300"
+                    onChange={e => {
+                      setEntryDescriptions(prev => ({ ...prev, [col.id]: e.target.value }));
+                      if (e.target.value.trim()) setEntryErrors(prev => ({ ...prev, [col.id]: false }));
+                    }}
+                    className={`w-full py-2 px-3 text-[11px] outline-none border-b transition-colors ${
+                      entryErrors[col.id]
+                        ? 'bg-red-50 border-red-300 placeholder:text-red-400 placeholder:font-bold'
+                        : 'bg-zinc-50 border-zinc-100 placeholder:text-zinc-400'
+                    } text-zinc-700`}
                   />
-                  <div className="relative flex items-center">
-                    <div className="absolute left-3 text-zinc-400 text-[10px] font-bold">R$</div>
+                  <div className="flex items-center">
+                    <div className="pl-3 text-zinc-400 text-[10px] font-bold shrink-0">R$</div>
                     <input
+                      ref={el => { valueInputRefs.current[col.id] = el; }}
                       type="number"
                       inputMode="decimal"
-                      placeholder="Lançar valor..."
-                      className="flex-1 py-3 pl-8 pr-4 text-sm outline-none bg-transparent focus:bg-yellow-50/50 font-black text-zinc-900 transition-all placeholder:text-zinc-300 placeholder:font-normal placeholder:text-xs"
+                      placeholder="Valor..."
+                      className="flex-1 py-3 pl-2 pr-2 text-sm outline-none bg-transparent focus:bg-yellow-50/50 font-black text-zinc-900 transition-all placeholder:text-zinc-300 placeholder:font-normal placeholder:text-xs"
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          handleValueEntry(col.id, col.linkedItemId, e.currentTarget.value, entryDescriptions[col.id]);
-                          e.currentTarget.value = '';
-                          setEntryDescriptions(prev => ({ ...prev, [col.id]: '' }));
-                        }
-                      }}
-                      onBlur={(e) => {
-                        if (e.currentTarget.value !== '') {
-                          handleValueEntry(col.id, col.linkedItemId, e.currentTarget.value, entryDescriptions[col.id]);
-                          e.currentTarget.value = '';
-                          setEntryDescriptions(prev => ({ ...prev, [col.id]: '' }));
-                        }
+                        if (e.key === 'Enter') handleSubmitEntry(col.id, col.linkedItemId, e.currentTarget.value);
                       }}
                     />
+                    <button
+                      onClick={() => handleSubmitEntry(col.id, col.linkedItemId, valueInputRefs.current[col.id]?.value ?? '')}
+                      className="mr-2 bg-yellow-500 active:bg-yellow-400 text-black font-black text-[10px] px-3 py-1.5 rounded-lg uppercase shrink-0"
+                    >
+                      OK
+                    </button>
                   </div>
                 </div>
               )}
