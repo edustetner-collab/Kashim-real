@@ -75,7 +75,15 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
   };
 
   const processResult = (result: any) => {
-    const functionCalls = result.functionCalls;
+    // SDK v1.x: functionCalls pode ser getter, método ou estar nos candidates/parts
+    const rawCalls = typeof result.functionCalls === 'function'
+      ? result.functionCalls()
+      : result.functionCalls;
+    const partCalls = result.candidates?.[0]?.content?.parts
+      ?.filter((p: any) => p.functionCall)
+      ?.map((p: any) => p.functionCall);
+    const functionCalls = rawCalls?.length ? rawCalls : partCalls?.length ? partCalls : null;
+
     if (functionCalls?.length > 0 && functionCalls[0].name === 'registrar_gasto') {
       const { itemId, valor, categoriaEncontrada } = functionCalls[0].args as any;
       const expense: PartialExpense = {
