@@ -479,6 +479,13 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   </select>
                 </div>
               )}
+              {realSpent > 0 && (
+                <div className="mt-1.5 ml-7 flex items-center gap-2">
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase ${isOver ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                    Realizado: {formatCurrency(realSpent)}
+                  </span>
+                </div>
+              )}
               {showLinkOption && onLinkCard && (() => {
                 const hasPayment = !!(item.linkType || item.linkedCardId);
                 const isOpen = openPaymentItemId === item.id;
@@ -562,13 +569,6 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   </div>
                 );
               })()}
-              {realSpent > 0 && (
-                <div className="mt-1.5 ml-7 flex items-center gap-2">
-                  <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase ${isOver ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                    Realizado: {formatCurrency(realSpent)}
-                  </span>
-                </div>
-              )}
             </div>
           );
         })}
