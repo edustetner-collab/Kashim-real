@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { SummaryData, FinanceItem, CategoryType, PartialExpense } from '../types';
 import { formatCurrency } from '../constants';
 
@@ -64,36 +64,19 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
 
     const systemInstruction = `Seu nome é Stets. Você é o mentor financeiro pessoal do método "RICO nessa vida".
 
-VOCÊ SEMPRE RESPONDE EM JSON com uma destas estruturas:
-- Quando detectar gasto (mensagem de voz, texto ou comprovante/cupom/recibo):
-  {"acao":"registrar","itemId":"<id da lista>","valor":<número>,"categoriaEncontrada":"<nome amigável>","mensagem":"<mensagem motivacional curta>"}
-- Quando for pergunta ou análise financeira:
-  {"acao":"responder","mensagem":"<resposta completa>"}
+RESPONDA SEMPRE E SOMENTE com um objeto JSON, sem markdown, sem texto fora do JSON.
 
-ITENS DISPONÍVEIS PARA LANÇAMENTO:
-${JSON.stringify(availableItems)}
+Se detectar gasto (voz, texto, comprovante, cupom, recibo):
+{"acao":"registrar","itemId":"ID_DA_LISTA","valor":NUMERO,"categoriaEncontrada":"NOME","mensagem":"mensagem motivacional"}
 
-DADOS DO MÊS: Renda ${formatCurrency(summary.totalIncome)} | Fixos ${fixedPercent.toFixed(1)}% (ideal ≤55%) | Lazer ${leisurePercent.toFixed(1)}% (ideal ≤15%)
+Se for pergunta ou análise:
+{"acao":"responder","mensagem":"resposta completa"}
 
-REGRAS OBRIGATÓRIAS:
-- Se há qualquer valor monetário mencionado ou visível num comprovante → use acao "registrar"
-- Escolha o itemId mais próximo semanticamente dos itens disponíveis
-- Nunca use IDs que não estejam na lista acima
-- Tom: sofisticado, direto, encorajador — você lidera rumo à riqueza`;
+ITENS DISPONÍVEIS: ${JSON.stringify(availableItems)}
+DADOS: Renda ${formatCurrency(summary.totalIncome)} | Fixos ${fixedPercent.toFixed(1)}% (≤55%) | Lazer ${leisurePercent.toFixed(1)}% (≤15%)
+Use somente IDs da lista acima. Tom sofisticado e encorajador.`;
 
-    const responseSchema = {
-      type: Type.OBJECT,
-      properties: {
-        acao: { type: Type.STRING },
-        itemId: { type: Type.STRING },
-        valor: { type: Type.NUMBER },
-        categoriaEncontrada: { type: Type.STRING },
-        mensagem: { type: Type.STRING },
-      },
-      required: ['acao', 'mensagem'],
-    };
-
-    return { systemInstruction, responseSchema };
+    return { systemInstruction };
   };
 
   const getAi = () => {
@@ -138,16 +121,12 @@ REGRAS OBRIGATÓRIAS:
   };
 
   const geminiCall = async (contents: any) => {
-    const { systemInstruction, responseSchema } = buildContext();
+    const { systemInstruction } = buildContext();
     const ai = getAi();
     return ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents,
-      config: {
-        systemInstruction,
-        responseMimeType: 'application/json',
-        responseSchema,
-      },
+      config: { systemInstruction },
     });
   };
 
