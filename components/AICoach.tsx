@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { SummaryData, FinanceItem, CategoryType, PartialExpense } from '../types';
 import { formatCurrency } from '../constants';
 
@@ -11,11 +11,29 @@ interface AICoachProps {
   onAddPartial: (itemId: string, expense: PartialExpense) => void;
 }
 
-
 const hasSpeechRecognition = () =>
   typeof window !== 'undefined' && !!(
     (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
   );
+
+const compressImage = (base64: string, mime: string): Promise<string> =>
+  new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 1024;
+      let { width: w, height: h } = img;
+      if (w > MAX || h > MAX) {
+        if (w > h) { h = Math.round((h / w) * MAX); w = MAX; }
+        else { w = Math.round((w / h) * MAX); h = MAX; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.75).split(',')[1]);
+    };
+    img.onerror = () => resolve(base64);
+    img.src = `data:${mime};base64,${base64}`;
+  });
 
 const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddPartial }) => {
   const [prompt, setPrompt] = useState('');
@@ -44,88 +62,86 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
     window.speechSynthesis.speak(utt);
   };
 
-  const buildContext = () => {
-    const fixedPercent = (summary.totalFixed / summary.totalIncome) * 100;
-    const leisurePercent = (summary.totalLeisure / summary.totalIncome) * 100;
-    const availableItems = items
-      .filter(i =>
-        i.category === CategoryType.FIXED_EXPENSE ||
-        i.category === CategoryType.VARIABLE_EXPENSE ||
-        i.category === CategoryType.PERSONAL_LEISURE
-      )
-      .map(i => ({ id: i.id, description: i.description, category: i.category }));
-
-    const systemInstruction = `Seu nome é Stets. Você é o mentor e assistente pessoal de finanças do método "RICO nessa vida".
-Sua missão:
-1. ANALISAR: Se o usuário perguntar sobre sua vida financeira, use: Renda ${formatCurrency(summary.totalIncome)}, Fixos ${fixedPercent.toFixed(1)}% (ideal ≤55%), Lazer ${leisurePercent.toFixed(1)}% (ideal ≤15%).
-2. LANÇAR GASTOS: Se o usuário mencionar qualquer gasto ou enviar comprovante/recibo, identifique o VALOR e a CATEGORIA mais provável entre os itens disponíveis: ${JSON.stringify(availableItems)}.
-Para lançamentos detectados, chame SEMPRE a função registrar_gasto. Nunca invente IDs — use apenas os IDs da lista.
-Tom sofisticado, direto e encorajador.`;
-
-    const registrarGastoTool = {
-      name: 'registrar_gasto',
-      description: 'Registra um novo gasto na planilha de lançamentos',
-      parameters: {
-        type: Type.OBJECT,
-        properties: {
-          itemId: { type: Type.STRING, description: 'ID do item da lista disponível' },
-          valor: { type: Type.NUMBER, description: 'Valor numérico do gasto' },
-          categoriaEncontrada: { type: Type.STRING, description: 'Nome amigável do item identificado' },
-        },
-        required: ['itemId', 'valor', 'categoriaEncontrada'],
-      },
-    };
-
-    return { systemInstruction, registrarGastoTool };
-  };
-
   const getAi = () => {
     const apiKey = (process.env as any).API_KEY || (process.env as any).GEMINI_API_KEY;
     if (!apiKey) throw new Error('Chave de API não configurada.');
     return new GoogleGenAI({ apiKey });
   };
 
-  const processResult = (result: any) => {
-    const calls = result.functionCalls;
-    if (calls?.length > 0 && calls[0].name === 'registrar_gasto') {
-      const { itemId, valor, categoriaEncontrada } = calls[0].args as any;
-      const expense: PartialExpense = {
-        id: crypto.randomUUID(),
-        date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-        description: 'Lançamento via Stets',
-        value: valor,
-      };
-      onAddPartial(itemId, expense);
-      const msg = `✅ Lançamento de ${formatCurrency(valor)} registrado em **${categoriaEncontrada}**. Sua disciplina é o caminho para o topo!`;
-      setResponse(msg);
-      speak(`Lançamento de ${formatCurrency(valor)} registrado em ${categoriaEncontrada}.`);
-      setPrompt('');
-      return;
-    }
-    const txt = result.text || 'Estou à disposição. Como posso ajudar no seu planejamento hoje?';
-    setResponse(txt);
-    speak(txt);
+  const availableItems = () => items
+    .filter(i =>
+      i.category === CategoryType.FIXED_EXPENSE ||
+      i.category === CategoryType.VARIABLE_EXPENSE ||
+      i.category === CategoryType.PERSONAL_LEISURE
+    )
+    .map(i => ({ id: i.id, description: i.description }));
+
+  const systemInstruction = () => {
+    const fixedPercent = (summary.totalFixed / summary.totalIncome) * 100;
+    const leisurePercent = (summary.totalLeisure / summary.totalIncome) * 100;
+    return `Seu nome é Stets. Você é o mentor financeiro do método "RICO nessa vida".
+Dados do mês: Renda ${formatCurrency(summary.totalIncome)} | Fixos ${fixedPercent.toFixed(1)}% (ideal ≤55%) | Lazer ${leisurePercent.toFixed(1)}% (ideal ≤15%).
+Tom sofisticado, direto e encorajador. Respostas curtas e impactantes.`;
   };
 
-  const geminiConfig = (systemInstruction: string, registrarGastoTool: any) => ({
-    systemInstruction,
-    tools: [{ functionDeclarations: [registrarGastoTool] }],
-  });
+  // Segunda chamada pequena: extrai dados estruturados da mensagem do usuário
+  const extractGasto = async (userMessage: string): Promise<{itemId: string; valor: number; categoriaEncontrada: string} | null> => {
+    const itens = availableItems();
+    if (!itens.length) return null;
+    try {
+      const ai = getAi();
+      const result = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: `Mensagem: "${userMessage}"
+Itens disponíveis: ${JSON.stringify(itens)}
+Se a mensagem menciona um gasto com valor monetário, responda SOMENTE com JSON: {"itemId":"<id>","valor":<numero>,"categoriaEncontrada":"<nome>"}
+Se não há gasto claro, responda SOMENTE com: null`,
+      });
+      const txt = (result.text ?? '').trim();
+      if (txt === 'null' || !txt.startsWith('{')) return null;
+      return JSON.parse(txt);
+    } catch {
+      return null;
+    }
+  };
+
+  const registerIfGasto = async (userMessage: string) => {
+    const gasto = await extractGasto(userMessage);
+    if (!gasto?.itemId || !gasto?.valor) return;
+    const expense: PartialExpense = {
+      id: crypto.randomUUID(),
+      date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+      description: 'Lançamento via Stets',
+      value: gasto.valor,
+    };
+    onAddPartial(gasto.itemId, expense);
+    setResponse(prev =>
+      `✅ Lançamento de ${formatCurrency(gasto.valor)} registrado em **${gasto.categoriaEncontrada}**.\n${prev ?? ''}`
+    );
+  };
+
+  const callGemini = async (contents: any): Promise<string> => {
+    const ai = getAi();
+    const result = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents,
+      config: { systemInstruction: systemInstruction() },
+    });
+    return result.text ?? '';
+  };
 
   const analyzeText = async (text?: string) => {
     const finalPrompt = text || prompt;
     if (!finalPrompt.trim()) return;
     setLoading(true);
     setResponse(null);
-    const { systemInstruction, registrarGastoTool } = buildContext();
     try {
-      const ai = getAi();
-      const result = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
-        contents: finalPrompt,
-        config: geminiConfig(systemInstruction, registrarGastoTool),
-      });
-      processResult(result);
+      const txt = await callGemini(finalPrompt);
+      setResponse(txt);
+      speak(txt);
+      setPrompt('');
+      // Extrai e registra gasto em paralelo sem bloquear a resposta
+      registerIfGasto(finalPrompt);
     } catch (error: any) {
       setResponse(`⚠️ ${error?.message || 'Erro ao processar. Tente novamente.'}`);
     } finally {
@@ -136,21 +152,20 @@ Tom sofisticado, direto e encorajador.`;
   const analyzeAudio = async (base64Audio: string, mimeType: string) => {
     setLoading(true);
     setResponse(null);
-    const { systemInstruction, registrarGastoTool } = buildContext();
+    // audio/mp4 não é suportado — enviar como video/mp4 (mesmo container)
+    const safeMime = mimeType === 'audio/mp4' ? 'video/mp4' : mimeType;
     try {
-      const ai = getAi();
-      const result = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
-        contents: [{
-          role: 'user',
-          parts: [
-            { text: 'O usuário enviou um áudio com um comando financeiro. Transcreva e processe.' },
-            { inlineData: { mimeType, data: base64Audio } },
-          ],
-        }] as any,
-        config: geminiConfig(systemInstruction, registrarGastoTool),
-      });
-      processResult(result);
+      const txt = await callGemini([{
+        role: 'user',
+        parts: [
+          { text: 'O usuário enviou um áudio com um comando financeiro. Transcreva e responda como Stets.' },
+          { inlineData: { mimeType: safeMime, data: base64Audio } },
+        ],
+      }]);
+      setResponse(txt);
+      speak(txt);
+      // Extrai texto do áudio para tentar registrar
+      registerIfGasto(txt);
     } catch (error: any) {
       setResponse(`⚠️ ${error?.message || 'Erro ao processar áudio.'}`);
     } finally {
@@ -161,21 +176,18 @@ Tom sofisticado, direto e encorajador.`;
   const analyzePhoto = async (base64Image: string, mimeType: string) => {
     setLoading(true);
     setResponse(null);
-    const { systemInstruction, registrarGastoTool } = buildContext();
     try {
-      const ai = getAi();
-      const result = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
-        contents: [{
-          role: 'user',
-          parts: [
-            { text: 'Analise este comprovante ou recibo. Identifique o valor total e a categoria para registrar.' },
-            { inlineData: { mimeType, data: base64Image } },
-          ],
-        }] as any,
-        config: geminiConfig(systemInstruction, registrarGastoTool),
-      });
-      processResult(result);
+      const compressed = await compressImage(base64Image, mimeType);
+      const txt = await callGemini([{
+        role: 'user',
+        parts: [
+          { text: 'Analise este comprovante. Identifique o estabelecimento, valor total e categoria do gasto.' },
+          { inlineData: { mimeType: 'image/jpeg', data: compressed } },
+        ],
+      }]);
+      setResponse(txt);
+      speak(txt);
+      registerIfGasto(txt);
     } catch (error: any) {
       setResponse(`⚠️ ${error?.message || 'Erro ao processar foto.'}`);
     } finally {
@@ -198,15 +210,11 @@ Tom sofisticado, direto e encorajador.`;
     recognition.lang = 'pt-BR';
     recognition.continuous = true;
     recognition.interimResults = true;
-
     recognition.onresult = (event: any) => {
       let transcript = '';
-      for (let i = 0; i < event.results.length; i++) {
-        transcript += event.results[i][0].transcript;
-      }
+      for (let i = 0; i < event.results.length; i++) transcript += event.results[i][0].transcript;
       setPrompt(transcript);
     };
-
     recognition.onend = () => setIsRecording(false);
     recognition.onerror = (event: any) => {
       setIsRecording(false);
@@ -216,7 +224,6 @@ Tom sofisticado, direto e encorajador.`;
         setResponse(`⚠️ Erro no reconhecimento de voz: ${event.error}. Tente digitar.`);
       }
     };
-
     recognitionRef.current = recognition;
     recognition.start();
     setRecordingMode('speech');
@@ -274,7 +281,6 @@ Tom sofisticado, direto e encorajador.`;
       <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
         <i className="fas fa-user-tie text-8xl text-yellow-500"></i>
       </div>
-
       <div className="relative z-10">
         <div className="flex items-center justify-between mb-5">
           <div>
@@ -282,8 +288,8 @@ Tom sofisticado, direto e encorajador.`;
             <p className={`text-[10px] font-bold uppercase tracking-widest mt-1 ${isRecording ? 'text-red-400 animate-pulse' : 'text-yellow-500/50'}`}>
               {isRecording
                 ? recordingMode === 'audio'
-                  ? '● Gravando áudio — toque em Parar e o Stets processa'
-                  : '● Ouvindo... toque em Parar quando terminar'
+                  ? '● Gravando — toque em Parar'
+                  : '● Ouvindo... toque em Parar'
                 : 'Fale, escreva ou envie um comprovante'}
             </p>
           </div>
@@ -296,9 +302,7 @@ Tom sofisticado, direto e encorajador.`;
                 if (!v) window.speechSynthesis.cancel();
               }}
               className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black uppercase transition-colors border ${
-                ttsEnabled
-                  ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
-                  : 'bg-zinc-800 text-zinc-500 border-zinc-700'
+                ttsEnabled ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' : 'bg-zinc-800 text-zinc-500 border-zinc-700'
               }`}
             >
               <i className={`fas ${ttsEnabled ? 'fa-volume-up' : 'fa-volume-mute'} text-xs`}></i>
@@ -327,14 +331,7 @@ Tom sofisticado, direto e encorajador.`;
               <i className="fas fa-camera text-sm"></i>
               <span className="hidden sm:inline">Comprovante</span>
             </button>
-            <input
-              ref={photoInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={handlePhotoCapture}
-            />
+            <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoCapture} />
 
             <button
               onClick={toggleRecording}
