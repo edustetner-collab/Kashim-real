@@ -11,6 +11,14 @@ interface AICoachProps {
   onAddPartial: (itemId: string, expense: PartialExpense) => void;
 }
 
+interface StetsResponse {
+  acao: 'registrar' | 'responder';
+  itemId?: string;
+  valor?: number;
+  categoriaEncontrada?: string;
+  mensagem: string;
+}
+
 const hasSpeechRecognition = () =>
   typeof window !== 'undefined' && !!(
     (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
@@ -27,7 +35,7 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const photoInputRef = useRef<HTMLInputElement>(null);
-
+  const analyzeAudioRef = useRef<(b64: string, mime: string) => void>(() => {});
   const analyzePhotoRef = useRef<(b64: string, mime: string) => void>(() => {});
 
   const speak = (text: string) => {
@@ -47,61 +55,45 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
     const fixedPercent = (summary.totalFixed / summary.totalIncome) * 100;
     const leisurePercent = (summary.totalLeisure / summary.totalIncome) * 100;
     const availableItems = items
-      .filter(i => i.category === CategoryType.FIXED_EXPENSE || i.category === CategoryType.VARIABLE_EXPENSE || i.category === CategoryType.PERSONAL_LEISURE)
+      .filter(i =>
+        i.category === CategoryType.FIXED_EXPENSE ||
+        i.category === CategoryType.VARIABLE_EXPENSE ||
+        i.category === CategoryType.PERSONAL_LEISURE
+      )
       .map(i => ({ id: i.id, description: i.description, category: i.category }));
 
-    const systemInstruction = `Seu nome é Stets. Você é o mentor e assistente pessoal de finanças do método "RICO nessa vida".
-Sua missão é:
-1. ANALISAR: Se o usuário perguntar sobre sua vida financeira, use os dados: Renda ${formatCurrency(summary.totalIncome)}, Fixos ${fixedPercent.toFixed(1)}% (ideal ≤55%), Lazer ${leisurePercent.toFixed(1)}% (ideal ≤15%).
-2. LANÇAR GASTOS: Se o usuário disser que gastou algo, ou enviar um comprovante/recibo, identifique o VALOR e a CATEGORIA mais provável entre os itens disponíveis: ${JSON.stringify(availableItems)}.
-IMPORTANTE: Para lançamentos de gastos detectados, chame SEMPRE a função 'registrar_gasto'. Nunca invente IDs — use apenas os IDs da lista.
-Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não apenas organiza, você lidera o usuário rumo à riqueza.`;
+    const systemInstruction = `Seu nome é Stets. Você é o mentor financeiro pessoal do método "RICO nessa vida".
 
-    const registrarGastoTool = {
-      name: 'registrar_gasto',
-      description: 'Registra um novo gasto na planilha de lançamentos',
-      parameters: {
-        type: Type.OBJECT,
-        properties: {
-          itemId: { type: Type.STRING, description: 'ID do item da lista disponível' },
-          valor: { type: Type.NUMBER, description: 'Valor numérico do gasto' },
-          categoriaEncontrada: { type: Type.STRING, description: 'Nome amigável do item identificado' }
-        },
-        required: ['itemId', 'valor', 'categoriaEncontrada']
-      }
+VOCÊ SEMPRE RESPONDE EM JSON com uma destas estruturas:
+- Quando detectar gasto (mensagem de voz, texto ou comprovante/cupom/recibo):
+  {"acao":"registrar","itemId":"<id da lista>","valor":<número>,"categoriaEncontrada":"<nome amigável>","mensagem":"<mensagem motivacional curta>"}
+- Quando for pergunta ou análise financeira:
+  {"acao":"responder","mensagem":"<resposta completa>"}
+
+ITENS DISPONÍVEIS PARA LANÇAMENTO:
+${JSON.stringify(availableItems)}
+
+DADOS DO MÊS: Renda ${formatCurrency(summary.totalIncome)} | Fixos ${fixedPercent.toFixed(1)}% (ideal ≤55%) | Lazer ${leisurePercent.toFixed(1)}% (ideal ≤15%)
+
+REGRAS OBRIGATÓRIAS:
+- Se há qualquer valor monetário mencionado ou visível num comprovante → use acao "registrar"
+- Escolha o itemId mais próximo semanticamente dos itens disponíveis
+- Nunca use IDs que não estejam na lista acima
+- Tom: sofisticado, direto, encorajador — você lidera rumo à riqueza`;
+
+    const responseSchema = {
+      type: Type.OBJECT,
+      properties: {
+        acao: { type: Type.STRING },
+        itemId: { type: Type.STRING },
+        valor: { type: Type.NUMBER },
+        categoriaEncontrada: { type: Type.STRING },
+        mensagem: { type: Type.STRING },
+      },
+      required: ['acao', 'mensagem'],
     };
 
-    return { systemInstruction, registrarGastoTool };
-  };
-
-  const processResult = (result: any) => {
-    // SDK v1.x: functionCalls pode ser getter, método ou estar nos candidates/parts
-    const rawCalls = typeof result.functionCalls === 'function'
-      ? result.functionCalls()
-      : result.functionCalls;
-    const partCalls = result.candidates?.[0]?.content?.parts
-      ?.filter((p: any) => p.functionCall)
-      ?.map((p: any) => p.functionCall);
-    const functionCalls = rawCalls?.length ? rawCalls : partCalls?.length ? partCalls : null;
-
-    if (functionCalls?.length > 0 && functionCalls[0].name === 'registrar_gasto') {
-      const { itemId, valor, categoriaEncontrada } = functionCalls[0].args as any;
-      const expense: PartialExpense = {
-        id: crypto.randomUUID(),
-        date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-        description: 'Lançamento via Stets',
-        value: valor
-      };
-      onAddPartial(itemId, expense);
-      const msg = `✅ Lançamento de ${formatCurrency(valor)} registrado em **${categoriaEncontrada}**. Sua disciplina é o caminho para o topo!`;
-      setResponse(msg);
-      speak(`Lançamento de ${formatCurrency(valor)} registrado em ${categoriaEncontrada}.`);
-      setPrompt('');
-      return;
-    }
-    const txt = result.text || 'Estou à disposição. Como posso ajudar no seu planejamento hoje?';
-    setResponse(txt);
-    speak(txt);
+    return { systemInstruction, responseSchema };
   };
 
   const getAi = () => {
@@ -110,25 +102,63 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
     return new GoogleGenAI({ apiKey });
   };
 
-  const geminiConfig = (systemInstruction: string, registrarGastoTool: any) => ({
-    systemInstruction,
-    tools: [{ functionDeclarations: [registrarGastoTool] }],
-  });
+  const processJsonResult = (result: any) => {
+    const raw = result.text ?? '';
+    let parsed: StetsResponse | null = null;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      const m = raw.match(/\{[\s\S]*?\}/);
+      if (m) { try { parsed = JSON.parse(m[0]); } catch { /* ignore */ } }
+    }
+
+    if (!parsed) {
+      setResponse(raw || 'Estou à disposição. Como posso ajudar?');
+      speak(raw);
+      return;
+    }
+
+    if (parsed.acao === 'registrar' && parsed.itemId && parsed.valor) {
+      const expense: PartialExpense = {
+        id: crypto.randomUUID(),
+        date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+        description: 'Lançamento via Stets',
+        value: parsed.valor,
+      };
+      onAddPartial(parsed.itemId, expense);
+      const msg = `✅ Lançamento de ${formatCurrency(parsed.valor)} registrado em **${parsed.categoriaEncontrada || parsed.itemId}**. ${parsed.mensagem}`;
+      setResponse(msg);
+      speak(parsed.mensagem);
+      setPrompt('');
+      return;
+    }
+
+    setResponse(parsed.mensagem);
+    speak(parsed.mensagem);
+  };
+
+  const geminiCall = async (contents: any) => {
+    const { systemInstruction, responseSchema } = buildContext();
+    const ai = getAi();
+    return ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents,
+      config: {
+        systemInstruction,
+        responseMimeType: 'application/json',
+        responseSchema,
+      },
+    });
+  };
 
   const analyzeText = async (text?: string) => {
     const finalPrompt = text || prompt;
     if (!finalPrompt.trim()) return;
     setLoading(true);
     setResponse(null);
-    const { systemInstruction, registrarGastoTool } = buildContext();
     try {
-      const ai = getAi();
-      const result = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-preview-05-20',
-        contents: finalPrompt,
-        config: geminiConfig(systemInstruction, registrarGastoTool)
-      });
-      processResult(result);
+      const result = await geminiCall(finalPrompt);
+      processJsonResult(result);
     } catch (error: any) {
       setResponse(`⚠️ ${error?.message || 'Erro ao processar. Tente novamente.'}`);
     } finally {
@@ -139,21 +169,15 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
   const analyzeAudio = async (base64Audio: string, mimeType: string) => {
     setLoading(true);
     setResponse(null);
-    const { systemInstruction, registrarGastoTool } = buildContext();
     try {
-      const ai = getAi();
-      const result = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-preview-05-20',
-        contents: [{
-          role: 'user',
-          parts: [
-            { text: 'O usuário enviou um áudio com um comando financeiro. Transcreva e processe.' },
-            { inlineData: { mimeType, data: base64Audio } }
-          ]
-        }] as any,
-        config: geminiConfig(systemInstruction, registrarGastoTool)
-      });
-      processResult(result);
+      const result = await geminiCall([{
+        role: 'user',
+        parts: [
+          { text: 'Áudio com comando financeiro. Transcreva e processe.' },
+          { inlineData: { mimeType, data: base64Audio } },
+        ],
+      }]);
+      processJsonResult(result);
     } catch (error: any) {
       setResponse(`⚠️ ${error?.message || 'Erro ao processar áudio.'}`);
     } finally {
@@ -164,21 +188,15 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
   const analyzePhoto = async (base64Image: string, mimeType: string) => {
     setLoading(true);
     setResponse(null);
-    const { systemInstruction, registrarGastoTool } = buildContext();
     try {
-      const ai = getAi();
-      const result = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-preview-05-20',
-        contents: [{
-          role: 'user',
-          parts: [
-            { text: 'Analise este comprovante ou recibo. Identifique o valor total pago e a categoria do gasto para registrar na planilha financeira.' },
-            { inlineData: { mimeType, data: base64Image } }
-          ]
-        }] as any,
-        config: geminiConfig(systemInstruction, registrarGastoTool)
-      });
-      processResult(result);
+      const result = await geminiCall([{
+        role: 'user',
+        parts: [
+          { text: 'Comprovante ou recibo. Identifique o valor total e a categoria.' },
+          { inlineData: { mimeType, data: base64Image } },
+        ],
+      }]);
+      processJsonResult(result);
     } catch (error: any) {
       setResponse(`⚠️ ${error?.message || 'Erro ao processar foto.'}`);
     } finally {
@@ -186,6 +204,7 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
     }
   };
 
+  analyzeAudioRef.current = analyzeAudio;
   analyzePhotoRef.current = analyzePhoto;
 
   const stopRecording = () => {
@@ -213,10 +232,9 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
     recognition.onerror = (event: any) => {
       setIsRecording(false);
       if (event.error === 'service-not-allowed' || event.error === 'not-allowed') {
-        // Web Speech API blocked in WKWebView — fall back to MediaRecorder silently
         startMediaRecorder();
       } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        setResponse(`⚠️ Erro no reconhecimento de voz: ${event.error}. Tente digitar sua mensagem.`);
+        setResponse(`⚠️ Erro no reconhecimento de voz: ${event.error}. Tente digitar.`);
       }
     };
 
@@ -229,9 +247,9 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
   const startMediaRecorder = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
-        : 'audio/mp4';
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
       const recorder = new MediaRecorder(stream, { mimeType });
       audioChunksRef.current = [];
       recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
@@ -242,7 +260,7 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
         const reader = new FileReader();
         reader.onloadend = () => {
           const base64 = (reader.result as string).split(',')[1];
-          analyzeAudio(base64, baseMime);
+          analyzeAudioRef.current(base64, baseMime);
         };
         reader.readAsDataURL(blob);
       };
@@ -257,11 +275,7 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
 
   const toggleRecording = () => {
     if (isRecording) { stopRecording(); return; }
-    if (hasSpeechRecognition()) {
-      startSpeechRecognition();
-    } else {
-      startMediaRecorder();
-    }
+    if (hasSpeechRecognition()) { startSpeechRecognition(); } else { startMediaRecorder(); }
   };
 
   const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -283,16 +297,15 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
       </div>
 
       <div className="relative z-10">
-        {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <div>
             <h3 className="text-white font-black text-xl uppercase italic tracking-tighter leading-none">Stets — Seu Mentor</h3>
             <p className={`text-[10px] font-bold uppercase tracking-widest mt-1 ${isRecording ? 'text-red-400 animate-pulse' : 'text-yellow-500/50'}`}>
               {isRecording
-            ? recordingMode === 'audio'
-              ? '● Gravando áudio — toque em Parar e o Stets processa'
-              : '● Ouvindo... toque em Parar quando terminar'
-            : 'Fale, escreva ou envie um comprovante'}
+                ? recordingMode === 'audio'
+                  ? '● Gravando áudio — toque em Parar e o Stets processa'
+                  : '● Ouvindo... toque em Parar quando terminar'
+                : 'Fale, escreva ou envie um comprovante'}
             </p>
           </div>
           {'speechSynthesis' in window && (
@@ -308,7 +321,6 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
                   ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
                   : 'bg-zinc-800 text-zinc-500 border-zinc-700'
               }`}
-              title={ttsEnabled ? 'Respostas em voz ativadas — toque para desativar' : 'Respostas em voz desativadas — toque para ativar'}
             >
               <i className={`fas ${ttsEnabled ? 'fa-volume-up' : 'fa-volume-mute'} text-xs`}></i>
               <span>Voz</span>
@@ -317,7 +329,6 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
         </div>
 
         <div className="flex flex-col gap-3">
-          {/* Text input */}
           <input
             type="text"
             value={prompt}
@@ -328,14 +339,11 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
             className={`w-full bg-zinc-900 border ${isRecording ? 'border-red-500/40' : 'border-zinc-800'} rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-yellow-500 transition-all shadow-inner disabled:opacity-60`}
           />
 
-          {/* Action bar */}
           <div className="flex gap-2 flex-wrap">
-            {/* Comprovante */}
             <button
               onClick={() => photoInputRef.current?.click()}
               disabled={loading || isRecording}
               className="flex items-center gap-2 bg-zinc-800 active:bg-zinc-700 text-zinc-300 font-black px-4 py-3 rounded-2xl text-xs uppercase transition-all disabled:opacity-40 border border-zinc-700"
-              title="Tirar foto de comprovante para lançamento automático"
             >
               <i className="fas fa-camera text-sm"></i>
               <span className="hidden sm:inline">Comprovante</span>
@@ -349,7 +357,6 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
               onChange={handlePhotoCapture}
             />
 
-            {/* Microfone */}
             <button
               onClick={toggleRecording}
               disabled={loading}
@@ -358,13 +365,11 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
                   ? 'bg-red-500 text-white border-red-400 shadow-lg shadow-red-500/30'
                   : 'bg-zinc-800 active:bg-zinc-700 text-zinc-300 border-zinc-700'
               }`}
-              title={isRecording ? 'Parar gravação e enviar' : 'Gravar mensagem de voz'}
             >
               <i className={`fas ${isRecording ? 'fa-stop-circle' : 'fa-microphone'} text-sm`}></i>
               <span>{isRecording ? 'Parar' : 'Falar'}</span>
             </button>
 
-            {/* Enviar */}
             <button
               onClick={() => analyzeText()}
               disabled={loading || !prompt.trim()}
@@ -377,7 +382,6 @@ Ao responder, seu tom deve ser sofisticado, direto e encorajador. Você não ape
             </button>
           </div>
 
-          {/* Response */}
           {response && (
             <div className="mt-1 bg-zinc-900/80 border border-zinc-800 p-5 rounded-2xl text-zinc-300 text-sm leading-relaxed animate-in zoom-in-95 duration-300">
               {response.split('\n').map((line, i) => (
