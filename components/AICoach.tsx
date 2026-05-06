@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { SummaryData, FinanceItem, CategoryType, PartialExpense } from '../types';
 import { formatCurrency } from '../constants';
 
@@ -11,13 +11,6 @@ interface AICoachProps {
   onAddPartial: (itemId: string, expense: PartialExpense) => void;
 }
 
-interface StetsResponse {
-  acao: 'registrar' | 'responder';
-  itemId?: string;
-  valor?: number;
-  categoriaEncontrada?: string;
-  mensagem: string;
-}
 
 const hasSpeechRecognition = () =>
   typeof window !== 'undefined' && !!(
@@ -62,21 +55,28 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
       )
       .map(i => ({ id: i.id, description: i.description, category: i.category }));
 
-    const systemInstruction = `Seu nome é Stets. Você é o mentor financeiro pessoal do método "RICO nessa vida".
+    const systemInstruction = `Seu nome é Stets. Você é o mentor e assistente pessoal de finanças do método "RICO nessa vida".
+Sua missão:
+1. ANALISAR: Se o usuário perguntar sobre sua vida financeira, use: Renda ${formatCurrency(summary.totalIncome)}, Fixos ${fixedPercent.toFixed(1)}% (ideal ≤55%), Lazer ${leisurePercent.toFixed(1)}% (ideal ≤15%).
+2. LANÇAR GASTOS: Se o usuário mencionar qualquer gasto ou enviar comprovante/recibo, identifique o VALOR e a CATEGORIA mais provável entre os itens disponíveis: ${JSON.stringify(availableItems)}.
+Para lançamentos detectados, chame SEMPRE a função registrar_gasto. Nunca invente IDs — use apenas os IDs da lista.
+Tom sofisticado, direto e encorajador.`;
 
-RESPONDA SEMPRE E SOMENTE com um objeto JSON, sem markdown, sem texto fora do JSON.
+    const registrarGastoTool = {
+      name: 'registrar_gasto',
+      description: 'Registra um novo gasto na planilha de lançamentos',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          itemId: { type: Type.STRING, description: 'ID do item da lista disponível' },
+          valor: { type: Type.NUMBER, description: 'Valor numérico do gasto' },
+          categoriaEncontrada: { type: Type.STRING, description: 'Nome amigável do item identificado' },
+        },
+        required: ['itemId', 'valor', 'categoriaEncontrada'],
+      },
+    };
 
-Se detectar gasto (voz, texto, comprovante, cupom, recibo):
-{"acao":"registrar","itemId":"ID_DA_LISTA","valor":NUMERO,"categoriaEncontrada":"NOME","mensagem":"mensagem motivacional"}
-
-Se for pergunta ou análise:
-{"acao":"responder","mensagem":"resposta completa"}
-
-ITENS DISPONÍVEIS: ${JSON.stringify(availableItems)}
-DADOS: Renda ${formatCurrency(summary.totalIncome)} | Fixos ${fixedPercent.toFixed(1)}% (≤55%) | Lazer ${leisurePercent.toFixed(1)}% (≤15%)
-Use somente IDs da lista acima. Tom sofisticado e encorajador.`;
-
-    return { systemInstruction };
+    return { systemInstruction, registrarGastoTool };
   };
 
   const getAi = () => {
@@ -85,59 +85,47 @@ Use somente IDs da lista acima. Tom sofisticado e encorajador.`;
     return new GoogleGenAI({ apiKey });
   };
 
-  const processJsonResult = (result: any) => {
-    const raw = result.text ?? '';
-    let parsed: StetsResponse | null = null;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      const m = raw.match(/\{[\s\S]*?\}/);
-      if (m) { try { parsed = JSON.parse(m[0]); } catch { /* ignore */ } }
-    }
-
-    if (!parsed) {
-      setResponse(raw || 'Estou à disposição. Como posso ajudar?');
-      speak(raw);
-      return;
-    }
-
-    if (parsed.acao === 'registrar' && parsed.itemId && parsed.valor) {
+  const processResult = (result: any) => {
+    const calls = result.functionCalls;
+    if (calls?.length > 0 && calls[0].name === 'registrar_gasto') {
+      const { itemId, valor, categoriaEncontrada } = calls[0].args as any;
       const expense: PartialExpense = {
         id: crypto.randomUUID(),
         date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
         description: 'Lançamento via Stets',
-        value: parsed.valor,
+        value: valor,
       };
-      onAddPartial(parsed.itemId, expense);
-      const msg = `✅ Lançamento de ${formatCurrency(parsed.valor)} registrado em **${parsed.categoriaEncontrada || parsed.itemId}**. ${parsed.mensagem}`;
+      onAddPartial(itemId, expense);
+      const msg = `✅ Lançamento de ${formatCurrency(valor)} registrado em **${categoriaEncontrada}**. Sua disciplina é o caminho para o topo!`;
       setResponse(msg);
-      speak(parsed.mensagem);
+      speak(`Lançamento de ${formatCurrency(valor)} registrado em ${categoriaEncontrada}.`);
       setPrompt('');
       return;
     }
-
-    setResponse(parsed.mensagem);
-    speak(parsed.mensagem);
+    const txt = result.text || 'Estou à disposição. Como posso ajudar no seu planejamento hoje?';
+    setResponse(txt);
+    speak(txt);
   };
 
-  const geminiCall = async (contents: any) => {
-    const { systemInstruction } = buildContext();
-    const ai = getAi();
-    return ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents,
-      config: { systemInstruction },
-    });
-  };
+  const geminiConfig = (systemInstruction: string, registrarGastoTool: any) => ({
+    systemInstruction,
+    tools: [{ functionDeclarations: [registrarGastoTool] }],
+  });
 
   const analyzeText = async (text?: string) => {
     const finalPrompt = text || prompt;
     if (!finalPrompt.trim()) return;
     setLoading(true);
     setResponse(null);
+    const { systemInstruction, registrarGastoTool } = buildContext();
     try {
-      const result = await geminiCall(finalPrompt);
-      processJsonResult(result);
+      const ai = getAi();
+      const result = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: finalPrompt,
+        config: geminiConfig(systemInstruction, registrarGastoTool),
+      });
+      processResult(result);
     } catch (error: any) {
       setResponse(`⚠️ ${error?.message || 'Erro ao processar. Tente novamente.'}`);
     } finally {
@@ -148,15 +136,21 @@ Use somente IDs da lista acima. Tom sofisticado e encorajador.`;
   const analyzeAudio = async (base64Audio: string, mimeType: string) => {
     setLoading(true);
     setResponse(null);
+    const { systemInstruction, registrarGastoTool } = buildContext();
     try {
-      const result = await geminiCall([{
-        role: 'user',
-        parts: [
-          { text: 'Áudio com comando financeiro. Transcreva e processe.' },
-          { inlineData: { mimeType, data: base64Audio } },
-        ],
-      }]);
-      processJsonResult(result);
+      const ai = getAi();
+      const result = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: [{
+          role: 'user',
+          parts: [
+            { text: 'O usuário enviou um áudio com um comando financeiro. Transcreva e processe.' },
+            { inlineData: { mimeType, data: base64Audio } },
+          ],
+        }] as any,
+        config: geminiConfig(systemInstruction, registrarGastoTool),
+      });
+      processResult(result);
     } catch (error: any) {
       setResponse(`⚠️ ${error?.message || 'Erro ao processar áudio.'}`);
     } finally {
@@ -167,15 +161,21 @@ Use somente IDs da lista acima. Tom sofisticado e encorajador.`;
   const analyzePhoto = async (base64Image: string, mimeType: string) => {
     setLoading(true);
     setResponse(null);
+    const { systemInstruction, registrarGastoTool } = buildContext();
     try {
-      const result = await geminiCall([{
-        role: 'user',
-        parts: [
-          { text: 'Comprovante ou recibo. Identifique o valor total e a categoria.' },
-          { inlineData: { mimeType, data: base64Image } },
-        ],
-      }]);
-      processJsonResult(result);
+      const ai = getAi();
+      const result = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: [{
+          role: 'user',
+          parts: [
+            { text: 'Analise este comprovante ou recibo. Identifique o valor total e a categoria para registrar.' },
+            { inlineData: { mimeType, data: base64Image } },
+          ],
+        }] as any,
+        config: geminiConfig(systemInstruction, registrarGastoTool),
+      });
+      processResult(result);
     } catch (error: any) {
       setResponse(`⚠️ ${error?.message || 'Erro ao processar foto.'}`);
     } finally {
