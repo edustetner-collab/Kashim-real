@@ -9,7 +9,7 @@ import TetoGastos from './components/TetoGastos';
 import AICoach from './components/AICoach';
 import OnboardingTutorial from './components/OnboardingTutorial';
 import { useSupabase } from './lib/useSupabase';
-import { getOrCreateHousehold, getHousehold, loadFinanceItems, saveFinanceItem, deleteFinanceItem, addPartialExpense, deletePartialExpense, updateHouseholdPlan, loadGoals } from './lib/db';
+import { getOrCreateHousehold, getHousehold, loadFinanceItems, saveFinanceItem, deleteFinanceItem, addPartialExpense, deletePartialExpense, updateHouseholdPlan, loadGoals, loadTetoColumns } from './lib/db';
 import { processInviteFromUrl } from './lib/invites';
 import InvitePartner from './components/InvitePartner';
 import CoachDashboard from './components/CoachDashboard';
@@ -59,6 +59,8 @@ const App: React.FC = () => {
   const userDataLoadedRef = useRef<string | null>(null); // tracks userId to prevent token-refresh reloads
   const coachViewLoadedRef = useRef<string | null>(null);
   const [tetoColumns, setTetoColumns] = useState<{ id: string; title: string; linkedItemId: string }[]>([]);
+  // Guard: true only after items have been loaded from DB (prevents saving default items on load failure)
+  const dbItemsLoadedRef = useRef(false);
 
   // Timeout: se Clerk não carregar em 12s, mostra tela de erro com retry
   useEffect(() => {
@@ -167,6 +169,7 @@ const App: React.FC = () => {
 
         if (dbItems.length > 0) {
           setItems(dbItems);
+          dbItemsLoadedRef.current = true;
         }
 
         // Carrega metas
@@ -229,7 +232,7 @@ const App: React.FC = () => {
   // Salva item no Supabase sempre que items mudar (debounced)
   const saveTimeoutRef = useRef<any>(null);
   useEffect(() => {
-    if (!db || !householdId || dbLoading) return;
+    if (!db || !householdId || dbLoading || !dbItemsLoadedRef.current) return;
 
     clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(async () => {
