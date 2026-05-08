@@ -175,12 +175,24 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
     setIsRecording(false);
   };
 
-  const startRecording = () => {
+  const startRecording = async () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) {
       setResponse('⚠️ Reconhecimento de voz não disponível. Use o teclado.');
       return;
     }
+
+    // Explicitly request microphone permission before SpeechRecognition.
+    // Required on iOS WKWebView (Capacitor) — without this the API returns
+    // service-not-allowed even when the system microphone permission is on.
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(t => t.stop());
+    } catch {
+      setResponse('⚠️ Permissão de microfone negada. Ative o microfone nas configurações do aplicativo.');
+      return;
+    }
+
     const recognition = new SR();
     recognition.lang = 'pt-BR';
     recognition.continuous = false;
@@ -197,7 +209,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
     recognition.onerror = (event: any) => {
       setIsRecording(false);
       if (event.error === 'service-not-allowed' || event.error === 'not-allowed') {
-        setResponse('⚠️ Microfone bloqueado. Use o teclado para lançar gastos.');
+        setResponse('⚠️ Permissão de microfone negada. Ative o microfone nas configurações do aplicativo.');
       } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
         setResponse(`⚠️ Erro no microfone: ${event.error}. Use o teclado.`);
       }
