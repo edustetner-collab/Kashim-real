@@ -1,6 +1,5 @@
 
 import React, { useState, useRef } from 'react';
-import { GoogleGenAI } from "@google/genai";
 import { SummaryData, FinanceItem, CategoryType, PartialExpense } from '../types';
 import { formatCurrency } from '../constants';
 
@@ -11,12 +10,7 @@ interface AICoachProps {
   onAddPartial: (itemId: string, expense: PartialExpense) => void;
 }
 
-const hasSpeechRecognition = () =>
-  typeof window !== 'undefined' && !!(
-    (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-  );
-
-const compressImage = (base64: string, mime: string): Promise<string> =>
+const compressImage = (base64: string, mime: string): Promise<{ data: string; mime: string }> =>
   new Promise(resolve => {
     const img = new Image();
     img.onload = () => {
@@ -29,9 +23,9 @@ const compressImage = (base64: string, mime: string): Promise<string> =>
       const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
       canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/jpeg', 0.75).split(',')[1]);
+      resolve({ data: canvas.toDataURL('image/jpeg', 0.8).split(',')[1], mime: 'image/jpeg' });
     };
-    img.onerror = () => resolve(base64);
+    img.onerror = () => resolve({ data: base64, mime });
     img.src = `data:${mime};base64,${base64}`;
   });
 
@@ -40,14 +34,9 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
   const [response, setResponse] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [recordingMode, setRecordingMode] = useState<'speech' | 'audio'>('speech');
   const [ttsEnabled, setTtsEnabled] = useState(() => localStorage.getItem('stets_tts') !== 'false');
   const recognitionRef = useRef<any>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<BlobPart[]>([]);
   const photoInputRef = useRef<HTMLInputElement>(null);
-  const analyzeAudioRef = useRef<(b64: string, mime: string) => void>(() => {});
-  const analyzePhotoRef = useRef<(b64: string, mime: string) => void>(() => {});
 
   const speak = (text: string) => {
     if (!ttsEnabled || !('speechSynthesis' in window)) return;
@@ -55,213 +44,138 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
     const clean = text.replace(/\*\*/g, '').replace(/[#*_~`]/g, '').replace(/[✅⚠️🔥💰📘🏆]/g, '').trim();
     const short = clean.length > 250 ? clean.slice(0, 250) + '...' : clean;
     const utt = new SpeechSynthesisUtterance(short);
-    utt.lang = 'pt-BR';
-    utt.rate = 1.05;
+    utt.lang = 'pt-BR'; utt.rate = 1.05;
     const ptVoice = window.speechSynthesis.getVoices().find(v => v.lang.startsWith('pt'));
     if (ptVoice) utt.voice = ptVoice;
     window.speechSynthesis.speak(utt);
   };
 
-  const getAi = () => {
-    const apiKey = (process.env as any).API_KEY || (process.env as any).GEMINI_API_KEY;
-    if (!apiKey) throw new Error('Chave de API não configurada.');
-    return new GoogleGenAI({ apiKey });
+  const availableItems = () =>
+    items
+      .filter(i => i.category === CategoryType.VARIABLE_EXPENSE || i.category === CategoryType.PERSONAL_LEISURE)
+      .map(i => ({ id: i.id, description: i.description }));
+
+  const buildSystemPrompt = () => {
+    const fixedPct = ((summary.totalFixed / summary.totalIncome) * 100).toFixed(1);
+    const leisurePct = ((summary.totalLeisure / summary.totalIncome) * 100).toFixed(1);
+    return `Seu nome é Stets. Você é o mentor financeiro do método "RICO nessa vida", criado por Eduardo Stetner — consultor financeiro com 9 anos de experiência.
+Mês atual: ${monthName} | Renda: ${formatCurrency(summary.totalIncome)} | Fixos: ${fixedPct}% (ideal ≤55%) | Lazer: ${leisurePct}% (ideal ≤15%).
+Tom sofisticado, direto, encorajador. Respostas curtas e impactantes. Máximo 3 frases.
+Quando o usuário menciona um gasto, SEMPRE use a tool register_expense para registrá-lo.`;
   };
 
-  const availableItems = () => items
-    .filter(i =>
-      i.category === CategoryType.FIXED_EXPENSE ||
-      i.category === CategoryType.VARIABLE_EXPENSE ||
-      i.category === CategoryType.PERSONAL_LEISURE
-    )
-    .map(i => ({ id: i.id, description: i.description }));
-
-  const systemInstruction = () => {
-    const fixedPercent = (summary.totalFixed / summary.totalIncome) * 100;
-    const leisurePercent = (summary.totalLeisure / summary.totalIncome) * 100;
-    return `Seu nome é Stets. Você é o mentor financeiro do método "RICO nessa vida".
-Dados do mês: Renda ${formatCurrency(summary.totalIncome)} | Fixos ${fixedPercent.toFixed(1)}% (ideal ≤55%) | Lazer ${leisurePercent.toFixed(1)}% (ideal ≤15%).
-Tom sofisticado, direto e encorajador. Respostas curtas e impactantes.`;
+  const callStets = async (userMessage: string, imageData?: string, imageMimeType?: string) => {
+    const res = await fetch('/api/stets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userMessage,
+        imageData,
+        imageMimeType,
+        systemPrompt: buildSystemPrompt(),
+        availableItems: availableItems(),
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: `Erro ${res.status}` }));
+      throw new Error(err.error || `Erro ${res.status}`);
+    }
+    return res.json() as Promise<{ text: string; expense?: { itemId: string; value: number; description: string } }>;
   };
 
-  // Segunda chamada pequena: extrai dados estruturados da mensagem do usuário
-  const extractGasto = async (userMessage: string): Promise<{itemId: string; valor: number; categoriaEncontrada: string} | null> => {
-    const itens = availableItems();
-    if (!itens.length) return null;
-    try {
-      const ai = getAi();
-      const result = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: `Mensagem: "${userMessage}"
-Itens disponíveis: ${JSON.stringify(itens)}
-Se a mensagem menciona um gasto com valor monetário, responda SOMENTE com JSON: {"itemId":"<id>","valor":<numero>,"categoriaEncontrada":"<nome>"}
-Se não há gasto claro, responda SOMENTE com: null`,
-      });
-      const txt = (result.text ?? '').trim();
-      if (txt === 'null' || !txt.startsWith('{')) return null;
-      return JSON.parse(txt);
-    } catch {
-      return null;
+  const handleResponse = (text: string, expense?: { itemId: string; value: number; description: string } | null) => {
+    setResponse(text);
+    speak(text);
+    if (expense?.itemId && expense?.value) {
+      const partial: PartialExpense = {
+        id: crypto.randomUUID(),
+        date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+        description: expense.description || 'Lançamento via Stets',
+        value: expense.value,
+      };
+      onAddPartial(expense.itemId, partial);
+      setResponse(prev =>
+        `✅ ${formatCurrency(expense.value)} registrado em ${expense.description}.\n${prev ?? ''}`
+      );
     }
   };
 
-  const registerIfGasto = async (userMessage: string) => {
-    const gasto = await extractGasto(userMessage);
-    if (!gasto?.itemId || !gasto?.valor) return;
-    const expense: PartialExpense = {
-      id: crypto.randomUUID(),
-      date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-      description: 'Lançamento via Stets',
-      value: gasto.valor,
-    };
-    onAddPartial(gasto.itemId, expense);
-    setResponse(prev =>
-      `✅ Lançamento de ${formatCurrency(gasto.valor)} registrado em **${gasto.categoriaEncontrada}**.\n${prev ?? ''}`
-    );
-  };
-
-  const callGemini = async (contents: any): Promise<string> => {
-    const ai = getAi();
-    const result = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents,
-      config: { systemInstruction: systemInstruction() },
-    });
-    return result.text ?? '';
-  };
-
   const analyzeText = async (text?: string) => {
-    const finalPrompt = text || prompt;
+    const finalPrompt = text ?? prompt;
     if (!finalPrompt.trim()) return;
     setLoading(true);
     setResponse(null);
     try {
-      const txt = await callGemini(finalPrompt);
-      setResponse(txt);
-      speak(txt);
+      const { text: txt, expense } = await callStets(finalPrompt);
+      handleResponse(txt, expense);
       setPrompt('');
-      // Extrai e registra gasto em paralelo sem bloquear a resposta
-      registerIfGasto(finalPrompt);
-    } catch (error: any) {
-      setResponse(`⚠️ ${error?.message || 'Erro ao processar. Tente novamente.'}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao processar.';
+      setResponse(`⚠️ ${msg}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const analyzeAudio = async (base64Audio: string, mimeType: string) => {
-    setLoading(true);
-    setResponse(null);
-    // audio/mp4 não é suportado — enviar como video/mp4 (mesmo container)
-    const safeMime = mimeType === 'audio/mp4' ? 'video/mp4' : mimeType;
-    try {
-      const txt = await callGemini([{
-        role: 'user',
-        parts: [
-          { text: 'O usuário enviou um áudio com um comando financeiro. Transcreva e responda como Stets.' },
-          { inlineData: { mimeType: safeMime, data: base64Audio } },
-        ],
-      }]);
-      setResponse(txt);
-      speak(txt);
-      // Extrai texto do áudio para tentar registrar
-      registerIfGasto(txt);
-    } catch (error: any) {
-      setResponse(`⚠️ ${error?.message || 'Erro ao processar áudio.'}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const analyzePhoto = async (base64Image: string, mimeType: string) => {
+  const analyzePhoto = async (base64: string, mime: string) => {
     setLoading(true);
     setResponse(null);
     try {
-      const compressed = await compressImage(base64Image, mimeType);
-      const txt = await callGemini([{
-        role: 'user',
-        parts: [
-          { text: 'Analise este comprovante. Identifique o estabelecimento, valor total e categoria do gasto.' },
-          { inlineData: { mimeType: 'image/jpeg', data: compressed } },
-        ],
-      }]);
-      setResponse(txt);
-      speak(txt);
-      registerIfGasto(txt);
-    } catch (error: any) {
-      setResponse(`⚠️ ${error?.message || 'Erro ao processar foto.'}`);
+      const compressed = await compressImage(base64, mime);
+      const { text: txt, expense } = await callStets(
+        'Analise este comprovante. Identifique o estabelecimento, valor total e categoria do gasto.',
+        compressed.data,
+        compressed.mime,
+      );
+      handleResponse(txt, expense);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao processar foto.';
+      setResponse(`⚠️ ${msg}`);
     } finally {
       setLoading(false);
     }
   };
-
-  analyzeAudioRef.current = analyzeAudio;
-  analyzePhotoRef.current = analyzePhoto;
 
   const stopRecording = () => {
     recognitionRef.current?.stop();
-    mediaRecorderRef.current?.stop();
     setIsRecording(false);
   };
 
-  const startSpeechRecognition = () => {
+  const startRecording = () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) {
+      setResponse('⚠️ Reconhecimento de voz não disponível. Use o teclado.');
+      return;
+    }
     const recognition = new SR();
     recognition.lang = 'pt-BR';
-    recognition.continuous = true;
+    recognition.continuous = false;
     recognition.interimResults = true;
     recognition.onresult = (event: any) => {
       let transcript = '';
       for (let i = 0; i < event.results.length; i++) transcript += event.results[i][0].transcript;
       setPrompt(transcript);
     };
-    recognition.onend = () => setIsRecording(false);
+    recognition.onend = () => {
+      setIsRecording(false);
+      if (prompt.trim()) analyzeText(prompt);
+    };
     recognition.onerror = (event: any) => {
       setIsRecording(false);
       if (event.error === 'service-not-allowed' || event.error === 'not-allowed') {
-        startMediaRecorder();
+        setResponse('⚠️ Microfone bloqueado. Use o teclado para lançar gastos.');
       } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        setResponse(`⚠️ Erro no reconhecimento de voz: ${event.error}. Tente digitar.`);
+        setResponse(`⚠️ Erro no microfone: ${event.error}. Use o teclado.`);
       }
     };
     recognitionRef.current = recognition;
     recognition.start();
-    setRecordingMode('speech');
     setIsRecording(true);
-  };
-
-  const startMediaRecorder = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
-      const recorder = new MediaRecorder(stream, { mimeType });
-      audioChunksRef.current = [];
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
-      recorder.onstop = () => {
-        stream.getTracks().forEach(t => t.stop());
-        const baseMime = mimeType.split(';')[0];
-        const blob = new Blob(audioChunksRef.current, { type: baseMime });
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const base64 = (reader.result as string).split(',')[1];
-          analyzeAudioRef.current(base64, baseMime);
-        };
-        reader.readAsDataURL(blob);
-      };
-      mediaRecorderRef.current = recorder;
-      recorder.start();
-      setRecordingMode('audio');
-      setIsRecording(true);
-    } catch {
-      setResponse('⚠️ Microfone não disponível. Verifique as permissões do dispositivo.');
-    }
   };
 
   const toggleRecording = () => {
     if (isRecording) { stopRecording(); return; }
-    if (hasSpeechRecognition()) { startSpeechRecognition(); } else { startMediaRecorder(); }
+    startRecording();
   };
 
   const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -270,7 +184,7 @@ Se não há gasto claro, responda SOMENTE com: null`,
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64 = (reader.result as string).split(',')[1];
-      analyzePhotoRef.current(base64, file.type || 'image/jpeg');
+      analyzePhoto(base64, file.type || 'image/jpeg');
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -286,11 +200,7 @@ Se não há gasto claro, responda SOMENTE com: null`,
           <div>
             <h3 className="text-white font-black text-xl uppercase italic tracking-tighter leading-none">Stets — Seu Mentor</h3>
             <p className={`text-[10px] font-bold uppercase tracking-widest mt-1 ${isRecording ? 'text-red-400 animate-pulse' : 'text-yellow-500/50'}`}>
-              {isRecording
-                ? recordingMode === 'audio'
-                  ? '● Gravando — toque em Parar'
-                  : '● Ouvindo... toque em Parar'
-                : 'Fale, escreva ou envie um comprovante'}
+              {isRecording ? '● Ouvindo... toque em Parar' : 'Fale, escreva ou envie um comprovante'}
             </p>
           </div>
           {'speechSynthesis' in window && (
@@ -315,8 +225,8 @@ Se não há gasto claro, responda SOMENTE com: null`,
           <input
             type="text"
             value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && analyzeText()}
+            onChange={e => setPrompt(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && analyzeText()}
             placeholder={isRecording ? 'Ouvindo... fale agora' : 'Ex: "gastei 45 reais no mercado" ou "como estou indo?"'}
             disabled={loading}
             className={`w-full bg-zinc-900 border ${isRecording ? 'border-red-500/40' : 'border-zinc-800'} rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-yellow-500 transition-all shadow-inner disabled:opacity-60`}
@@ -331,7 +241,7 @@ Se não há gasto claro, responda SOMENTE com: null`,
               <i className="fas fa-camera text-sm"></i>
               <span className="hidden sm:inline">Comprovante</span>
             </button>
-            <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoCapture} />
+            <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoCapture} />
 
             <button
               onClick={toggleRecording}

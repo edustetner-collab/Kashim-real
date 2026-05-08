@@ -56,6 +56,8 @@ const App: React.FC = () => {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const itemIdMapRef = useRef<Record<string, string>>({}); // localId -> dbId
   const pendingDeletesRef = useRef<Set<string>>(new Set());
+  const userDataLoadedRef = useRef<string | null>(null); // tracks userId to prevent token-refresh reloads
+  const coachViewLoadedRef = useRef<string | null>(null);
 
   // Timeout: se Clerk não carregar em 12s, mostra tela de erro com retry
   useEffect(() => {
@@ -181,12 +183,18 @@ const App: React.FC = () => {
       }
     }
 
+    // Skip if already loaded for this user — prevents token-refresh (every 50s) from wiping state
+    if (userDataLoadedRef.current === user.id) return;
+    userDataLoadedRef.current = user.id;
+
     loadData();
   }, [db, user]);
 
   // Quando coach entra no painel de um cliente, carrega os dados daquele household
   useEffect(() => {
     if (!db || !coachViewHouseholdId) return;
+    if (coachViewLoadedRef.current === coachViewHouseholdId) return;
+    coachViewLoadedRef.current = coachViewHouseholdId;
 
     async function loadClientData() {
       setDbLoading(true);
@@ -458,15 +466,15 @@ const App: React.FC = () => {
     }));
 
     if (db) {
-      const dbId = itemIdMapRef.current[itemId] ?? itemId;
-      addPartialExpense(db, dbId, targetYear, targetMonth, expense).catch(() => {
-        // Retry once after 1s — item auto-save may still be debouncing
-        setTimeout(() => {
-          const retryDbId = itemIdMapRef.current[itemId] ?? itemId;
-          addPartialExpense(db!, retryDbId, targetYear, targetMonth, expense)
-            .catch(err => console.error('Falha ao salvar gasto frequente:', err));
-        }, 1000);
-      });
+      const saveWithRetry = (attempt: number) => {
+        const dbId = itemIdMapRef.current[itemId] ?? itemId;
+        addPartialExpense(db!, dbId, targetYear, targetMonth, expense).catch(() => {
+          if (attempt < 5) {
+            setTimeout(() => saveWithRetry(attempt + 1), 1500 * attempt);
+          }
+        });
+      };
+      saveWithRetry(1);
     }
   };
 

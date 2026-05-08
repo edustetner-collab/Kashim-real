@@ -12,11 +12,12 @@
     "cap:open:ios": "npx cap open ios"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.95.1",
     "@capacitor/app": "^8.1.0",
     "@capacitor/cli": "^8.3.0",
     "@capacitor/core": "^8.3.0",
     "@capacitor/ios": "^8.3.0",
-"@capacitor/splash-screen": "^8.0.1",
+    "@capacitor/splash-screen": "^8.0.1",
     "@capacitor/status-bar": "^8.0.2",
     "@clerk/clerk-react": "^5.61.4",
     "@clerk/localizations": "^4.4.0",

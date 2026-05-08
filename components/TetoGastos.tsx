@@ -22,23 +22,8 @@ interface ColumnData {
 }
 
 
-// Keywords that suggest a fixed expense will have multiple purchases in a month
-const RECURRING_KEYWORDS = [
-  'mercado', 'supermercado', 'gasolina', 'combustiv', 'uber', 'ifood',
-  'lazer', 'alimentaç', 'alimentac', 'restaurante', 'lanche', 'comida',
-  'farmácia', 'farmacia', 'remédio', 'remedio', 'pet', 'diarista',
-  'estética', 'estetica', 'cabelo', 'sobrancelha', 'unha', 'transporte',
-  'delivery', 'padaria', 'açougue', 'acougue',
-];
-
 function isRecurringItem(item: FinanceItem): boolean {
-  if (item.category === CategoryType.PERSONAL_LEISURE) return true;
-  if (item.category === CategoryType.VARIABLE_EXPENSE) return true;
-  if (item.category === CategoryType.FIXED_EXPENSE) {
-    const desc = item.description.toLowerCase();
-    return RECURRING_KEYWORDS.some(kw => desc.includes(kw));
-  }
-  return false;
+  return item.category === CategoryType.PERSONAL_LEISURE || item.category === CategoryType.VARIABLE_EXPENSE;
 }
 
 const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, currentYear, onAddPartial, onRemovePartial, db, householdId }) => {
@@ -150,6 +135,9 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
   const addColumn = () => {
     setColumns(prev => [...prev, { id: crypto.randomUUID(), title: 'NOVA DESPESA', linkedItemId: '' }]);
+    setTimeout(() => {
+      columnsScrollRef.current?.scrollTo({ left: columnsScrollRef.current.scrollWidth, behavior: 'smooth' });
+    }, 50);
   };
 
   const removeColumn = (id: string) => {
@@ -161,6 +149,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
     setColumns(columns.map(c => c.id === id ? { ...c, [field]: value } : c));
   };
 
+  const columnsScrollRef = useRef<HTMLDivElement>(null);
   const [entryDescriptions, setEntryDescriptions] = useState<Record<string, string>>({});
   const [entryErrors, setEntryErrors] = useState<Record<string, boolean>>({});
   const valueInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -189,24 +178,22 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
   return (
     <div className="p-3 lg:p-6 animate-in fade-in zoom-in-95 duration-500">
-      {/* ── Month history filter ── */}
-      <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pb-1">
-          {availableMonths.map(key => (
-            <button
-              key={key}
-              onClick={() => setSelectedMonthKey(key)}
-              className={`px-4 py-2 rounded-xl text-xs font-black uppercase whitespace-nowrap transition-all shrink-0 ${
-                key === selectedMonthKey
-                  ? 'bg-yellow-600 text-black shadow-lg'
-                  : 'bg-zinc-800 text-zinc-400 hover:text-white'
-              }`}
-            >
-              {labelForKey(key)}
-              {key === currentMonthKey && <span className="ml-1 text-[8px] opacity-60">●</span>}
-            </button>
-          ))}
-        </div>
+      {/* ── Month history filter + Adicionar (mesma linha) ── */}
+      <div className="mb-4 flex items-center gap-2 overflow-x-auto scrollbar-none pb-1">
+        {availableMonths.map(key => (
+          <button
+            key={key}
+            onClick={() => setSelectedMonthKey(key)}
+            className={`px-4 py-2 rounded-xl text-xs font-black uppercase whitespace-nowrap transition-all shrink-0 ${
+              key === selectedMonthKey
+                ? 'bg-yellow-600 text-black shadow-lg'
+                : 'bg-zinc-800 text-zinc-400 hover:text-white'
+            }`}
+          >
+            {labelForKey(key)}
+            {key === currentMonthKey && <span className="ml-1 text-[8px] opacity-60">●</span>}
+          </button>
+        ))}
         {!isHistoricalView && (
           <button
             onClick={addColumn}
@@ -226,7 +213,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
         </div>
       )}
 
-      <div className="flex gap-3 overflow-x-auto pb-6 pt-1 px-1 snap-x snap-mandatory">
+      <div ref={columnsScrollRef} className="flex gap-3 overflow-x-auto pb-6 pt-1 px-1 snap-x snap-mandatory">
         {columns.map((col) => {
           const linkedItem = items.find(i => i.id === col.linkedItemId);
           const teto = linkedItem ? (linkedItem.values[currentMonthIdx] || 0) : 0;
@@ -261,7 +248,6 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                   >
                     <option value="" className="bg-yellow-500">VINCULAR ITEM</option>
                     {items.filter(i =>
-                      i.category === CategoryType.FIXED_EXPENSE ||
                       i.category === CategoryType.VARIABLE_EXPENSE ||
                       i.category === CategoryType.PERSONAL_LEISURE
                     ).map(i => (
