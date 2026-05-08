@@ -248,6 +248,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                   >
                     <option value="" className="bg-yellow-500">VINCULAR ITEM</option>
                     {items.filter(i =>
+                      i.category === CategoryType.FIXED_EXPENSE ||
                       i.category === CategoryType.VARIABLE_EXPENSE ||
                       i.category === CategoryType.PERSONAL_LEISURE
                     ).map(i => (

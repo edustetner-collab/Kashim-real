@@ -50,14 +50,24 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
     window.speechSynthesis.speak(utt);
   };
 
-  const availableItems = () =>
-    items
-      .filter(i =>
-        i.category === CategoryType.FIXED_EXPENSE ||
-        i.category === CategoryType.VARIABLE_EXPENSE ||
-        i.category === CategoryType.PERSONAL_LEISURE
-      )
-      .map(i => ({ id: i.id, description: i.description }));
+  const availableItems = () => {
+    // Only send items that have a TetoGastos column linked to them — this ensures
+    // the registered expense always shows up in a visible column.
+    let linkedIds: Set<string> = new Set();
+    try {
+      const cols = JSON.parse(localStorage.getItem('teto_columns_v3') || '[]') as { linkedItemId?: string }[];
+      linkedIds = new Set(cols.map(c => c.linkedItemId).filter(Boolean) as string[]);
+    } catch { /* ignore */ }
+
+    const candidates = linkedIds.size > 0
+      ? items.filter(i => linkedIds.has(i.id))
+      : items.filter(i =>
+          i.category === CategoryType.VARIABLE_EXPENSE ||
+          i.category === CategoryType.PERSONAL_LEISURE
+        );
+
+    return candidates.map(i => ({ id: i.id, description: i.description }));
+  };
 
   const buildSystemPrompt = () => {
     const fixedPct = ((summary.totalFixed / summary.totalIncome) * 100).toFixed(1);
@@ -95,19 +105,22 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
   const handleResponse = (text: string, expense?: { itemId: string; value: number; description: string } | null) => {
     setResponse(text);
     speak(text);
-    if (expense?.itemId && expense?.value) {
-      const matchedItem = items.find(i => i.id === expense.itemId);
-      if (!matchedItem) return;
-      const today = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-      const partial: PartialExpense = {
-        id: crypto.randomUUID(),
-        date: today,
-        description: expense.description || matchedItem.description,
-        value: expense.value,
-      };
-      onAddPartial(expense.itemId, partial);
-      setResponse(`✅ ${formatCurrency(expense.value)} em ${matchedItem.description} • ${today}`);
+    if (!expense?.itemId || !expense?.value) return;
+
+    const matchedItem = items.find(i => i.id === expense.itemId);
+    if (!matchedItem) {
+      setResponse(prev => `${prev}\n\n⚠️ Gasto detectado (${formatCurrency(expense.value)}) mas nenhuma coluna vinculada encontrada. Vá em Gastos e vincule um item.`);
+      return;
     }
+    const today = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    const partial: PartialExpense = {
+      id: crypto.randomUUID(),
+      date: today,
+      description: expense.description || matchedItem.description,
+      value: expense.value,
+    };
+    onAddPartial(expense.itemId, partial);
+    setResponse(`✅ ${formatCurrency(expense.value)} em ${matchedItem.description} • ${today}`);
   };
 
   const analyzeText = async (text?: string) => {
