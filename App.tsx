@@ -168,7 +168,33 @@ const App: React.FC = () => {
         }
 
         if (dbItems.length > 0) {
-          setItems(dbItems);
+          // Auto-cleanup: remove zero-value duplicate items (may exist from a prior bug)
+          const byKey = new Map<string, FinanceItem[]>();
+          for (const item of dbItems) {
+            const key = `${item.description}|${item.category}`;
+            byKey.set(key, [...(byKey.get(key) ?? []), item]);
+          }
+          const toDelete: string[] = [];
+          const deduped: FinanceItem[] = [];
+          const hasData = (i: FinanceItem) =>
+            i.values.some(v => v > 0) || i.paidStatus.some(Boolean) ||
+            !!(i.partialExpenses && Object.keys(i.partialExpenses).length > 0);
+          for (const group of byKey.values()) {
+            if (group.length === 1) { deduped.push(group[0]); continue; }
+            const withData = group.filter(hasData);
+            const noData = group.filter(i => !hasData(i));
+            if (withData.length > 0) {
+              deduped.push(...withData);
+              toDelete.push(...noData.map(i => i.id));
+            } else {
+              deduped.push(group[0]);
+              toDelete.push(...group.slice(1).map(i => i.id));
+            }
+          }
+          if (toDelete.length > 0) {
+            toDelete.forEach(id => deleteFinanceItem(db!, id).catch(() => {}));
+          }
+          setItems(deduped);
           dbItemsLoadedRef.current = true;
         }
 

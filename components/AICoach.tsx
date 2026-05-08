@@ -182,14 +182,17 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
       return;
     }
 
-    // Explicitly request microphone permission before SpeechRecognition.
-    // Required on iOS WKWebView (Capacitor) — without this the API returns
-    // service-not-allowed even when the system microphone permission is on.
+    // Request microphone permission explicitly before SpeechRecognition.
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach(t => t.stop());
     } catch {
-      setResponse('⚠️ Permissão de microfone negada. Ative o microfone nas configurações do aplicativo.');
+      const isNative = !!(window as any).Capacitor?.isNativePlatform?.();
+      if (isNative) {
+        setResponse('⚠️ Microfone bloqueado. No iPhone: Ajustes > Kashim > Microfone → ativar. Se já estiver ativo, o recurso de voz requer uma atualização do app.');
+      } else {
+        setResponse('⚠️ Permissão de microfone negada. Clique no cadeado na barra de endereço e ative o microfone.');
+      }
       return;
     }
 
