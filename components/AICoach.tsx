@@ -129,7 +129,8 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
       description: expense.description || matchedItem.description,
       value: expense.value,
     };
-    onAddPartial(expense.itemId, partial);
+    const now = new Date();
+    onAddPartial(expense.itemId, partial, now.getFullYear(), now.getMonth());
     setResponse(`✅ ${formatCurrency(expense.value)} em ${matchedItem.description} • ${today}`);
   };
 
