@@ -178,22 +178,22 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
   return (
     <div className="p-3 lg:p-6 animate-in fade-in zoom-in-95 duration-500">
-      {/* ── Month history filter + Adicionar (mesma linha) ── */}
-      <div className="mb-4 flex items-center gap-2 overflow-x-auto scrollbar-none pb-1">
-        {availableMonths.map(key => (
-          <button
-            key={key}
-            onClick={() => setSelectedMonthKey(key)}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase whitespace-nowrap transition-all shrink-0 ${
-              key === selectedMonthKey
-                ? 'bg-yellow-600 text-black shadow-lg'
-                : 'bg-zinc-800 text-zinc-400 hover:text-white'
-            }`}
+      {/* ── Month selector + Adicionar (mesma linha) ── */}
+      <div className="mb-4 flex items-center gap-2">
+        <div className="relative">
+          <select
+            value={selectedMonthKey}
+            onChange={e => setSelectedMonthKey(e.target.value)}
+            className="appearance-none bg-zinc-800 text-white font-black text-xs uppercase px-4 py-2.5 pr-8 rounded-xl border border-zinc-700 outline-none cursor-pointer"
           >
-            {labelForKey(key)}
-            {key === currentMonthKey && <span className="ml-1 text-[8px] opacity-60">●</span>}
-          </button>
-        ))}
+            {availableMonths.map(key => (
+              <option key={key} value={key}>
+                {labelForKey(key)}{key === currentMonthKey ? ' ●' : ''}
+              </option>
+            ))}
+          </select>
+          <i className="fas fa-chevron-down text-zinc-400 text-[9px] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+        </div>
         {!isHistoricalView && (
           <button
             onClick={addColumn}

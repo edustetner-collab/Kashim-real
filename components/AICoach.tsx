@@ -52,7 +52,11 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
 
   const availableItems = () =>
     items
-      .filter(i => i.category === CategoryType.VARIABLE_EXPENSE || i.category === CategoryType.PERSONAL_LEISURE)
+      .filter(i =>
+        i.category === CategoryType.FIXED_EXPENSE ||
+        i.category === CategoryType.VARIABLE_EXPENSE ||
+        i.category === CategoryType.PERSONAL_LEISURE
+      )
       .map(i => ({ id: i.id, description: i.description }));
 
   const buildSystemPrompt = () => {
