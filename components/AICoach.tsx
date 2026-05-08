@@ -1,7 +1,10 @@
 
 import React, { useState, useRef } from 'react';
+import { SpeechRecognition as NativeSpeech } from '@capacitor-community/speech-recognition';
 import { SummaryData, FinanceItem, CategoryType, PartialExpense } from '../types';
 import { formatCurrency } from '../constants';
+
+const isNativeApp = () => !!(window as any).Capacitor?.isNativePlatform?.();
 
 interface AICoachProps {
   summary: SummaryData;
@@ -37,6 +40,7 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
   const [isRecording, setIsRecording] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(() => localStorage.getItem('stets_tts') !== 'false');
   const recognitionRef = useRef<any>(null);
+  const nativeTranscriptRef = useRef('');
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const speak = (text: string) => {
@@ -170,32 +174,57 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
     }
   };
 
-  const stopRecording = () => {
-    recognitionRef.current?.stop();
-    setIsRecording(false);
+  const stopRecording = async () => {
+    if (isNativeApp()) {
+      await NativeSpeech.stop().catch(() => {});
+      await NativeSpeech.removeAllListeners();
+      setIsRecording(false);
+      const transcript = nativeTranscriptRef.current;
+      nativeTranscriptRef.current = '';
+      if (transcript.trim()) analyzeText(transcript);
+    } else {
+      recognitionRef.current?.stop();
+      setIsRecording(false);
+    }
   };
 
-  const startRecording = async () => {
+  const startRecordingNative = async () => {
+    try {
+      const { speechRecognition } = await NativeSpeech.requestPermissions();
+      if (speechRecognition !== 'granted') {
+        setResponse('⚠️ Permissão negada. Vá em Ajustes > Kashim e ative Microfone e Reconhecimento de Voz.');
+        return;
+      }
+    } catch {
+      setResponse('⚠️ Não foi possível solicitar permissão de voz. Tente reiniciar o app.');
+      return;
+    }
+
+    nativeTranscriptRef.current = '';
+    await NativeSpeech.removeAllListeners();
+
+    NativeSpeech.addListener('partialResults', (data: { matches: string[] | null }) => {
+      const text = data.matches?.[0] ?? '';
+      if (text) { nativeTranscriptRef.current = text; setPrompt(text); }
+    });
+
+    await NativeSpeech.start({ language: 'pt-BR', maxResults: 1, popup: false, partialResults: true });
+    setIsRecording(true);
+  };
+
+  const startRecordingWeb = async () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) {
       setResponse('⚠️ Reconhecimento de voz não disponível. Use o teclado.');
       return;
     }
-
-    // Request microphone permission explicitly before SpeechRecognition.
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach(t => t.stop());
     } catch {
-      const isNative = !!(window as any).Capacitor?.isNativePlatform?.();
-      if (isNative) {
-        setResponse('⚠️ Microfone bloqueado. No iPhone: Ajustes > Kashim > Microfone → ativar. Se já estiver ativo, o recurso de voz requer uma atualização do app.');
-      } else {
-        setResponse('⚠️ Permissão de microfone negada. Clique no cadeado na barra de endereço e ative o microfone.');
-      }
+      setResponse('⚠️ Permissão de microfone negada. Clique no cadeado na barra de endereço e ative o microfone.');
       return;
     }
-
     const recognition = new SR();
     recognition.lang = 'pt-BR';
     recognition.continuous = false;
@@ -211,9 +240,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
     };
     recognition.onerror = (event: any) => {
       setIsRecording(false);
-      if (event.error === 'service-not-allowed' || event.error === 'not-allowed') {
-        setResponse('⚠️ Permissão de microfone negada. Ative o microfone nas configurações do aplicativo.');
-      } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
+      if (event.error !== 'no-speech' && event.error !== 'aborted') {
         setResponse(`⚠️ Erro no microfone: ${event.error}. Use o teclado.`);
       }
     };
@@ -221,6 +248,8 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
     recognition.start();
     setIsRecording(true);
   };
+
+  const startRecording = () => isNativeApp() ? startRecordingNative() : startRecordingWeb();
 
   const toggleRecording = () => {
     if (isRecording) { stopRecording(); return; }
