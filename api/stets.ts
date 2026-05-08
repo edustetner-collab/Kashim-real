@@ -57,6 +57,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }),
 
       // Chamada 2: Extração forçada de gasto (tool_choice: any — Claude DEVE chamar a tool)
+      // Usa índice numérico em vez de UUID para evitar alucinação de IDs
       availableItems?.length
         ? anthropic.messages.create({
             model: 'claude-haiku-4-5-20251001',
@@ -68,7 +69,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 ...userParts,
                 {
                   type: 'text',
-                  text: `Itens disponíveis para vincular: ${JSON.stringify(availableItems)}\n\nIdentifique se há um gasto com valor monetário claro. Se sim, extraia o itemId do item mais adequado, o valor e uma descrição curta. Se não houver gasto claro, defina hasExpense como false.`,
+                  text: `Itens disponíveis (use o índice numérico): ${JSON.stringify(
+                    availableItems.map((item, idx) => ({ idx, description: item.description }))
+                  )}\n\nIdentifique se há um gasto com valor monetário claro. Se sim, extraia o itemIdx do item mais adequado (número inteiro 0-${availableItems.length - 1}), o valor e uma descrição curta. Se não houver gasto claro, defina hasExpense como false.`,
                 },
               ],
             }],
@@ -82,9 +85,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     type: 'boolean',
                     description: 'true se há um gasto com valor monetário claro, false caso contrário.',
                   },
-                  itemId: {
-                    type: 'string',
-                    description: 'ID do item da lista que melhor corresponde. String vazia se não há gasto.',
+                  itemIdx: {
+                    type: 'number',
+                    description: `Índice (0 a ${availableItems.length - 1}) do item da lista que melhor corresponde. -1 se não há gasto.`,
                   },
                   value: {
                     type: 'number',
@@ -95,7 +98,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     description: 'Descrição curta do que foi comprado. String vazia se não há gasto.',
                   },
                 },
-                required: ['hasExpense', 'itemId', 'value', 'description'],
+                required: ['hasExpense', 'itemIdx', 'value', 'description'],
               },
             }],
             tool_choice: { type: 'any' }, // OBRIGA Claude a chamar a tool
@@ -109,19 +112,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .map(b => (b as Anthropic.TextBlock).text)
       .join('');
 
-    // Extrai gasto da chamada 2
+    // Extrai gasto da chamada 2 — mapeia índice de volta para o ID real
     let expense: { itemId: string; value: number; description: string } | null = null;
-    if (extractResponse) {
+    if (extractResponse && availableItems?.length) {
       const toolBlock = extractResponse.content.find(b => b.type === 'tool_use') as Anthropic.ToolUseBlock | undefined;
       if (toolBlock) {
         const input = toolBlock.input as {
           hasExpense: boolean;
-          itemId: string;
+          itemIdx: number;
           value: number;
           description: string;
         };
-        if (input.hasExpense && input.itemId && input.value > 0) {
-          expense = { itemId: input.itemId, value: input.value, description: input.description };
+        const idx = Math.round(input.itemIdx ?? -1);
+        const matchedItem = availableItems[idx];
+        if (input.hasExpense && matchedItem && input.value > 0) {
+          expense = { itemId: matchedItem.id, value: input.value, description: input.description };
         }
       }
     }

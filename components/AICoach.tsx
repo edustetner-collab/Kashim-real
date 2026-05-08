@@ -64,8 +64,13 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
     const leisurePct = ((summary.totalLeisure / summary.totalIncome) * 100).toFixed(1);
     return `Seu nome é Stets. Você é o mentor financeiro do método "RICO nessa vida", criado por Eduardo Stetner — consultor financeiro com 9 anos de experiência.
 Mês atual: ${monthName} | Renda: ${formatCurrency(summary.totalIncome)} | Fixos: ${fixedPct}% (ideal ≤55%) | Lazer: ${leisurePct}% (ideal ≤15%).
-Tom sofisticado, direto, encorajador. Respostas curtas e impactantes. Máximo 3 frases.
-Quando o usuário menciona um gasto, SEMPRE use a tool register_expense para registrá-lo.`;
+
+REGRAS DE RESPOSTA (OBRIGATÓRIAS):
+- Máximo 2 frases curtas em português conversacional.
+- ZERO markdown: sem **, sem #, sem listas, sem tabelas, sem código.
+- ZERO emojis.
+- Tom direto e encorajador.
+- Não mencione ferramentas, funções ou registro técnico — apenas fale naturalmente.`;
   };
 
   const callStets = async (userMessage: string, imageData?: string, imageMimeType?: string) => {
@@ -91,16 +96,17 @@ Quando o usuário menciona um gasto, SEMPRE use a tool register_expense para reg
     setResponse(text);
     speak(text);
     if (expense?.itemId && expense?.value) {
+      const matchedItem = items.find(i => i.id === expense.itemId);
+      if (!matchedItem) return;
+      const today = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
       const partial: PartialExpense = {
         id: crypto.randomUUID(),
-        date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-        description: expense.description || 'Lançamento via Stets',
+        date: today,
+        description: expense.description || matchedItem.description,
         value: expense.value,
       };
       onAddPartial(expense.itemId, partial);
-      setResponse(prev =>
-        `✅ ${formatCurrency(expense.value)} registrado em ${expense.description}.\n${prev ?? ''}`
-      );
+      setResponse(`✅ ${formatCurrency(expense.value)} em ${matchedItem.description} • ${today}`);
     }
   };
 
