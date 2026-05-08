@@ -8,6 +8,7 @@ interface AICoachProps {
   items: FinanceItem[];
   monthName: string;
   onAddPartial: (itemId: string, expense: PartialExpense) => void;
+  tetoColumns?: { id: string; title: string; linkedItemId: string }[];
 }
 
 const compressImage = (base64: string, mime: string): Promise<{ data: string; mime: string }> =>
@@ -29,7 +30,7 @@ const compressImage = (base64: string, mime: string): Promise<{ data: string; mi
     img.src = `data:${mime};base64,${base64}`;
   });
 
-const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddPartial }) => {
+const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddPartial, tetoColumns }) => {
   const [prompt, setPrompt] = useState('');
   const [response, setResponse] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -51,22 +52,31 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddParti
   };
 
   const availableItems = () => {
-    // Only send items that have a TetoGastos column linked to them — this ensures
-    // the registered expense always shows up in a visible column.
-    let linkedIds: Set<string> = new Set();
-    try {
-      const cols = JSON.parse(localStorage.getItem('teto_columns_v3') || '[]') as { linkedItemId?: string }[];
-      linkedIds = new Set(cols.map(c => c.linkedItemId).filter(Boolean) as string[]);
-    } catch { /* ignore */ }
+    // Use TetoGastos column TITLES (user-defined, e.g. "MERCADO", "GASOLINA") as descriptions
+    // so the AI matches by what the user named the column, not by the finance item description.
+    // Falls back to localStorage if tetoColumns prop not loaded yet.
+    const cols: { title: string; linkedItemId: string }[] =
+      tetoColumns && tetoColumns.length > 0
+        ? tetoColumns
+        : (() => {
+            try {
+              return JSON.parse(localStorage.getItem('teto_columns_v3') || '[]') as { title: string; linkedItemId: string }[];
+            } catch { return []; }
+          })();
 
-    const candidates = linkedIds.size > 0
-      ? items.filter(i => linkedIds.has(i.id))
-      : items.filter(i =>
-          i.category === CategoryType.VARIABLE_EXPENSE ||
-          i.category === CategoryType.PERSONAL_LEISURE
-        );
+    const linked = cols.filter(c => c.linkedItemId && items.some(i => i.id === c.linkedItemId));
 
-    return candidates.map(i => ({ id: i.id, description: i.description }));
+    if (linked.length > 0) {
+      return linked.map(c => ({ id: c.linkedItemId, description: c.title }));
+    }
+
+    // Last resort fallback — no configured columns
+    return items
+      .filter(i =>
+        i.category === CategoryType.VARIABLE_EXPENSE ||
+        i.category === CategoryType.PERSONAL_LEISURE
+      )
+      .map(i => ({ id: i.id, description: i.description }));
   };
 
   const buildSystemPrompt = () => {

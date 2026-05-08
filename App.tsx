@@ -58,6 +58,7 @@ const App: React.FC = () => {
   const pendingDeletesRef = useRef<Set<string>>(new Set());
   const userDataLoadedRef = useRef<string | null>(null); // tracks userId to prevent token-refresh reloads
   const coachViewLoadedRef = useRef<string | null>(null);
+  const [tetoColumns, setTetoColumns] = useState<{ id: string; title: string; linkedItemId: string }[]>([]);
 
   // Timeout: se Clerk não carregar em 12s, mostra tela de erro com retry
   useEffect(() => {
@@ -130,10 +131,18 @@ const App: React.FC = () => {
         const hId = inviteHouseholdId ?? await getOrCreateHousehold(db!, user!.id);
         setHouseholdId(hId);
 
-        const [household, dbItems] = await Promise.all([
+        const [household, dbItems, dbCols] = await Promise.all([
           getHousehold(db!, hId),
           loadFinanceItems(db!, hId),
+          loadTetoColumns(db!, hId),
         ]);
+        if (dbCols.length > 0) {
+          setTetoColumns(dbCols.map((r: any) => ({
+            id: r.id,
+            title: r.title ?? '',
+            linkedItemId: r.linked_item_id ?? '',
+          })));
+        }
 
         if (household?.start_month != null) setStartMonth(household.start_month);
         if (household?.start_year != null) setStartYear(household.start_year);
@@ -868,7 +877,7 @@ const App: React.FC = () => {
           <Metas goals={goals} onGoalsChange={handleGoalsChange} db={db} householdId={householdId} />
         ) : activeTab === 'plan' ? (
           <>
-            <div id="stets"><AICoach summary={monthlySummaries[mobileMonthIdx]} items={items} monthName={months[mobileMonthIdx].monthName} onAddPartial={handleAddPartial} /></div>
+            <div id="stets"><AICoach summary={monthlySummaries[mobileMonthIdx]} items={items} monthName={months[mobileMonthIdx].monthName} onAddPartial={handleAddPartial} tetoColumns={tetoColumns} /></div>
             <div id="diagnosis" className="hidden lg:block"><Diagnosis summary={monthlySummaries[0]} monthName={months[0].monthName} /></div>
 
             {/* ── MOBILE SUMMARY CARDS ──────────────────────────────── */}
