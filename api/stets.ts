@@ -3,6 +3,25 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+type ContentPart = Anthropic.ContentBlockParam;
+
+function buildUserParts(userMessage?: string, imageData?: string, imageMimeType?: string): ContentPart[] {
+  const parts: ContentPart[] = [];
+  if (imageData) {
+    const validMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'] as const;
+    type ValidMime = typeof validMimes[number];
+    const mime: ValidMime = validMimes.includes(imageMimeType as ValidMime)
+      ? (imageMimeType as ValidMime)
+      : 'image/jpeg';
+    parts.push({ type: 'image', source: { type: 'base64', media_type: mime, data: imageData } });
+  }
+  parts.push({
+    type: 'text',
+    text: userMessage || 'Analise este comprovante e identifique o valor total e o tipo de gasto.',
+  });
+  return parts;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -24,81 +43,87 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'userMessage ou imageData obrigatório' });
     }
 
-    const tools: Anthropic.Tool[] = availableItems?.length
-      ? [{
-          name: 'register_expense',
-          description: 'Registra um gasto quando o usuário menciona claramente ter gasto dinheiro em algo.',
-          input_schema: {
-            type: 'object' as const,
-            properties: {
-              itemId: {
-                type: 'string',
-                description: `ID do item da lista que melhor corresponde ao gasto. Itens disponíveis: ${JSON.stringify(availableItems)}`,
-              },
-              value: { type: 'number', description: 'Valor gasto em reais (número).' },
-              description: { type: 'string', description: 'Descrição curta do que foi comprado.' },
-            },
-            required: ['itemId', 'value', 'description'],
-          },
-        }]
-      : [];
+    const userParts = buildUserParts(userMessage, imageData, imageMimeType);
 
-    const userParts: Anthropic.ContentBlockParam[] = [];
+    // Roda as duas chamadas em paralelo para maximizar velocidade
+    const [stetsResponse, extractResponse] = await Promise.all([
 
-    if (imageData && imageMimeType) {
-      const validMime = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-      const mime = validMime.includes(imageMimeType) ? imageMimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' : 'image/jpeg';
-      userParts.push({
-        type: 'image',
-        source: { type: 'base64', media_type: mime, data: imageData },
-      });
-    }
-
-    userParts.push({
-      type: 'text',
-      text: userMessage || 'Analise este comprovante e identifique o valor total e o tipo de gasto.',
-    });
-
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userParts }],
-      ...(tools.length ? { tools, tool_choice: { type: 'auto' } } : {}),
-    });
-
-    let text = '';
-    let expense: { itemId: string; value: number; description: string } | null = null;
-    let toolUseBlock: Anthropic.ToolUseBlock | null = null;
-
-    for (const block of response.content) {
-      if (block.type === 'text') text += block.text;
-      if (block.type === 'tool_use' && block.name === 'register_expense') {
-        toolUseBlock = block;
-        expense = block.input as { itemId: string; value: number; description: string };
-      }
-    }
-
-    // Se usou a tool mas não gerou texto, pede resposta de texto
-    if (!text && toolUseBlock && expense) {
-      const followUp = await anthropic.messages.create({
+      // Chamada 1: Resposta natural do Stets (sem tools — foco total na qualidade da resposta)
+      anthropic.messages.create({
         model: 'claude-sonnet-4-6',
         max_tokens: 512,
         system: systemPrompt,
-        messages: [
-          { role: 'user', content: userParts },
-          { role: 'assistant', content: response.content },
-          {
-            role: 'user',
-            content: [{
-              type: 'tool_result',
-              tool_use_id: toolUseBlock.id,
-              content: 'Gasto registrado com sucesso.',
+        messages: [{ role: 'user', content: userParts }],
+      }),
+
+      // Chamada 2: Extração forçada de gasto (tool_choice: any — Claude DEVE chamar a tool)
+      availableItems?.length
+        ? anthropic.messages.create({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 256,
+            system: 'Você é um extrator de despesas financeiras. Analise a mensagem ou imagem e extraia os dados de gasto usando a tool disponível.',
+            messages: [{
+              role: 'user',
+              content: [
+                ...userParts,
+                {
+                  type: 'text',
+                  text: `Itens disponíveis para vincular: ${JSON.stringify(availableItems)}\n\nIdentifique se há um gasto com valor monetário claro. Se sim, extraia o itemId do item mais adequado, o valor e uma descrição curta. Se não houver gasto claro, defina hasExpense como false.`,
+                },
+              ],
             }],
-          },
-        ],
-      });
-      text = followUp.content.find(b => b.type === 'text')?.text ?? '';
+            tools: [{
+              name: 'extract_expense',
+              description: 'Extrai dados de gasto da mensagem ou imagem. Deve ser chamada sempre — use hasExpense:false se não houver gasto.',
+              input_schema: {
+                type: 'object' as const,
+                properties: {
+                  hasExpense: {
+                    type: 'boolean',
+                    description: 'true se há um gasto com valor monetário claro, false caso contrário.',
+                  },
+                  itemId: {
+                    type: 'string',
+                    description: 'ID do item da lista que melhor corresponde. String vazia se não há gasto.',
+                  },
+                  value: {
+                    type: 'number',
+                    description: 'Valor do gasto em reais (número). 0 se não há gasto.',
+                  },
+                  description: {
+                    type: 'string',
+                    description: 'Descrição curta do que foi comprado. String vazia se não há gasto.',
+                  },
+                },
+                required: ['hasExpense', 'itemId', 'value', 'description'],
+              },
+            }],
+            tool_choice: { type: 'any' }, // OBRIGA Claude a chamar a tool
+          })
+        : Promise.resolve(null),
+    ]);
+
+    // Extrai texto da chamada 1
+    const text = stetsResponse.content
+      .filter(b => b.type === 'text')
+      .map(b => (b as Anthropic.TextBlock).text)
+      .join('');
+
+    // Extrai gasto da chamada 2
+    let expense: { itemId: string; value: number; description: string } | null = null;
+    if (extractResponse) {
+      const toolBlock = extractResponse.content.find(b => b.type === 'tool_use') as Anthropic.ToolUseBlock | undefined;
+      if (toolBlock) {
+        const input = toolBlock.input as {
+          hasExpense: boolean;
+          itemId: string;
+          value: number;
+          description: string;
+        };
+        if (input.hasExpense && input.itemId && input.value > 0) {
+          expense = { itemId: input.itemId, value: input.value, description: input.description };
+        }
+      }
     }
 
     return res.json({ text, expense });
