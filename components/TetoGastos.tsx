@@ -21,7 +21,6 @@ interface ColumnData {
   linkedItemId: string;
 }
 
-
 function isRecurringItem(item: FinanceItem): boolean {
   return item.category === CategoryType.PERSONAL_LEISURE || item.category === CategoryType.VARIABLE_EXPENSE;
 }
@@ -31,10 +30,8 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   const [selectedMonthKey, setSelectedMonthKey] = useState(currentMonthKey);
   const [columnsLoaded, setColumnsLoaded] = useState(false);
 
-  // Sync selected month to current when month changes externally
   useEffect(() => { setSelectedMonthKey(currentMonthKey); }, [currentMonthKey]);
 
-  // Collect all months that have any recorded expenses
   const availableMonths = useMemo(() => {
     const keys = new Set<string>();
     keys.add(currentMonthKey);
@@ -64,7 +61,6 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Load columns from Supabase on mount
   useEffect(() => {
     if (!db || !householdId) { setColumnsLoaded(true); return; }
     loadTetoColumns(db, householdId).then((rows) => {
@@ -79,18 +75,16 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
     }).catch(() => setColumnsLoaded(true));
   }, [db, householdId]);
 
-  // Save columns whenever they change (after initial load)
   const isFirstRender = useRef(true);
   useEffect(() => {
     if (!columnsLoaded) return;
     if (isFirstRender.current) { isFirstRender.current = false; return; }
     localStorage.setItem('teto_columns_v3', JSON.stringify(columns));
     if (db && householdId) {
-      saveTetoColumns(db, householdId, columns).catch(console.error);
+      saveTetoColumns(db, householdId, columns).catch(() => {});
     }
   }, [columns, columnsLoaded]);
 
-  // Auto-link recurring items that aren't linked to any column yet (runs once after initial load)
   const autoLinkedRef = useRef(false);
   useEffect(() => {
     if (!columnsLoaded || autoLinkedRef.current || items.length === 0) return;
@@ -98,17 +92,12 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
     setColumns(prev => {
       const alreadyLinked = new Set(prev.map(c => c.linkedItemId).filter(Boolean));
-
-      // Find recurring items that have a value set and aren't linked yet
       const toAdd = items.filter(item =>
         isRecurringItem(item) &&
         item.values.some(v => v > 0) &&
         !alreadyLinked.has(item.id)
       );
-
       if (toAdd.length === 0) return prev;
-
-      // Also try to auto-link existing unlinked columns by matching title keywords
       const updatedPrev = prev.map(col => {
         if (col.linkedItemId) return col;
         const colTitle = col.title.toLowerCase();
@@ -118,18 +107,31 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
         });
         return match ? { ...col, linkedItemId: match.id } : col;
       });
-
-      // After auto-linking existing columns, find what's still unlinked
       const nowLinked = new Set(updatedPrev.map(c => c.linkedItemId).filter(Boolean));
       const stillUnlinked = toAdd.filter(item => !nowLinked.has(item.id));
-
       const newCols: ColumnData[] = stillUnlinked.map(item => ({
         id: crypto.randomUUID(),
         title: item.description.toUpperCase().slice(0, 24).trim(),
         linkedItemId: item.id,
       }));
-
       return [...updatedPrev, ...newCols];
+    });
+  }, [columnsLoaded, items]);
+
+  // Remove columns linked to FIXED_EXPENSE items that have no recorded expenses.
+  // Fixed items (internet, celular) don't need transaction tracking — only variable/leisure do.
+  const cleanedFixedRef = useRef(false);
+  useEffect(() => {
+    if (!columnsLoaded || cleanedFixedRef.current || items.length === 0) return;
+    cleanedFixedRef.current = true;
+    setColumns(prev => {
+      const cleaned = prev.filter(col => {
+        if (!col.linkedItemId) return true;
+        const linked = items.find(i => i.id === col.linkedItemId);
+        if (!linked || linked.category !== CategoryType.FIXED_EXPENSE) return true;
+        return Object.values(linked.partialExpenses ?? {}).some(arr => (arr as PartialExpense[]).length > 0);
+      });
+      return cleaned.length !== prev.length ? cleaned : prev;
     });
   }, [columnsLoaded, items]);
 
@@ -152,6 +154,8 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   const columnsScrollRef = useRef<HTMLDivElement>(null);
   const [entryDescriptions, setEntryDescriptions] = useState<Record<string, string>>({});
   const [entryErrors, setEntryErrors] = useState<Record<string, boolean>>({});
+  const [installMode, setInstallMode] = useState<Record<string, boolean>>({});
+  const [installData, setInstallData] = useState<Record<string, { desc: string; total: string; qty: string }>>({});
   const valueInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const handleSubmitEntry = (colId: string, itemId: string, value: string) => {
@@ -168,7 +172,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       id: crypto.randomUUID(),
       date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
       description: desc || linkedItem?.description || 'Gasto',
-      value: parsed
+      value: parsed,
     };
     onAddPartial(itemId, expense, currentYear, currentMonthIdx);
     if (valueInputRefs.current[colId]) valueInputRefs.current[colId]!.value = '';
@@ -176,9 +180,51 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
     setEntryErrors(prev => ({ ...prev, [colId]: false }));
   };
 
+  const handleSubmitInstallment = (colId: string, itemId: string) => {
+    if (!itemId) return;
+    const data = installData[colId];
+    if (!data?.desc.trim() || !data.total) return;
+    const total = parseFloat(data.total.replace(',', '.'));
+    const qty = parseInt(data.qty) || 2;
+    if (isNaN(total) || total <= 0 || qty < 2 || qty > 24) return;
+
+    const linkedItem = items.find(i => i.id === itemId);
+    const card = linkedItem?.linkedCardId ? items.find(i => i.id === linkedItem.linkedCardId) : null;
+    const todayDay = new Date().getDate();
+    const isAfterClosing = card?.closingDay ? todayDay >= card.closingDay : false;
+
+    // Absolute month index to handle year boundaries safely
+    const startAbsMonth = (currentYear * 12 + currentMonthIdx) + (isAfterClosing ? 1 : 0);
+    const baseValue = parseFloat((total / qty).toFixed(2));
+
+    for (let i = 0; i < qty; i++) {
+      const absMonth = startAbsMonth + i;
+      const targetMonthIdx = absMonth % 12;
+      const targetYear = Math.floor(absMonth / 12);
+      // Last installment absorbs rounding remainder
+      const value = i === qty - 1 ? parseFloat((total - baseValue * (qty - 1)).toFixed(2)) : baseValue;
+      const expense: PartialExpense = {
+        id: crypto.randomUUID(),
+        date: `01/${String(targetMonthIdx + 1).padStart(2, '0')}`,
+        description: `${data.desc.trim()} ${i + 1}/${qty}`,
+        value,
+      };
+      onAddPartial(itemId, expense, targetYear, targetMonthIdx);
+    }
+
+    setInstallMode(prev => ({ ...prev, [colId]: false }));
+    setInstallData(prev => ({ ...prev, [colId]: { desc: '', total: '', qty: '2' } }));
+  };
+
+  const updateInstall = (colId: string, field: 'desc' | 'total' | 'qty', value: string) => {
+    setInstallData(prev => ({
+      ...prev,
+      [colId]: { ...(prev[colId] ?? { desc: '', total: '', qty: '2' }), [field]: value },
+    }));
+  };
+
   return (
     <div className="p-3 lg:p-6 animate-in fade-in zoom-in-95 duration-500">
-      {/* ── Month selector + Adicionar (mesma linha) ── */}
       <div className="mb-4 flex items-center gap-2">
         <div className="relative">
           <select
@@ -228,16 +274,23 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
           const billingMonthIdx = isAfterClosing ? (currentMonthIdx + 1) % 12 : currentMonthIdx;
           const billingMonthName = MONTHS_BR[billingMonthIdx];
 
-          return (
-            <div key={col.id} className="w-[calc(100vw-48px)] lg:w-64 flex-shrink-0 snap-start flex flex-col rounded-2xl border border-zinc-800 overflow-hidden relative group">
+          const inInstallMode = !!installMode[col.id];
+          const iData = installData[col.id];
+          const installTotal = parseFloat(iData?.total?.replace(',', '.') || '0');
+          const installQty = parseInt(iData?.qty || '2');
+          const installPreview = iData?.total && !isNaN(installTotal) && installTotal > 0 && installQty >= 2
+            ? formatCurrency(installTotal / installQty)
+            : null;
 
-              {/* Header: link + name */}
+          return (
+            <div key={col.id} className="w-[calc(100vw-48px)] lg:w-64 flex-shrink-0 snap-start flex flex-col rounded-2xl border border-zinc-800 overflow-hidden">
+
+              {/* Header */}
               <div className="bg-yellow-500">
                 <div className="flex items-center gap-1 px-2 pt-2 pb-0.5">
                   <button
                     onClick={() => !isHistoricalView && removeColumn(col.id)}
                     className={`w-5 h-5 bg-black/10 rounded-full flex items-center justify-center shrink-0 transition-all ${isHistoricalView ? 'opacity-0 pointer-events-none' : 'active:bg-red-500/40 text-black/40 active:text-red-700'}`}
-                    title="Remover coluna"
                   >
                     <i className="fas fa-times text-[8px]"></i>
                   </button>
@@ -267,94 +320,158 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                 />
               </div>
 
-              {/* Budget bar */}
-              <div className={`px-4 py-3 ${isOverLimit ? 'bg-red-950/40' : 'bg-zinc-900'}`}>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Teto</span>
-                  <span className={`text-xs font-black font-mono ${isOverLimit ? 'text-red-400' : 'text-zinc-400'}`}>{formatCurrency(teto)}</span>
-                </div>
-                {teto > 0 && (
+              {/* Budget bar — only when a budget is set */}
+              {teto > 0 && (
+                <div className={`px-4 py-3 ${isOverLimit ? 'bg-red-950/40' : 'bg-zinc-900'}`}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Teto</span>
+                    <span className={`text-xs font-black font-mono ${isOverLimit ? 'text-red-400' : 'text-zinc-400'}`}>{formatCurrency(teto)}</span>
+                  </div>
                   <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all ${isOverLimit ? 'bg-red-500' : progressPct > 80 ? 'bg-yellow-500' : 'bg-green-500'}`}
                       style={{ width: `${progressPct}%` }}
                     />
                   </div>
-                )}
-              </div>
-
-              {/* Entry input — hidden in historical view */}
-              {!isHistoricalView && (
-                <div className="bg-white border-t border-zinc-100">
-                  <input
-                    type="text"
-                    placeholder={entryErrors[col.id] ? '⚠ Descrição obrigatória' : 'Descrição *'}
-                    value={entryDescriptions[col.id] ?? ''}
-                    onChange={e => {
-                      setEntryDescriptions(prev => ({ ...prev, [col.id]: e.target.value }));
-                      if (e.target.value.trim()) setEntryErrors(prev => ({ ...prev, [col.id]: false }));
-                    }}
-                    className={`w-full py-2 px-3 text-[11px] outline-none border-b transition-colors ${
-                      entryErrors[col.id]
-                        ? 'bg-red-50 border-red-300 placeholder:text-red-400 placeholder:font-bold'
-                        : 'bg-zinc-50 border-zinc-100 placeholder:text-zinc-400'
-                    } text-zinc-700`}
-                  />
-                  <div className="flex items-center">
-                    <div className="pl-3 text-zinc-400 text-[10px] font-bold shrink-0">R$</div>
-                    <input
-                      ref={el => { valueInputRefs.current[col.id] = el; }}
-                      type="number"
-                      inputMode="decimal"
-                      placeholder="Valor..."
-                      className="flex-1 py-3 pl-2 pr-2 text-sm outline-none bg-transparent focus:bg-yellow-50/50 font-black text-zinc-900 transition-all placeholder:text-zinc-300 placeholder:font-normal placeholder:text-xs"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleSubmitEntry(col.id, col.linkedItemId, e.currentTarget.value);
-                      }}
-                    />
-                    <button
-                      onClick={() => handleSubmitEntry(col.id, col.linkedItemId, valueInputRefs.current[col.id]?.value ?? '')}
-                      className="mr-2 bg-yellow-500 active:bg-yellow-400 text-black font-black text-[10px] px-3 py-1.5 rounded-lg uppercase shrink-0"
-                    >
-                      OK
-                    </button>
-                  </div>
                 </div>
               )}
 
-              {/* Expense list */}
-              <div className="flex flex-col bg-white border-t border-zinc-100">
-                {partials.length === 0 ? (
-                  <div className="py-4 text-center text-zinc-300 text-[10px] uppercase font-bold tracking-wider">
-                    Nenhum lançamento
-                  </div>
-                ) : (
-                  partials.map((p) => (
+              {/* Entry form */}
+              {!isHistoricalView && (
+                <div className="bg-white border-t border-zinc-100">
+                  {!inInstallMode ? (
+                    <>
+                      <input
+                        type="text"
+                        placeholder={entryErrors[col.id] ? '⚠ Descrição obrigatória' : 'Descrição *'}
+                        value={entryDescriptions[col.id] ?? ''}
+                        onChange={e => {
+                          setEntryDescriptions(prev => ({ ...prev, [col.id]: e.target.value }));
+                          if (e.target.value.trim()) setEntryErrors(prev => ({ ...prev, [col.id]: false }));
+                        }}
+                        className={`w-full py-2 px-3 text-[11px] outline-none border-b transition-colors ${
+                          entryErrors[col.id]
+                            ? 'bg-red-50 border-red-300 placeholder:text-red-400 placeholder:font-bold'
+                            : 'bg-zinc-50 border-zinc-100 placeholder:text-zinc-400'
+                        } text-zinc-700`}
+                      />
+                      <div className="flex items-center">
+                        <div className="pl-3 text-zinc-400 text-[10px] font-bold shrink-0">R$</div>
+                        <input
+                          ref={el => { valueInputRefs.current[col.id] = el; }}
+                          type="number"
+                          inputMode="decimal"
+                          placeholder="Valor..."
+                          className="flex-1 py-3 pl-2 pr-2 text-sm outline-none bg-transparent focus:bg-yellow-50/50 font-black text-zinc-900 transition-all placeholder:text-zinc-300 placeholder:font-normal placeholder:text-xs"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSubmitEntry(col.id, col.linkedItemId, e.currentTarget.value);
+                          }}
+                        />
+                        <button
+                          onClick={() => handleSubmitEntry(col.id, col.linkedItemId, valueInputRefs.current[col.id]?.value ?? '')}
+                          className="mr-2 bg-yellow-500 active:bg-yellow-400 text-black font-black text-[10px] px-3 py-1.5 rounded-lg uppercase shrink-0"
+                        >
+                          OK
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => setInstallMode(prev => ({ ...prev, [col.id]: true }))}
+                        className="w-full text-center text-[9px] text-zinc-400 active:text-yellow-600 py-1.5 font-bold uppercase tracking-widest border-t border-zinc-100 transition-colors"
+                      >
+                        <i className="fas fa-credit-card mr-1"></i>Parcelar
+                      </button>
+                    </>
+                  ) : (
+                    <div className="p-3 space-y-2">
+                      <p className="text-[9px] font-black uppercase text-zinc-500 tracking-widest flex items-center gap-1">
+                        <i className="fas fa-credit-card text-yellow-500"></i> Compra Parcelada
+                      </p>
+                      <input
+                        type="text"
+                        placeholder="Ex: Tênis Nike"
+                        value={iData?.desc ?? ''}
+                        onChange={e => updateInstall(col.id, 'desc', e.target.value)}
+                        className="w-full py-2 px-3 text-[11px] outline-none border border-zinc-200 rounded-lg bg-zinc-50 text-zinc-700"
+                      />
+                      <div className="flex gap-2">
+                        <div className="flex-1 flex items-center border border-zinc-200 rounded-lg bg-zinc-50 overflow-hidden">
+                          <span className="pl-2 text-zinc-400 text-[10px] font-bold shrink-0">R$</span>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            placeholder="Total"
+                            value={iData?.total ?? ''}
+                            onChange={e => updateInstall(col.id, 'total', e.target.value)}
+                            className="flex-1 pl-1 pr-2 py-2 text-sm outline-none bg-transparent font-black text-zinc-900"
+                          />
+                        </div>
+                        <select
+                          value={iData?.qty ?? '2'}
+                          onChange={e => updateInstall(col.id, 'qty', e.target.value)}
+                          className="w-16 py-2 px-2 text-xs outline-none border border-zinc-200 rounded-lg bg-zinc-50 font-black text-zinc-900 appearance-none text-center"
+                        >
+                          {[2,3,4,5,6,7,8,9,10,12,18,24].map(n => (
+                            <option key={n} value={String(n)}>{n}x</option>
+                          ))}
+                        </select>
+                      </div>
+                      {installPreview && (
+                        <p className="text-[9px] text-zinc-500 text-center font-bold">
+                          {installQty}x de {installPreview} / mês
+                        </p>
+                      )}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleSubmitInstallment(col.id, col.linkedItemId)}
+                          className="flex-1 bg-yellow-500 active:bg-yellow-400 text-black font-black text-[10px] py-2.5 rounded-lg uppercase"
+                        >
+                          Confirmar
+                        </button>
+                        <button
+                          onClick={() => setInstallMode(prev => ({ ...prev, [col.id]: false }))}
+                          className="px-3 bg-zinc-100 active:bg-zinc-200 text-zinc-500 font-black text-[10px] py-2.5 rounded-lg uppercase"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Expense list — only shown when there are expenses */}
+              {partials.length > 0 && (
+                <div className="flex flex-col bg-white border-t border-zinc-100">
+                  {partials.map((p) => (
                     <div key={p.id} className="border-b border-zinc-50 flex items-center gap-2 px-3 py-2">
                       <span className="text-[9px] text-zinc-400 font-bold uppercase shrink-0">{p.date}</span>
                       <span className="flex-1 text-[10px] text-zinc-600 font-medium truncate">{p.description}</span>
                       <span className="text-xs font-black text-zinc-800 font-mono shrink-0">{formatCurrency(p.value)}</span>
-                      <button
-                        onClick={() => onRemovePartial(col.linkedItemId, p.id)}
-                        className="text-red-400 active:text-red-600 p-1 shrink-0"
-                      >
-                        <i className="fas fa-times-circle text-xs"></i>
-                      </button>
+                      {!isHistoricalView && (
+                        <button
+                          onClick={() => onRemovePartial(col.linkedItemId, p.id)}
+                          className="text-red-400 active:text-red-600 p-1 shrink-0"
+                        >
+                          <i className="fas fa-times-circle text-xs"></i>
+                        </button>
+                      )}
                     </div>
-                  ))
-                )}
-              </div>
+                  ))}
+                </div>
+              )}
 
-              {/* Total footer */}
-              <div className={`px-4 py-3 text-center mt-auto ${isOverLimit ? 'bg-red-50' : 'bg-zinc-900'} ${card ? '' : 'rounded-b-2xl'}`}>
-                <p className={`text-[9px] font-black uppercase mb-0.5 ${isOverLimit ? 'text-red-500' : 'text-zinc-500'}`}>Total Lançado</p>
-                <p className={`text-lg font-black font-mono tracking-tighter ${isOverLimit ? 'text-red-500' : 'text-yellow-500'}`}>
-                  {formatCurrency(totalSpent)}
-                </p>
-                {isOverLimit && teto > 0 && (
-                  <p className="text-red-400 text-[9px] font-bold mt-0.5">+{formatCurrency(totalSpent - teto)} acima do teto</p>
-                )}
-              </div>
+              {/* Total footer — only shown when there are expenses */}
+              {totalSpent > 0 && (
+                <div className={`px-4 py-3 text-center mt-auto ${isOverLimit ? 'bg-red-50' : 'bg-zinc-900'} ${card ? '' : 'rounded-b-2xl'}`}>
+                  <p className={`text-[9px] font-black uppercase mb-0.5 ${isOverLimit ? 'text-red-500' : 'text-zinc-500'}`}>Total Lançado</p>
+                  <p className={`text-lg font-black font-mono tracking-tighter ${isOverLimit ? 'text-red-500' : 'text-yellow-500'}`}>
+                    {formatCurrency(totalSpent)}
+                  </p>
+                  {isOverLimit && teto > 0 && (
+                    <p className="text-red-400 text-[9px] font-bold mt-0.5">+{formatCurrency(totalSpent - teto)} acima do teto</p>
+                  )}
+                </div>
+              )}
 
               {card && (
                 <div className="rounded-b-2xl border-t border-zinc-700 bg-zinc-800 px-3 py-2 text-center">
@@ -365,7 +482,6 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                   </p>
                 </div>
               )}
-
             </div>
           );
         })}
