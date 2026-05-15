@@ -548,6 +548,18 @@ const App: React.FC = () => {
     setPendingExpense(null);
   };
 
+  const handleCreateItem = (description: string, category: CategoryType): string => {
+    const newId = crypto.randomUUID();
+    setItems(prev => [...prev, {
+      id: newId,
+      description,
+      category,
+      values: new Array(12).fill(0),
+      paidStatus: new Array(12).fill(false),
+    }]);
+    return newId;
+  };
+
   const handleRemovePartial = (itemId: string, expenseId: string) => {
     setItems(prev => prev.map(item => {
       if (item.id !== itemId) return item;
@@ -1138,7 +1150,17 @@ const App: React.FC = () => {
       </main>
 
       {/* ── MOBILE BOTTOM TAB BAR ──────────────────────────────────────── */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0f0f0f] border-t border-zinc-800 safe-bottom">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0f0f0f] border-t border-zinc-800 safe-bottom relative">
+        {/* "+" button is outside the overflow-x-auto container so it's never clipped */}
+        <button
+          onClick={() => setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1, isCredit: false })}
+          className="absolute left-1/2 -translate-x-1/2 -top-6 z-10 flex flex-col items-center gap-0.5"
+        >
+          <div className="w-12 h-12 rounded-2xl bg-yellow-500 flex items-center justify-center shadow-lg shadow-yellow-500/30 active:scale-90 transition-transform">
+            <i className="fas fa-plus text-black text-lg font-black"></i>
+          </div>
+        </button>
+
         <div className="overflow-x-auto scrollbar-none">
           <div className="flex min-w-max">
             <button
@@ -1159,16 +1181,10 @@ const App: React.FC = () => {
               {activeTab === 'teto' && <span className="absolute bottom-0 w-8 h-0.5 bg-yellow-500 rounded-full mb-1"></span>}
             </button>
 
-            {/* Central "+" button — opens expense entry sheet */}
-            <button
-              onClick={() => setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1 })}
-              className="min-w-[64px] flex flex-col items-center justify-center pt-1 pb-0 gap-0.5 relative"
-            >
-              <div className="w-12 h-12 rounded-2xl bg-yellow-500 flex items-center justify-center shadow-lg shadow-yellow-500/30 active:scale-90 transition-transform -mt-4">
-                <i className="fas fa-plus text-black text-lg font-black"></i>
-              </div>
-              <span className="text-[9px] font-black uppercase tracking-wide text-yellow-500/70 -mt-0.5">Lançar</span>
-            </button>
+            {/* Spacer for the floating "+" button */}
+            <div className="min-w-[64px] flex flex-col items-center justify-end pb-1 pt-2">
+              <span className="text-[9px] font-black uppercase tracking-wide text-yellow-500/70">Lançar</span>
+            </div>
 
             <button
               onClick={() => setActiveTab('metas')}
@@ -1200,7 +1216,7 @@ const App: React.FC = () => {
       </nav>
 
       {/* Spacer so bottom tab bar doesn't cover content on mobile */}
-      <div className="lg:hidden h-16"></div>
+      <div className="lg:hidden h-20"></div>
 
       {/* Expense confirmation / entry sheet */}
       <ExpenseSheet
@@ -1213,6 +1229,7 @@ const App: React.FC = () => {
         initialInstallments={pendingExpense?.installments}
         onConfirm={handleConfirmExpense}
         onClose={() => setPendingExpense(null)}
+        onCreateItem={handleCreateItem}
       />
     </div>
   );

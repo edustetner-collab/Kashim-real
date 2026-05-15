@@ -157,6 +157,86 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   };
 
   const columnsScrollRef = useRef<HTMLDivElement>(null);
+
+  // Drag-to-reorder state
+  const [dragColId, setDragColId] = useState<string | null>(null);
+  const [dragTargetIdx, setDragTargetIdx] = useState<number | null>(null);
+  const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressStartRef = useRef<{ x: number; y: number } | null>(null);
+  const dragColIdRef = useRef<string | null>(null);
+  const dragTargetIdxRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!dragColId) return;
+    const onMove = (e: TouchEvent) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const container = columnsScrollRef.current;
+      if (!container) return;
+      const colEls = Array.from(container.querySelectorAll('[data-drag-col]'));
+      if (!colEls.length) return;
+      let closest = 0;
+      let minDist = Infinity;
+      colEls.forEach((el, i) => {
+        const rect = (el as HTMLElement).getBoundingClientRect();
+        const dist = Math.abs(touch.clientX - (rect.left + rect.width / 2));
+        if (dist < minDist) { minDist = dist; closest = i; }
+      });
+      dragTargetIdxRef.current = closest;
+      setDragTargetIdx(closest);
+    };
+    const onEnd = () => {
+      const colId = dragColIdRef.current;
+      const tIdx = dragTargetIdxRef.current;
+      dragColIdRef.current = null;
+      dragTargetIdxRef.current = null;
+      setDragColId(null);
+      setDragTargetIdx(null);
+      if (colId !== null && tIdx !== null) {
+        setColumns(prev => {
+          const from = prev.findIndex(c => c.id === colId);
+          if (from === -1 || from === tIdx) return prev;
+          const next = [...prev];
+          const [removed] = next.splice(from, 1);
+          next.splice(tIdx, 0, removed);
+          return next;
+        });
+      }
+    };
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onEnd);
+    return () => {
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onEnd);
+    };
+  }, [dragColId]);
+
+  const handleColTouchStart = (colId: string) => (e: React.TouchEvent) => {
+    if (isHistoricalView) return;
+    if (longPressRef.current) clearTimeout(longPressRef.current);
+    longPressStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    longPressRef.current = setTimeout(() => {
+      dragColIdRef.current = colId;
+      setDragColId(colId);
+      if ('vibrate' in navigator) (navigator as any).vibrate(40);
+    }, 400);
+  };
+
+  const handleColTouchMove = (e: React.TouchEvent) => {
+    if (dragColIdRef.current || !longPressRef.current || !longPressStartRef.current) return;
+    const dx = Math.abs(e.touches[0].clientX - longPressStartRef.current.x);
+    const dy = Math.abs(e.touches[0].clientY - longPressStartRef.current.y);
+    if (dx > 8 || dy > 8) {
+      clearTimeout(longPressRef.current);
+      longPressRef.current = null;
+    }
+  };
+
+  const handleColTouchEnd = () => {
+    if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; }
+    longPressStartRef.current = null;
+  };
+
   const [entryDescriptions, setEntryDescriptions] = useState<Record<string, string>>({});
   const [entryErrors, setEntryErrors] = useState<Record<string, boolean>>({});
   const [installMode, setInstallMode] = useState<Record<string, boolean>>({});
@@ -264,8 +344,14 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
         </div>
       )}
 
+      {dragColId && (
+        <p className="text-[9px] font-black uppercase tracking-widest text-yellow-500/60 text-center mb-2 animate-pulse">
+          Arraste para reorganizar • solte para confirmar
+        </p>
+      )}
+
       <div ref={columnsScrollRef} className="flex gap-3 items-start overflow-x-auto pb-6 pt-1 px-1 snap-x snap-mandatory">
-        {columns.map((col) => {
+        {columns.map((col, colIdx) => {
           const linkedItem = items.find(i => i.id === col.linkedItemId);
           const teto = linkedItem ? (linkedItem.values[currentMonthIdx] || 0) : 0;
           const partials = linkedItem?.partialExpenses?.[monthKey] || [];
@@ -287,30 +373,52 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
             ? formatCurrency(installTotal / installQty)
             : null;
 
+          const isUnlinked = !col.linkedItemId;
+          const isDragging = dragColId === col.id;
+          const isDropTarget = dragColId && dragTargetIdx === colIdx && !isDragging;
+
           return (
-            <div key={col.id} className="w-[calc(100vw-48px)] lg:w-64 flex-shrink-0 snap-start flex flex-col rounded-2xl border border-zinc-800 overflow-hidden">
+            <div
+              key={col.id}
+              data-drag-col
+              onTouchStart={handleColTouchStart(col.id)}
+              onTouchMove={handleColTouchMove}
+              onTouchEnd={handleColTouchEnd}
+              className={`w-[calc(100vw-48px)] lg:w-64 flex-shrink-0 snap-start flex flex-col rounded-2xl border overflow-hidden transition-all duration-150 ${
+                isDragging ? 'opacity-40 scale-95 border-yellow-500/60' :
+                isDropTarget ? 'border-yellow-500 ring-2 ring-yellow-500/40' :
+                isUnlinked ? 'border-orange-500/40' :
+                'border-zinc-800'
+              }`}
+            >
 
               {/* Header */}
-              <div className="bg-yellow-500">
+              <div className={isUnlinked ? 'bg-orange-500/10 border-b border-orange-500/20' : 'bg-yellow-500'}>
+                {isUnlinked && (
+                  <div className="px-3 pt-2 pb-0.5 flex items-center gap-1.5">
+                    <i className="fas fa-exclamation-triangle text-orange-400 text-[9px]"></i>
+                    <span className="text-orange-400 text-[9px] font-black uppercase tracking-widest">Vincular ao orçamento</span>
+                  </div>
+                )}
                 <div className="flex items-center gap-1 px-2 pt-2 pb-0.5">
                   <button
                     onClick={() => !isHistoricalView && removeColumn(col.id)}
-                    className={`w-5 h-5 bg-black/10 rounded-full flex items-center justify-center shrink-0 transition-all ${isHistoricalView ? 'opacity-0 pointer-events-none' : 'active:bg-red-500/40 text-black/40 active:text-red-700'}`}
+                    className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-all ${isHistoricalView ? 'opacity-0 pointer-events-none' : isUnlinked ? 'bg-orange-500/10 active:bg-red-500/40 text-orange-400/60 active:text-red-500' : 'bg-black/10 active:bg-red-500/40 text-black/40 active:text-red-700'}`}
                   >
                     <i className="fas fa-times text-[8px]"></i>
                   </button>
                   <select
-                    className="flex-1 bg-transparent border-none text-[10px] font-black uppercase text-center text-black outline-none cursor-pointer"
+                    className={`flex-1 bg-transparent border-none text-[10px] font-black uppercase text-center outline-none cursor-pointer ${isUnlinked ? 'text-orange-400' : 'text-black'}`}
                     value={col.linkedItemId}
                     onChange={(e) => updateColumn(col.id, 'linkedItemId', e.target.value)}
                   >
-                    <option value="" className="bg-yellow-500">VINCULAR ITEM</option>
+                    <option value="" className="bg-zinc-900 text-orange-400">⚠ VINCULAR ITEM</option>
                     {items.filter(i =>
                       i.category === CategoryType.FIXED_EXPENSE ||
                       i.category === CategoryType.VARIABLE_EXPENSE ||
                       i.category === CategoryType.PERSONAL_LEISURE
                     ).map(i => (
-                      <option key={i.id} value={i.id} className="bg-yellow-100">
+                      <option key={i.id} value={i.id} className="bg-zinc-900 text-white">
                         {i.description || 'Sem nome'}
                       </option>
                     ))}
@@ -320,7 +428,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                   type="text"
                   value={col.title}
                   onChange={(e) => updateColumn(col.id, 'title', e.target.value)}
-                  className="w-full bg-transparent border-none text-center font-black text-xs uppercase px-3 pb-3 pt-0.5 text-black outline-none tracking-widest"
+                  className={`w-full bg-transparent border-none text-center font-black text-xs uppercase px-3 pb-3 pt-0.5 outline-none tracking-widest ${isUnlinked ? 'text-orange-400/80 placeholder:text-orange-400/40' : 'text-black'}`}
                   placeholder="NOME DA COLUNA"
                 />
               </div>

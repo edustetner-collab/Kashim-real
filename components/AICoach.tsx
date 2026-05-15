@@ -134,6 +134,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
       value: expense.value,
       description: expense.description || matchedItem.description,
       installments: Math.max(1, expense.installments ?? 1),
+      isCredit: false,
     });
   };
 
