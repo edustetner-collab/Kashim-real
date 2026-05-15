@@ -1150,15 +1150,6 @@ const App: React.FC = () => {
       </main>
 
       {/* ── MOBILE BOTTOM TAB BAR ──────────────────────────────────────── */}
-      {/* "+" button is a separate fixed element — avoids the relative vs fixed conflict in Tailwind */}
-      <button
-        onClick={() => setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1, isCredit: false })}
-        className="lg:hidden fixed left-1/2 -translate-x-1/2 z-[51] w-12 h-12 rounded-2xl bg-yellow-500 flex items-center justify-center shadow-lg shadow-yellow-500/30 active:scale-90 transition-transform"
-        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 48px)' }}
-      >
-        <i className="fas fa-plus text-black text-lg font-black"></i>
-      </button>
-
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0f0f0f] border-t border-zinc-800 safe-bottom">
         <div className="overflow-x-auto scrollbar-none">
           <div className="flex min-w-max">
@@ -1180,10 +1171,14 @@ const App: React.FC = () => {
               {activeTab === 'teto' && <span className="absolute bottom-0 w-8 h-0.5 bg-yellow-500 rounded-full mb-1"></span>}
             </button>
 
-            {/* Spacer for the floating "+" button */}
-            <div className="min-w-[64px] flex flex-col items-center justify-end pb-1 pt-2">
-              <span className="text-[9px] font-black uppercase tracking-wide text-yellow-500/70">Lançar</span>
-            </div>
+            {/* Central launch button */}
+            <button
+              onClick={() => setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1, isCredit: false })}
+              className="min-w-[72px] flex flex-col items-center justify-center py-1.5 gap-0.5 bg-yellow-500 mx-1 rounded-xl active:scale-95 transition-all shadow-lg shadow-yellow-500/20"
+            >
+              <i className="fas fa-plus text-black text-xl font-black"></i>
+              <span className="text-[9px] font-black uppercase tracking-wide text-black">Lançar</span>
+            </button>
 
             <button
               onClick={() => setActiveTab('metas')}

@@ -80,6 +80,21 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
           title: r.title,
           linkedItemId: r.linked_item_id ?? '',
         })));
+      } else {
+        // Migração: importa colunas do localStorage se Supabase estiver vazio
+        try {
+          const saved = localStorage.getItem('teto_columns_v3');
+          if (saved) {
+            const local = JSON.parse(saved) as { id?: string; title?: string; linkedItemId?: string }[];
+            if (Array.isArray(local) && local.length > 0) {
+              setColumns(local.map(c => ({
+                id: c.id || crypto.randomUUID(),
+                title: c.title || '',
+                linkedItemId: c.linkedItemId || '',
+              })));
+            }
+          }
+        } catch {}
       }
       setColumnsLoaded(true);
     }).catch(() => setColumnsLoaded(true));
@@ -158,75 +173,26 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
   const columnsScrollRef = useRef<HTMLDivElement>(null);
 
-  // Drag-to-reorder state
-  const [dragColId, setDragColId] = useState<string | null>(null);
-  const [dragTargetIdx, setDragTargetIdx] = useState<number | null>(null);
+  // Sort mode: long-press activates, then use ← → arrows to move the card
+  const [sortColId, setSortColId] = useState<string | null>(null);
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressStartRef = useRef<{ x: number; y: number } | null>(null);
-  const dragColIdRef = useRef<string | null>(null);
-  const dragTargetIdxRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (!dragColId) return;
-    const onMove = (e: TouchEvent) => {
-      e.preventDefault();
-      const touch = e.touches[0];
-      const container = columnsScrollRef.current;
-      if (!container) return;
-      const colEls = Array.from(container.querySelectorAll('[data-drag-col]'));
-      if (!colEls.length) return;
-      let closest = 0;
-      let minDist = Infinity;
-      colEls.forEach((el, i) => {
-        const rect = (el as HTMLElement).getBoundingClientRect();
-        const dist = Math.abs(touch.clientX - (rect.left + rect.width / 2));
-        if (dist < minDist) { minDist = dist; closest = i; }
-      });
-      dragTargetIdxRef.current = closest;
-      setDragTargetIdx(closest);
-    };
-    const onEnd = () => {
-      const colId = dragColIdRef.current;
-      const tIdx = dragTargetIdxRef.current;
-      dragColIdRef.current = null;
-      dragTargetIdxRef.current = null;
-      setDragColId(null);
-      setDragTargetIdx(null);
-      if (colId !== null && tIdx !== null) {
-        setColumns(prev => {
-          const from = prev.findIndex(c => c.id === colId);
-          if (from === -1 || from === tIdx) return prev;
-          const next = [...prev];
-          const [removed] = next.splice(from, 1);
-          next.splice(tIdx, 0, removed);
-          return next;
-        });
-      }
-    };
-    document.addEventListener('touchmove', onMove, { passive: false });
-    document.addEventListener('touchend', onEnd);
-    return () => {
-      document.removeEventListener('touchmove', onMove);
-      document.removeEventListener('touchend', onEnd);
-    };
-  }, [dragColId]);
 
   const handleColTouchStart = (colId: string) => (e: React.TouchEvent) => {
     if (isHistoricalView) return;
     if (longPressRef.current) clearTimeout(longPressRef.current);
     longPressStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     longPressRef.current = setTimeout(() => {
-      dragColIdRef.current = colId;
-      setDragColId(colId);
+      longPressRef.current = null;
+      setSortColId(colId);
       if ('vibrate' in navigator) (navigator as any).vibrate(40);
-    }, 400);
+    }, 450);
   };
 
   const handleColTouchMove = (e: React.TouchEvent) => {
-    if (dragColIdRef.current || !longPressRef.current || !longPressStartRef.current) return;
-    const dx = Math.abs(e.touches[0].clientX - longPressStartRef.current.x);
+    if (!longPressRef.current || !longPressStartRef.current) return;
     const dy = Math.abs(e.touches[0].clientY - longPressStartRef.current.y);
-    if (dx > 8 || dy > 8) {
+    if (dy > 10) {
       clearTimeout(longPressRef.current);
       longPressRef.current = null;
     }
@@ -235,6 +201,18 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   const handleColTouchEnd = () => {
     if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; }
     longPressStartRef.current = null;
+  };
+
+  const moveSortCol = (colId: string, dir: -1 | 1) => {
+    setColumns(prev => {
+      const idx = prev.findIndex(c => c.id === colId);
+      if (idx === -1) return prev;
+      const next = idx + dir;
+      if (next < 0 || next >= prev.length) return prev;
+      const arr = [...prev];
+      [arr[idx], arr[next]] = [arr[next], arr[idx]];
+      return arr;
+    });
   };
 
   const [entryDescriptions, setEntryDescriptions] = useState<Record<string, string>>({});
@@ -344,9 +322,9 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
         </div>
       )}
 
-      {dragColId && (
-        <p className="text-[9px] font-black uppercase tracking-widest text-yellow-500/60 text-center mb-2 animate-pulse">
-          Arraste para reorganizar • solte para confirmar
+      {sortColId && (
+        <p className="text-[9px] font-black uppercase tracking-widest text-yellow-500 text-center mb-2 animate-pulse">
+          Use ← → para mover • toque no card para fechar
         </p>
       )}
 
@@ -374,19 +352,17 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
             : null;
 
           const isUnlinked = !col.linkedItemId;
-          const isDragging = dragColId === col.id;
-          const isDropTarget = dragColId && dragTargetIdx === colIdx && !isDragging;
+          const isSorting = sortColId === col.id;
 
           return (
             <div
               key={col.id}
-              data-drag-col
               onTouchStart={handleColTouchStart(col.id)}
               onTouchMove={handleColTouchMove}
               onTouchEnd={handleColTouchEnd}
+              onClick={() => { if (isSorting) setSortColId(null); }}
               className={`w-[calc(100vw-48px)] lg:w-64 flex-shrink-0 snap-start flex flex-col rounded-2xl border overflow-hidden transition-all duration-150 ${
-                isDragging ? 'opacity-40 scale-95 border-yellow-500/60' :
-                isDropTarget ? 'border-yellow-500 ring-2 ring-yellow-500/40' :
+                isSorting ? 'border-yellow-500 ring-2 ring-yellow-500/40 scale-[0.98]' :
                 isUnlinked ? 'border-orange-500/40' :
                 'border-zinc-800'
               }`}
@@ -394,6 +370,19 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
               {/* Header */}
               <div className={isUnlinked ? 'bg-orange-500/10 border-b border-orange-500/20' : 'bg-yellow-500'}>
+                {isSorting && (
+                  <div className="flex items-center justify-between px-2 pt-1.5 pb-0">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); moveSortCol(col.id, -1); }}
+                      className="w-8 h-7 flex items-center justify-center bg-black/20 active:bg-black/40 rounded-lg text-black font-black text-sm"
+                    >‹</button>
+                    <span className="text-[9px] font-black uppercase tracking-widest text-black/70">Mover</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); moveSortCol(col.id, 1); }}
+                      className="w-8 h-7 flex items-center justify-center bg-black/20 active:bg-black/40 rounded-lg text-black font-black text-sm"
+                    >›</button>
+                  </div>
+                )}
                 {isUnlinked && (
                   <div className="px-3 pt-2 pb-0.5 flex items-center gap-1.5">
                     <i className="fas fa-exclamation-triangle text-orange-400 text-[9px]"></i>
