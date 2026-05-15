@@ -113,10 +113,10 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
       const err = await res.json().catch(() => ({ error: `Erro ${res.status}` }));
       throw new Error(err.error || `Erro ${res.status}`);
     }
-    return res.json() as Promise<{ text: string; expense?: { itemId: string; value: number; description: string } }>;
+    return res.json() as Promise<{ text: string; expense?: { itemId: string; value: number; description: string; installments: number } }>;
   };
 
-  const handleResponse = (text: string, expense?: { itemId: string; value: number; description: string } | null) => {
+  const handleResponse = (text: string, expense?: { itemId: string; value: number; description: string; installments: number } | null) => {
     setResponse(text);
     speak(text);
     if (!expense?.itemId || !expense?.value) return;
@@ -126,16 +126,42 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
       setResponse(prev => `${prev}\n\n⚠️ Gasto detectado (${formatCurrency(expense.value)}) mas nenhuma coluna vinculada encontrada. Vá em Gastos e vincule um item.`);
       return;
     }
-    const today = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-    const partial: PartialExpense = {
-      id: crypto.randomUUID(),
-      date: today,
-      description: expense.description || matchedItem.description,
-      value: expense.value,
-    };
+
     const now = new Date();
-    onAddPartial(expense.itemId, partial, now.getFullYear(), now.getMonth());
-    setResponse(`✅ ${formatCurrency(expense.value)} em ${matchedItem.description} • ${today}`);
+    const installments = Math.max(1, expense.installments ?? 1);
+
+    if (installments <= 1) {
+      const today = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      const partial: PartialExpense = {
+        id: crypto.randomUUID(),
+        date: today,
+        description: expense.description || matchedItem.description,
+        value: expense.value,
+      };
+      onAddPartial(expense.itemId, partial, now.getFullYear(), now.getMonth());
+      setResponse(`✅ ${formatCurrency(expense.value)} em ${matchedItem.description} • ${today}`);
+    } else {
+      // Installment purchase — spread across months respecting card closing day
+      const card = matchedItem.linkedCardId ? items.find(i => i.id === matchedItem.linkedCardId) : null;
+      const isAfterClosing = card?.closingDay ? now.getDate() >= card.closingDay : false;
+      const startAbsMonth = (now.getFullYear() * 12 + now.getMonth()) + (isAfterClosing ? 1 : 0);
+      const baseValue = parseFloat((expense.value / installments).toFixed(2));
+
+      for (let i = 0; i < installments; i++) {
+        const absMonth = startAbsMonth + i;
+        const targetMonthIdx = absMonth % 12;
+        const targetYear = Math.floor(absMonth / 12);
+        const value = i === installments - 1 ? parseFloat((expense.value - baseValue * (installments - 1)).toFixed(2)) : baseValue;
+        const partial: PartialExpense = {
+          id: crypto.randomUUID(),
+          date: `01/${String(targetMonthIdx + 1).padStart(2, '0')}`,
+          description: `${expense.description || matchedItem.description} ${i + 1}/${installments}`,
+          value,
+        };
+        onAddPartial(expense.itemId, partial, targetYear, targetMonthIdx);
+      }
+      setResponse(`✅ ${formatCurrency(expense.value)} em ${installments}x de ${formatCurrency(baseValue)} → ${matchedItem.description}`);
+    }
   };
 
   const analyzeText = async (text?: string) => {

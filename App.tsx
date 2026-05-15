@@ -479,22 +479,10 @@ const App: React.FC = () => {
   };
 
   const handleAddPartial = (itemId: string, expense: PartialExpense, overrideYear?: number, overrideMonth?: number) => {
-    const item = items.find(i => i.id === itemId);
-    let targetMonth = overrideMonth ?? currentActualMonth;
-    let targetYear = overrideYear ?? currentActualYear;
-
-    // Only apply credit card shift logic when caller doesn't specify explicit month/year
-    if (overrideYear === undefined && overrideMonth === undefined && item?.linkedCardId) {
-      const card = items.find(c => c.id === item.linkedCardId);
-      if (card?.closingDay) {
-        const todayDay = new Date().getDate();
-        if (todayDay >= card.closingDay) {
-          const nextDate = new Date(currentActualYear, currentActualMonth + 1, 1);
-          targetMonth = nextDate.getMonth();
-          targetYear = nextDate.getFullYear();
-        }
-      }
-    }
+    // Always record in the month the expense actually happened.
+    // The credit card "fatura" month is informational only (shown as a label in TetoGastos).
+    const targetMonth = overrideMonth ?? currentActualMonth;
+    const targetYear = overrideYear ?? currentActualYear;
 
     const monthKey = `${targetYear}-${targetMonth}`;
     setItems(prev => prev.map(item => {

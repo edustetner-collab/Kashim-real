@@ -447,14 +447,12 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                       <span className="text-[9px] text-zinc-400 font-bold uppercase shrink-0">{p.date}</span>
                       <span className="flex-1 text-[10px] text-zinc-600 font-medium truncate">{p.description}</span>
                       <span className="text-xs font-black text-zinc-800 font-mono shrink-0">{formatCurrency(p.value)}</span>
-                      {!isHistoricalView && (
-                        <button
-                          onClick={() => onRemovePartial(col.linkedItemId, p.id)}
-                          className="text-red-400 active:text-red-600 p-1 shrink-0"
-                        >
-                          <i className="fas fa-times-circle text-xs"></i>
-                        </button>
-                      )}
+                      <button
+                        onClick={() => onRemovePartial(col.linkedItemId, p.id)}
+                        className="text-red-400 active:text-red-600 p-1 shrink-0"
+                      >
+                        <i className="fas fa-times-circle text-xs"></i>
+                      </button>
                     </div>
                   ))}
                 </div>

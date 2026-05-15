@@ -97,8 +97,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     type: 'string',
                     description: 'Descrição curta do que foi comprado. String vazia se não há gasto.',
                   },
+                  installments: {
+                    type: 'number',
+                    description: 'Número de parcelas. 1 se pagamento à vista. Ex: "em 3 vezes" → 3, "duas parcelas" → 2.',
+                  },
                 },
-                required: ['hasExpense', 'itemIdx', 'value', 'description'],
+                required: ['hasExpense', 'itemIdx', 'value', 'description', 'installments'],
               },
             }],
             tool_choice: { type: 'any' }, // OBRIGA Claude a chamar a tool
@@ -113,7 +117,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .join('');
 
     // Extrai gasto da chamada 2 — mapeia índice de volta para o ID real
-    let expense: { itemId: string; value: number; description: string } | null = null;
+    let expense: { itemId: string; value: number; description: string; installments: number } | null = null;
     if (extractResponse && availableItems?.length) {
       const toolBlock = extractResponse.content.find(b => b.type === 'tool_use') as Anthropic.ToolUseBlock | undefined;
       if (toolBlock) {
@@ -122,11 +126,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           itemIdx: number;
           value: number;
           description: string;
+          installments: number;
         };
         const idx = Math.round(input.itemIdx ?? -1);
         const matchedItem = availableItems[idx];
         if (input.hasExpense && matchedItem && input.value > 0) {
-          expense = { itemId: matchedItem.id, value: input.value, description: input.description };
+          expense = {
+            itemId: matchedItem.id,
+            value: input.value,
+            description: input.description,
+            installments: Math.max(1, Math.round(input.installments ?? 1)),
+          };
         }
       }
     }
