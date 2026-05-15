@@ -21,12 +21,13 @@ interface BlockSectionProps {
   onLinkCard?: (itemId: string, cardId: string, linkType?: LinkType) => void;
   onUpdateCardConfig?: (id: string, field: 'closingDay' | 'dueDay', value: number) => void;
   onMoveItem?: (id: string, direction: 'up' | 'down') => void;
+  trackedByCardId?: Record<string, number>;
 }
 
 const BlockSection: React.FC<BlockSectionProps> = ({
   title, subtitle, category, items, allCards = [], months, totalIncome, mobileMonthIdx = 0,
   onAddItem, onUpdateValue, onTogglePaid, onRemoveItem, onUpdateDescription, onReplicateValue, onLinkCard,
-  onUpdateCardConfig, onMoveItem
+  onUpdateCardConfig, onMoveItem, trackedByCardId
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
   const [showInstructionModal, setShowInstructionModal] = useState(false);
@@ -463,6 +464,25 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   </div>
                 </div>
               )}
+              {(() => {
+                const tracked = trackedByCardId?.[item.id] ?? 0;
+                const fatura = item.values[mobileMonthIdx] || 0;
+                const prevMonthName = mobileMonthIdx > 0 ? months[mobileMonthIdx - 1]?.monthName : null;
+                if (!tracked || !fatura || !prevMonthName) return null;
+                const naoIdentificado = Math.max(0, fatura - tracked);
+                return (
+                  <div className="mt-2 ml-7 px-2.5 py-2 bg-green-500/5 border border-green-500/20 rounded-xl space-y-1 text-[10px] font-mono">
+                    <div className="flex justify-between items-center">
+                      <span className="text-zinc-400">Rastreado ({prevMonthName})</span>
+                      <span className="text-green-400 font-black">− {formatCurrency(tracked)}</span>
+                    </div>
+                    <div className="flex justify-between items-center border-t border-zinc-700/50 pt-1">
+                      <span className="text-zinc-500 font-black uppercase text-[9px] tracking-wider">Não identificado</span>
+                      <span className={`font-black ${naoIdentificado === 0 ? 'text-green-400' : 'text-orange-300'}`}>{formatCurrency(naoIdentificado)}</span>
+                    </div>
+                  </div>
+                );
+              })()}
               {category === CategoryType.FIXED_EXPENSE && onUpdateCardConfig && (
                 <div className="mt-2 ml-7 flex items-center gap-2">
                   <i className="fas fa-calendar-day text-zinc-600 text-[9px]"></i>

@@ -551,28 +551,62 @@ const App: React.FC = () => {
     let accumulated = 0;
     for (let m = 0; m < 12; m++) {
       const totalIncome = items.filter(i => i.category === CategoryType.INCOME).reduce((sum, i) => sum + (i.values[m] || 0), 0);
-      const totalCreditCard = items.filter(i => i.category === CategoryType.CREDIT_CARD).reduce((sum, i) => sum + (i.values[m] || 0), 0);
       const totalFixed = items.filter(i => i.category === CategoryType.FIXED_EXPENSE).reduce((sum, i) => sum + (i.values[m] || 0), 0);
       const totalVariable = items.filter(i => i.category === CategoryType.VARIABLE_EXPENSE).reduce((sum, i) => sum + (i.values[m] || 0), 0);
       const totalLeisure = items.filter(i => i.category === CategoryType.PERSONAL_LEISURE).reduce((sum, i) => sum + (i.values[m] || 0), 0);
-      
+
+      // Desconta da fatura os gastos rastreados via TetoGastos no mês anterior
+      // Evita dupla contagem: gasto rastreado em Maio + fatura de Junho com o mesmo valor
+      const prevMonthKey = m > 0 ? `${months[m - 1].year}-${months[m - 1].index}` : null;
+      const totalCreditCard = items
+        .filter(i => i.category === CategoryType.CREDIT_CARD)
+        .reduce((sum, card) => {
+          const fatura = card.values[m] || 0;
+          if (!fatura || !prevMonthKey) return sum + fatura;
+          const trackedPrev = items
+            .filter(i => i.linkedCardId === card.id)
+            .reduce((s, i) => {
+              const partials = i.partialExpenses?.[prevMonthKey] || [];
+              return s + partials.reduce((ps, p) => ps + p.value, 0);
+            }, 0);
+          return sum + Math.max(0, fatura - trackedPrev);
+        }, 0);
+
+      // Deduplica itens de orçamento fixo/variável/lazer que já estão embutidos na fatura
+      // (ex: parcelas ou itens do mês 0 vinculados ao cartão)
       const totalFixedDuplicado = items.filter(i => i.category === CategoryType.FIXED_EXPENSE && i.linkedCardId && (m === 0 || i.linkType === LinkType.INSTALLMENT)).reduce((sum, i) => sum + (i.values[m] || 0), 0);
       const totalVariableDuplicado = items.filter(i => i.category === CategoryType.VARIABLE_EXPENSE && i.linkedCardId && (m === 0 || i.linkType === LinkType.INSTALLMENT)).reduce((sum, i) => sum + (i.values[m] || 0), 0);
       const totalLeisureDuplicado = items.filter(i => i.category === CategoryType.PERSONAL_LEISURE && i.linkedCardId && (m === 0 || i.linkType === LinkType.INSTALLMENT)).reduce((sum, i) => sum + (i.values[m] || 0), 0);
-      
-      const totalCost = totalCreditCard + 
-                        (totalFixed - totalFixedDuplicado) + 
-                        (totalVariable - totalVariableDuplicado) + 
+
+      const totalCost = totalCreditCard +
+                        (totalFixed - totalFixedDuplicado) +
+                        (totalVariable - totalVariableDuplicado) +
                         (totalLeisure - totalLeisureDuplicado);
-                        
       const balance = totalIncome - totalCost;
       accumulated += balance;
       summaries.push({ totalIncome, totalCreditCard, totalFixed, totalVariable, totalLeisure, totalCost, balance, accumulated });
     }
     return summaries;
-  }, [items]);
+  }, [items, months]);
 
   const allCards = useMemo(() => items.filter(i => i.category === CategoryType.CREDIT_CARD), [items]);
+
+  const trackedByCardPrevMonth = useMemo((): Record<string, number> => {
+    if (mobileMonthIdx === 0) return {};
+    const prevMonthData = months[mobileMonthIdx - 1];
+    const prevMonthKey = `${prevMonthData.year}-${prevMonthData.index}`;
+    const result: Record<string, number> = {};
+    allCards.forEach(card => {
+      const tracked = items
+        .filter(i => i.linkedCardId === card.id)
+        .reduce((sum, i) => {
+          const partials = i.partialExpenses?.[prevMonthKey] || [];
+          return sum + partials.reduce((s, p) => s + p.value, 0);
+        }, 0);
+      if (tracked > 0) result[card.id] = tracked;
+    });
+    return result;
+  }, [items, allCards, mobileMonthIdx, months]);
 
   const projectionOptions = useMemo(() => {
     const options = [];
@@ -963,6 +997,7 @@ const App: React.FC = () => {
                   onRemoveItem={handleRemoveItem} onUpdateDescription={handleUpdateDescription}
                   onReplicateValue={handleReplicateValue} onLinkCard={handleLinkCard}
                   onUpdateCardConfig={handleUpdateCardConfig} onMoveItem={handleMoveItem}
+                  trackedByCardId={block.type === CategoryType.CREDIT_CARD ? trackedByCardPrevMonth : undefined}
                 />
               ))}
             </div>
