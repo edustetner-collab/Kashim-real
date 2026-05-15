@@ -190,13 +190,14 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
 
   const startRecordingNative = async () => {
     try {
-      const { speechRecognition } = await NativeSpeech.requestPermissions();
-      if (speechRecognition !== 'granted') {
+      const perms = await NativeSpeech.requestPermissions();
+      if (perms.speechRecognition !== 'granted') {
         setResponse('⚠️ Permissão negada. Vá em Ajustes > Kashim e ative Microfone e Reconhecimento de Voz.');
         return;
       }
     } catch {
-      setResponse('⚠️ Não foi possível solicitar permissão de voz. Tente reiniciar o app.');
+      // Plugin not compiled for this Capacitor version — fall back to Web Speech API
+      startRecordingWeb();
       return;
     }
 
@@ -240,8 +241,10 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
     };
     recognition.onerror = (event: any) => {
       setIsRecording(false);
-      if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        setResponse(`⚠️ Erro no microfone: ${event.error}. Use o teclado.`);
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        setResponse('⚠️ Permissão negada. Ajustes > Kashim → ative Microfone e Reconhecimento de Voz.');
+      } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
+        setResponse(`⚠️ Microfone indisponível (${event.error}). Use o teclado ou envie uma foto.`);
       }
     };
     recognitionRef.current = recognition;

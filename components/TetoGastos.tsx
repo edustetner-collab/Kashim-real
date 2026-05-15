@@ -259,7 +259,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
         </div>
       )}
 
-      <div ref={columnsScrollRef} className="flex gap-3 overflow-x-auto pb-6 pt-1 px-1 snap-x snap-mandatory">
+      <div ref={columnsScrollRef} className="flex gap-3 items-start overflow-x-auto pb-6 pt-1 px-1 snap-x snap-mandatory">
         {columns.map((col) => {
           const linkedItem = items.find(i => i.id === col.linkedItemId);
           const teto = linkedItem ? (linkedItem.values[currentMonthIdx] || 0) : 0;
