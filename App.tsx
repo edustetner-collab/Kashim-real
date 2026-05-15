@@ -1150,17 +1150,16 @@ const App: React.FC = () => {
       </main>
 
       {/* ── MOBILE BOTTOM TAB BAR ──────────────────────────────────────── */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0f0f0f] border-t border-zinc-800 safe-bottom relative">
-        {/* "+" button is outside the overflow-x-auto container so it's never clipped */}
-        <button
-          onClick={() => setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1, isCredit: false })}
-          className="absolute left-1/2 -translate-x-1/2 -top-6 z-10 flex flex-col items-center gap-0.5"
-        >
-          <div className="w-12 h-12 rounded-2xl bg-yellow-500 flex items-center justify-center shadow-lg shadow-yellow-500/30 active:scale-90 transition-transform">
-            <i className="fas fa-plus text-black text-lg font-black"></i>
-          </div>
-        </button>
+      {/* "+" button is a separate fixed element — avoids the relative vs fixed conflict in Tailwind */}
+      <button
+        onClick={() => setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1, isCredit: false })}
+        className="lg:hidden fixed left-1/2 -translate-x-1/2 z-[51] w-12 h-12 rounded-2xl bg-yellow-500 flex items-center justify-center shadow-lg shadow-yellow-500/30 active:scale-90 transition-transform"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 48px)' }}
+      >
+        <i className="fas fa-plus text-black text-lg font-black"></i>
+      </button>
 
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0f0f0f] border-t border-zinc-800 safe-bottom">
         <div className="overflow-x-auto scrollbar-none">
           <div className="flex min-w-max">
             <button
