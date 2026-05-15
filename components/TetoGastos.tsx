@@ -113,9 +113,16 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
     setColumns(prev => {
       const alreadyLinked = new Set(prev.map(c => c.linkedItemId).filter(Boolean));
+      const isExpenseCategory = (item: FinanceItem) =>
+        item.category === CategoryType.FIXED_EXPENSE ||
+        item.category === CategoryType.VARIABLE_EXPENSE ||
+        item.category === CategoryType.PERSONAL_LEISURE;
+      const hasActivity = (item: FinanceItem) =>
+        item.values.some(v => v > 0) ||
+        Object.values(item.partialExpenses ?? {}).some(arr => (arr as PartialExpense[]).length > 0);
       const toAdd = items.filter(item =>
-        isRecurringItem(item) &&
-        item.values.some(v => v > 0) &&
+        isExpenseCategory(item) &&
+        hasActivity(item) &&
         !alreadyLinked.has(item.id)
       );
       if (toAdd.length === 0) return prev;
@@ -172,6 +179,22 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   };
 
   const columnsScrollRef = useRef<HTMLDivElement>(null);
+  const [visibleColIdx, setVisibleColIdx] = useState(0);
+
+  const scrollToCard = (idx: number) => {
+    const container = columnsScrollRef.current;
+    if (!container) return;
+    const cardWidth = container.scrollWidth / Math.max(columns.length, 1);
+    container.scrollTo({ left: idx * cardWidth, behavior: 'smooth' });
+  };
+
+  const handleContainerScroll = () => {
+    const container = columnsScrollRef.current;
+    if (!container || columns.length === 0) return;
+    const cardWidth = container.scrollWidth / columns.length;
+    const idx = Math.round(container.scrollLeft / cardWidth);
+    setVisibleColIdx(Math.max(0, Math.min(idx, columns.length - 1)));
+  };
 
   // Sort mode: long-press activates, then use ← → arrows to move the card
   const [sortColId, setSortColId] = useState<string | null>(null);
@@ -191,8 +214,9 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
   const handleColTouchMove = (e: React.TouchEvent) => {
     if (!longPressRef.current || !longPressStartRef.current) return;
+    const dx = Math.abs(e.touches[0].clientX - longPressStartRef.current.x);
     const dy = Math.abs(e.touches[0].clientY - longPressStartRef.current.y);
-    if (dy > 10) {
+    if (dx > 10 || dy > 10) {
       clearTimeout(longPressRef.current);
       longPressRef.current = null;
     }
@@ -213,6 +237,17 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       [arr[idx], arr[next]] = [arr[next], arr[idx]];
       return arr;
     });
+  };
+
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  const handleDeletePress = (col: ColumnData) => {
+    if (isHistoricalView || columns.length <= 1) return;
+    if (col.linkedItemId) {
+      setDeleteConfirmId(col.id === deleteConfirmId ? null : col.id);
+    } else {
+      removeColumn(col.id);
+    }
   };
 
   const [entryDescriptions, setEntryDescriptions] = useState<Record<string, string>>({});
@@ -328,7 +363,36 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
         </p>
       )}
 
-      <div ref={columnsScrollRef} className="flex gap-3 items-start overflow-x-auto pb-6 pt-1 px-1 snap-x snap-mandatory">
+      {/* Navigation arrows + dots — only shown when there are multiple cards */}
+      {columns.length > 1 && (
+        <div className="flex items-center justify-between px-1 mb-2">
+          <button
+            onClick={() => scrollToCard(visibleColIdx - 1)}
+            disabled={visibleColIdx === 0}
+            className={`w-8 h-8 flex items-center justify-center rounded-full transition-all ${visibleColIdx === 0 ? 'text-zinc-700' : 'text-yellow-500 active:bg-yellow-500/10'}`}
+          >
+            <i className="fas fa-chevron-left text-sm"></i>
+          </button>
+          <div className="flex items-center gap-1.5">
+            {columns.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => scrollToCard(i)}
+                className={`rounded-full transition-all ${i === visibleColIdx ? 'w-4 h-1.5 bg-yellow-500' : 'w-1.5 h-1.5 bg-zinc-600'}`}
+              />
+            ))}
+          </div>
+          <button
+            onClick={() => scrollToCard(visibleColIdx + 1)}
+            disabled={visibleColIdx === columns.length - 1}
+            className={`w-8 h-8 flex items-center justify-center rounded-full transition-all ${visibleColIdx === columns.length - 1 ? 'text-zinc-700' : 'text-yellow-500 active:bg-yellow-500/10'}`}
+          >
+            <i className="fas fa-chevron-right text-sm"></i>
+          </button>
+        </div>
+      )}
+
+      <div ref={columnsScrollRef} onScroll={handleContainerScroll} className="flex gap-3 items-start overflow-x-auto pb-6 pt-1 px-1 snap-x snap-mandatory scrollbar-none">
         {columns.map((col, colIdx) => {
           const linkedItem = items.find(i => i.id === col.linkedItemId);
           const teto = linkedItem ? (linkedItem.values[currentMonthIdx] || 0) : 0;
@@ -391,10 +455,14 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                 )}
                 <div className="flex items-center gap-1 px-2 pt-2 pb-0.5">
                   <button
-                    onClick={() => !isHistoricalView && removeColumn(col.id)}
-                    className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-all ${isHistoricalView ? 'opacity-0 pointer-events-none' : isUnlinked ? 'bg-orange-500/10 active:bg-red-500/40 text-orange-400/60 active:text-red-500' : 'bg-black/10 active:bg-red-500/40 text-black/40 active:text-red-700'}`}
+                    onClick={() => handleDeletePress(col)}
+                    className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-all ${
+                      isHistoricalView || columns.length <= 1 ? 'opacity-0 pointer-events-none' :
+                      deleteConfirmId === col.id ? 'bg-red-500 text-white scale-110' :
+                      'bg-red-500/20 text-red-400 active:bg-red-500 active:text-white'
+                    }`}
                   >
-                    <i className="fas fa-times text-[8px]"></i>
+                    <i className="fas fa-times text-[9px]"></i>
                   </button>
                   <select
                     className={`flex-1 bg-transparent border-none text-[10px] font-black uppercase text-center outline-none cursor-pointer ${isUnlinked ? 'text-orange-400' : 'text-black'}`}
@@ -421,6 +489,29 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                   placeholder="NOME DA COLUNA"
                 />
               </div>
+
+              {/* Delete confirmation banner */}
+              {deleteConfirmId === col.id && (
+                <div className="bg-red-950 border-b border-red-800 px-3 py-2 flex items-center justify-between gap-2">
+                  <p className="text-[9px] text-red-300 font-bold leading-tight flex-1">
+                    Excluir apagará todos os lançamentos vinculados a esta despesa.
+                  </p>
+                  <div className="flex gap-1.5 shrink-0">
+                    <button
+                      onClick={() => setDeleteConfirmId(null)}
+                      className="px-2.5 py-1 rounded-lg bg-zinc-700 text-zinc-300 text-[9px] font-black uppercase active:bg-zinc-600"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={() => { removeColumn(col.id); setDeleteConfirmId(null); }}
+                      className="px-2.5 py-1 rounded-lg bg-red-600 text-white text-[9px] font-black uppercase active:bg-red-500"
+                    >
+                      Excluir
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Budget bar — only when a budget is set */}
               {teto > 0 && (
