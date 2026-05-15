@@ -4,6 +4,7 @@ import { useUser, useClerk, useSignIn, SignIn, SignUp } from '@clerk/clerk-react
 import { CategoryType, FinanceItem, SummaryData, LinkType, PartialExpense, Goal } from './types';
 import { getNext12Months, formatCurrency, MONTHS_BR } from './constants';
 import BlockSection from './components/BlockSection';
+import ExpenseSheet, { DetectedExpense } from './components/ExpenseSheet';
 import Diagnosis from './components/Diagnosis';
 import TetoGastos from './components/TetoGastos';
 import AICoach from './components/AICoach';
@@ -59,6 +60,7 @@ const App: React.FC = () => {
   const userDataLoadedRef = useRef<string | null>(null); // tracks userId to prevent token-refresh reloads
   const coachViewLoadedRef = useRef<string | null>(null);
   const [tetoColumns, setTetoColumns] = useState<{ id: string; title: string; linkedItemId: string }[]>([]);
+  const [pendingExpense, setPendingExpense] = useState<(DetectedExpense & { source: 'ai' | 'manual' }) | null>(null);
   // Guard: true only after items have been loaded from DB (prevents saving default items on load failure)
   const dbItemsLoadedRef = useRef(false);
 
@@ -504,6 +506,48 @@ const App: React.FC = () => {
     }
   };
 
+  const handleExpenseDetected = (data: DetectedExpense) => {
+    setPendingExpense({ ...data, source: 'ai' });
+  };
+
+  const handleConfirmExpense = (data: DetectedExpense) => {
+    const matchedItem = items.find(i => i.id === data.itemId);
+    if (!matchedItem) return;
+
+    const now = new Date();
+    const installments = Math.max(1, data.installments ?? 1);
+
+    if (installments <= 1) {
+      const today = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      handleAddPartial(data.itemId, {
+        id: crypto.randomUUID(),
+        date: today,
+        description: data.description || matchedItem.description,
+        value: data.value,
+      });
+    } else {
+      const card = matchedItem.linkedCardId ? items.find(i => i.id === matchedItem.linkedCardId) : null;
+      const isAfterClosing = card?.closingDay ? now.getDate() >= card.closingDay : false;
+      const startAbsMonth = (now.getFullYear() * 12 + now.getMonth()) + (isAfterClosing ? 1 : 0);
+      const baseValue = parseFloat((data.value / installments).toFixed(2));
+
+      for (let i = 0; i < installments; i++) {
+        const absMonth = startAbsMonth + i;
+        const targetMonthIdx = absMonth % 12;
+        const targetYear = Math.floor(absMonth / 12);
+        const value = i === installments - 1 ? parseFloat((data.value - baseValue * (installments - 1)).toFixed(2)) : baseValue;
+        handleAddPartial(data.itemId, {
+          id: crypto.randomUUID(),
+          date: `01/${String(targetMonthIdx + 1).padStart(2, '0')}`,
+          description: `${data.description || matchedItem.description} ${i + 1}/${installments}`,
+          value,
+        }, targetYear, targetMonthIdx);
+      }
+    }
+
+    setPendingExpense(null);
+  };
+
   const handleRemovePartial = (itemId: string, expenseId: string) => {
     setItems(prev => prev.map(item => {
       if (item.id !== itemId) return item;
@@ -928,7 +972,7 @@ const App: React.FC = () => {
           <Metas goals={goals} onGoalsChange={handleGoalsChange} db={db} householdId={householdId} />
         ) : activeTab === 'plan' ? (
           <>
-            <div id="stets"><AICoach summary={monthlySummaries[mobileMonthIdx]} items={items} monthName={months[mobileMonthIdx].monthName} onAddPartial={handleAddPartial} tetoColumns={tetoColumns} /></div>
+            <div id="stets"><AICoach summary={monthlySummaries[mobileMonthIdx]} items={items} monthName={months[mobileMonthIdx].monthName} onExpenseDetected={handleExpenseDetected} tetoColumns={tetoColumns} /></div>
             <div id="diagnosis" className="hidden lg:block"><Diagnosis summary={monthlySummaries[0]} monthName={months[0].monthName} /></div>
 
             {/* ── MOBILE SUMMARY CARDS ──────────────────────────────── */}
@@ -1115,6 +1159,17 @@ const App: React.FC = () => {
               {activeTab === 'teto' && <span className="absolute bottom-0 w-8 h-0.5 bg-yellow-500 rounded-full mb-1"></span>}
             </button>
 
+            {/* Central "+" button — opens expense entry sheet */}
+            <button
+              onClick={() => setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1 })}
+              className="min-w-[64px] flex flex-col items-center justify-center pt-1 pb-0 gap-0.5 relative"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-yellow-500 flex items-center justify-center shadow-lg shadow-yellow-500/30 active:scale-90 transition-transform -mt-4">
+                <i className="fas fa-plus text-black text-lg font-black"></i>
+              </div>
+              <span className="text-[9px] font-black uppercase tracking-wide text-yellow-500/70 -mt-0.5">Lançar</span>
+            </button>
+
             <button
               onClick={() => setActiveTab('metas')}
               className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-0 gap-0.5 transition-colors active:scale-95 ${activeTab === 'metas' ? 'text-yellow-500' : 'text-zinc-500'}`}
@@ -1146,6 +1201,19 @@ const App: React.FC = () => {
 
       {/* Spacer so bottom tab bar doesn't cover content on mobile */}
       <div className="lg:hidden h-16"></div>
+
+      {/* Expense confirmation / entry sheet */}
+      <ExpenseSheet
+        open={!!pendingExpense}
+        source={pendingExpense?.source ?? 'manual'}
+        items={items}
+        initialItemId={pendingExpense?.itemId}
+        initialValue={pendingExpense?.value}
+        initialDescription={pendingExpense?.description}
+        initialInstallments={pendingExpense?.installments}
+        onConfirm={handleConfirmExpense}
+        onClose={() => setPendingExpense(null)}
+      />
     </div>
   );
 };

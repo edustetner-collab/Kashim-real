@@ -1,8 +1,9 @@
 
 import React, { useState, useRef } from 'react';
 import { SpeechRecognition as NativeSpeech } from '@capacitor-community/speech-recognition';
-import { SummaryData, FinanceItem, CategoryType, PartialExpense } from '../types';
+import { SummaryData, FinanceItem, CategoryType } from '../types';
 import { formatCurrency } from '../constants';
+import { DetectedExpense } from './ExpenseSheet';
 
 const isNativeApp = () => !!(window as any).Capacitor?.isNativePlatform?.();
 
@@ -10,7 +11,7 @@ interface AICoachProps {
   summary: SummaryData;
   items: FinanceItem[];
   monthName: string;
-  onAddPartial: (itemId: string, expense: PartialExpense) => void;
+  onExpenseDetected: (data: DetectedExpense) => void;
   tetoColumns?: { id: string; title: string; linkedItemId: string }[];
 }
 
@@ -33,7 +34,7 @@ const compressImage = (base64: string, mime: string): Promise<{ data: string; mi
     img.src = `data:${mime};base64,${base64}`;
   });
 
-const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onAddPartial, tetoColumns }) => {
+const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onExpenseDetected, tetoColumns }) => {
   const [prompt, setPrompt] = useState('');
   const [response, setResponse] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -127,41 +128,13 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
       return;
     }
 
-    const now = new Date();
-    const installments = Math.max(1, expense.installments ?? 1);
-
-    if (installments <= 1) {
-      const today = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-      const partial: PartialExpense = {
-        id: crypto.randomUUID(),
-        date: today,
-        description: expense.description || matchedItem.description,
-        value: expense.value,
-      };
-      onAddPartial(expense.itemId, partial, now.getFullYear(), now.getMonth());
-      setResponse(`✅ ${formatCurrency(expense.value)} em ${matchedItem.description} • ${today}`);
-    } else {
-      // Installment purchase — spread across months respecting card closing day
-      const card = matchedItem.linkedCardId ? items.find(i => i.id === matchedItem.linkedCardId) : null;
-      const isAfterClosing = card?.closingDay ? now.getDate() >= card.closingDay : false;
-      const startAbsMonth = (now.getFullYear() * 12 + now.getMonth()) + (isAfterClosing ? 1 : 0);
-      const baseValue = parseFloat((expense.value / installments).toFixed(2));
-
-      for (let i = 0; i < installments; i++) {
-        const absMonth = startAbsMonth + i;
-        const targetMonthIdx = absMonth % 12;
-        const targetYear = Math.floor(absMonth / 12);
-        const value = i === installments - 1 ? parseFloat((expense.value - baseValue * (installments - 1)).toFixed(2)) : baseValue;
-        const partial: PartialExpense = {
-          id: crypto.randomUUID(),
-          date: `01/${String(targetMonthIdx + 1).padStart(2, '0')}`,
-          description: `${expense.description || matchedItem.description} ${i + 1}/${installments}`,
-          value,
-        };
-        onAddPartial(expense.itemId, partial, targetYear, targetMonthIdx);
-      }
-      setResponse(`✅ ${formatCurrency(expense.value)} em ${installments}x de ${formatCurrency(baseValue)} → ${matchedItem.description}`);
-    }
+    // Passa para a tela de confirmação — não salva diretamente
+    onExpenseDetected({
+      itemId: expense.itemId,
+      value: expense.value,
+      description: expense.description || matchedItem.description,
+      installments: Math.max(1, expense.installments ?? 1),
+    });
   };
 
   const analyzeText = async (text?: string) => {
