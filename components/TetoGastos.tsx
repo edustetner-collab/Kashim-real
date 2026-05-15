@@ -56,10 +56,20 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   const isHistoricalView = selectedMonthKey !== currentMonthKey;
   const monthKey = selectedMonthKey;
 
-  const [columns, setColumns] = useState<ColumnData[]>(() => {
-    const saved = localStorage.getItem('teto_columns_v3');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [columns, setColumns] = useState<ColumnData[]>([]);
+
+  // Isolamento de perfil: limpa estado e refs ao trocar de householdId
+  // Sem isso, colunas de um cliente vazam para outro via localStorage ou estado residual
+  const isFirstRender = useRef(true);
+  const autoLinkedRef = useRef(false);
+  const cleanedFixedRef = useRef(false);
+  useEffect(() => {
+    setColumns([]);
+    setColumnsLoaded(false);
+    isFirstRender.current = true;
+    autoLinkedRef.current = false;
+    cleanedFixedRef.current = false;
+  }, [householdId]);
 
   useEffect(() => {
     if (!db || !householdId) { setColumnsLoaded(true); return; }
@@ -75,17 +85,13 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
     }).catch(() => setColumnsLoaded(true));
   }, [db, householdId]);
 
-  const isFirstRender = useRef(true);
   useEffect(() => {
     if (!columnsLoaded) return;
     if (isFirstRender.current) { isFirstRender.current = false; return; }
-    localStorage.setItem('teto_columns_v3', JSON.stringify(columns));
     if (db && householdId) {
       saveTetoColumns(db, householdId, columns).catch(() => {});
     }
   }, [columns, columnsLoaded]);
-
-  const autoLinkedRef = useRef(false);
   useEffect(() => {
     if (!columnsLoaded || autoLinkedRef.current || items.length === 0) return;
     autoLinkedRef.current = true;
@@ -120,7 +126,6 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
   // Remove columns linked to FIXED_EXPENSE items that have no recorded expenses.
   // Fixed items (internet, celular) don't need transaction tracking — only variable/leisure do.
-  const cleanedFixedRef = useRef(false);
   useEffect(() => {
     if (!columnsLoaded || cleanedFixedRef.current || items.length === 0) return;
     cleanedFixedRef.current = true;
