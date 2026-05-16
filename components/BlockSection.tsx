@@ -14,6 +14,7 @@ interface BlockSectionProps {
   mobileMonthIdx?: number;
   onAddItem: (category: CategoryType, customData?: Partial<FinanceItem>) => void;
   onRequestExpenseSheet?: () => void;
+  onAddLeisureItem?: (value: number) => void;
   onUpdateValue: (id: string, monthIdx: number, value: string) => void;
   onTogglePaid: (id: string, monthIdx: number) => void;
   onRemoveItem: (id: string) => void;
@@ -28,7 +29,7 @@ interface BlockSectionProps {
 const BlockSection: React.FC<BlockSectionProps> = ({
   title, subtitle, category, items, allCards = [], months, totalIncome, mobileMonthIdx = 0,
   onAddItem, onUpdateValue, onTogglePaid, onRemoveItem, onUpdateDescription, onReplicateValue, onLinkCard,
-  onUpdateCardConfig, onMoveItem, trackedByCardId, onRequestExpenseSheet
+  onUpdateCardConfig, onMoveItem, trackedByCardId, onRequestExpenseSheet, onAddLeisureItem
 }) => {
   const [showInstructionModal, setShowInstructionModal] = useState(false);
   const [installmentWarning, setInstallmentWarning] = useState<string | null>(null);
@@ -38,6 +39,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
     itemId: string; cardId: string; totalInput: string; currentInput: string;
   } | null>(null);
   const [openPaymentItemId, setOpenPaymentItemId] = useState<string | null>(null);
+  const [leisureModal, setLeisureModal] = useState<{ suggested: number; input: string } | null>(null);
   const timersRef = useRef<Record<string, number>>({});
   const itemsRef = useRef<FinanceItem[]>(items);
   useEffect(() => { itemsRef.current = items; }, [items]);
@@ -74,10 +76,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
     setShowInstructionModal(false);
     if (category === CategoryType.PERSONAL_LEISURE) {
       const suggestedLeisure = Math.round(totalIncome * 0.15);
-      onAddItem(category, {
-        description: 'Lazer e Despesas Pessoais',
-        values: new Array(12).fill(suggestedLeisure),
-      });
+      setLeisureModal({ suggested: suggestedLeisure, input: String(suggestedLeisure) });
     } else if (category === CategoryType.VARIABLE_EXPENSE) {
       if (onRequestExpenseSheet) {
         onRequestExpenseSheet();
@@ -312,6 +311,56 @@ const BlockSection: React.FC<BlockSectionProps> = ({
         </div>
       )}
 
+      {/* Leisure value confirmation modal */}
+      {leisureModal && (
+        <div className="fixed inset-0 z-[110] flex items-end p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-2xl">
+            <div className="w-12 h-12 bg-green-400/10 rounded-2xl flex items-center justify-center mb-4">
+              <i className="fas fa-cocktail text-xl text-green-400"></i>
+            </div>
+            <h3 className="text-white font-black uppercase italic tracking-tight text-lg mb-1">Definir teto de Lazer</h3>
+            <p className="text-zinc-400 text-sm mb-5">
+              Sugerimos <span className="text-green-400 font-black">{formatCurrency(leisureModal.suggested)}</span> — 15% da sua renda.
+              Confirme ou ajuste o valor que faz sentido para você.
+            </p>
+            <div className="bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 mb-5 focus-within:border-green-400/40 transition-colors">
+              <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500 mb-1">Meu limite mensal de lazer</p>
+              <div className="flex items-center gap-2">
+                <span className="text-zinc-500 font-mono text-sm">R$</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  value={leisureModal.input}
+                  onChange={e => setLeisureModal(p => p ? { ...p, input: e.target.value } : p)}
+                  autoFocus
+                  className="flex-1 bg-transparent text-white text-2xl font-black font-mono outline-none"
+                  placeholder="0"
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  const val = Math.round(parseFloat(leisureModal.input) || leisureModal.suggested);
+                  if (onAddLeisureItem) {
+                    onAddLeisureItem(val);
+                  } else {
+                    onAddItem(category, { description: 'Lazer e Despesas Pessoais', values: new Array(12).fill(val) });
+                  }
+                  setLeisureModal(null);
+                }}
+                className="w-full bg-green-400 active:bg-green-300 text-black font-black py-4 rounded-2xl text-sm uppercase tracking-widest"
+              >
+                Confirmar
+              </button>
+              <button onClick={() => setLeisureModal(null)} className="text-zinc-500 text-[10px] font-bold uppercase tracking-[0.2em] py-2 text-center">
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-zinc-900 px-4 py-3 flex items-center gap-3 border-b border-green-500/20">
         <div className="flex flex-col min-w-0">
           <div className="flex items-center gap-2">
@@ -328,7 +377,41 @@ const BlockSection: React.FC<BlockSectionProps> = ({
           {subtitle && <p className="text-green-400/50 text-[9px] uppercase font-bold tracking-wider mt-0.5">{subtitle}</p>}
         </div>
       </div>
-      
+
+      {/* 3 progress bars: Ideal / Determinado / Realizado */}
+      {(category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE) && totalIncome > 0 && (() => {
+        const idealPct = category === CategoryType.PERSONAL_LEISURE ? 15 : 55;
+        const idealValue = Math.round(totalIncome * (idealPct / 100));
+        const determinedValue = items.reduce((s, i) => s + (i.values[mobileMonthIdx] || 0), 0);
+        const monthData = months[mobileMonthIdx];
+        const monthKey = monthData ? `${monthData.year}-${monthData.index}` : '';
+        const realizedValue = items.reduce((s, item) => {
+          const partials: any[] = (item.partialExpenses as any)?.[monthKey] || [];
+          return s + partials.reduce((ps: number, p: any) => ps + p.value, 0);
+        }, 0);
+        const toBarPct = (v: number) => Math.min(100, (v / totalIncome) * 100);
+        const detOk = determinedValue <= idealValue * 1.05;
+        const realOk = realizedValue <= determinedValue * 1.05;
+        const bars = [
+          { label: 'Ideal', value: idealValue, pct: toBarPct(idealValue), bar: 'bg-zinc-500', text: 'text-zinc-400' },
+          { label: 'Determinado', value: determinedValue, pct: toBarPct(determinedValue), bar: detOk ? 'bg-green-400' : 'bg-red-400', text: detOk ? 'text-green-400' : 'text-red-400' },
+          { label: 'Realizado', value: realizedValue, pct: toBarPct(realizedValue), bar: realOk ? 'bg-blue-400' : 'bg-red-500', text: realOk ? 'text-blue-400' : 'text-red-400' },
+        ];
+        return (
+          <div className="bg-zinc-950/60 px-4 py-3 border-b border-zinc-800/50 space-y-1.5">
+            {bars.map(b => (
+              <div key={b.label} className="flex items-center gap-2">
+                <span className="text-[8px] font-black uppercase tracking-wider text-zinc-500 w-[68px] shrink-0">{b.label}</span>
+                <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all duration-500 ${b.bar}`} style={{ width: `${b.pct}%` }} />
+                </div>
+                <span className={`text-[9px] font-mono font-black w-[68px] text-right shrink-0 ${b.text}`}>{formatCurrency(b.value)}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
       {/* ── MOBILE LAYOUT ─────────────────────────────────────────── */}
       <div className="block lg:hidden bg-[#111] divide-y divide-zinc-800/60">
         {items.filter(item => {

@@ -10,7 +10,7 @@ import TetoGastos from './components/TetoGastos';
 import AICoach from './components/AICoach';
 import OnboardingTutorial from './components/OnboardingTutorial';
 import { useSupabase } from './lib/useSupabase';
-import { getOrCreateHousehold, getHousehold, loadFinanceItems, saveFinanceItem, deleteFinanceItem, addPartialExpense, deletePartialExpense, updateHouseholdPlan, loadGoals, loadTetoColumns } from './lib/db';
+import { getOrCreateHousehold, getHousehold, loadFinanceItems, saveFinanceItem, deleteFinanceItem, addPartialExpense, deletePartialExpense, updateHouseholdPlan, loadGoals, loadTetoColumns, saveTetoColumns } from './lib/db';
 import { processInviteFromUrl } from './lib/invites';
 import InvitePartner from './components/InvitePartner';
 import CoachDashboard from './components/CoachDashboard';
@@ -509,6 +509,33 @@ const App: React.FC = () => {
   const handleExpenseDetected = (data: DetectedExpense) => {
     const source = data.itemId ? 'ai' : 'manual';
     setPendingExpense({ ...data, source });
+  };
+
+  const handleAddLeisureItem = (value: number) => {
+    const newId = crypto.randomUUID();
+    const newItem: FinanceItem = {
+      id: newId,
+      description: 'Lazer e Despesas Pessoais',
+      category: CategoryType.PERSONAL_LEISURE,
+      values: new Array(12).fill(value),
+      paidStatus: new Array(12).fill(false),
+    };
+    setItems(prev => [...prev, newItem]);
+
+    // Auto-create a Gastos column linked to the new item (only if none exists yet)
+    setTetoColumns(prev => {
+      const alreadyHas = prev.some(c => {
+        const linked = items.find(i => i.id === c.linkedItemId);
+        return linked?.category === CategoryType.PERSONAL_LEISURE;
+      });
+      if (alreadyHas) return prev;
+      const newCol = { id: crypto.randomUUID(), title: 'LAZER', linkedItemId: newId };
+      const next = [...prev, newCol];
+      if (db && householdId) saveTetoColumns(db, householdId, next).catch(() => {});
+      return next;
+    });
+
+    setActiveTab('teto');
   };
 
   const handleConfirmExpense = (data: DetectedExpense) => {
@@ -1058,6 +1085,7 @@ const App: React.FC = () => {
                   onRequestExpenseSheet={block.type === CategoryType.VARIABLE_EXPENSE
                     ? () => setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1, isCredit: false })
                     : undefined}
+                  onAddLeisureItem={block.type === CategoryType.PERSONAL_LEISURE ? handleAddLeisureItem : undefined}
                 />
               ))}
             </div>
