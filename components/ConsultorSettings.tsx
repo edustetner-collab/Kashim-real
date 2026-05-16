@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useEffect } from 'react';
 import { UserProfile, useUser, useClerk, useAuth } from '@clerk/clerk-react';
 import { SupabaseClient } from '@supabase/supabase-js';
@@ -85,13 +85,13 @@ const ConsultorSettings: React.FC<ConsultorSettingsProps> = ({ db, onClose }) =>
         <div className="flex gap-2 bg-zinc-900 p-1 rounded-xl border border-zinc-800 mb-6">
           <button
             onClick={() => setTab('perfil')}
-            className={`flex-1 py-2 rounded-lg text-xs font-black uppercase transition-all ${tab === 'perfil' ? 'bg-yellow-600 text-black' : 'text-zinc-400 hover:text-white'}`}
+            className={`flex-1 py-2 rounded-lg text-xs font-black uppercase transition-all ${tab === 'perfil' ? 'bg-green-500 text-black' : 'text-zinc-400 hover:text-white'}`}
           >
             <i className="fas fa-user mr-2"></i>Meu Perfil
           </button>
           <button
             onClick={() => setTab('equipe')}
-            className={`flex-1 py-2 rounded-lg text-xs font-black uppercase transition-all ${tab === 'equipe' ? 'bg-yellow-600 text-black' : 'text-zinc-400 hover:text-white'}`}
+            className={`flex-1 py-2 rounded-lg text-xs font-black uppercase transition-all ${tab === 'equipe' ? 'bg-green-500 text-black' : 'text-zinc-400 hover:text-white'}`}
           >
             <i className="fas fa-users mr-2"></i>Minha Equipe
           </button>
@@ -102,12 +102,12 @@ const ConsultorSettings: React.FC<ConsultorSettingsProps> = ({ db, onClose }) =>
             {/* Info do consultor */}
             <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 mb-5 flex items-center gap-4">
               {user?.imageUrl && (
-                <img src={user.imageUrl} className="w-14 h-14 rounded-full border-2 border-yellow-500/30" alt="Avatar" />
+                <img src={user.imageUrl} className="w-14 h-14 rounded-full border-2 border-green-400/30" alt="Avatar" />
               )}
               <div>
                 <p className="text-white font-black text-lg">{user?.fullName || user?.firstName}</p>
                 <p className="text-zinc-500 text-xs">{user?.emailAddresses[0]?.emailAddress}</p>
-                <span className="text-[9px] font-black uppercase text-yellow-500 bg-yellow-500/10 border border-yellow-500/20 px-2 py-0.5 rounded-full mt-1 inline-block">Consultor</span>
+                <span className="text-[9px] font-black uppercase text-green-400 bg-green-400/10 border border-green-400/20 px-2 py-0.5 rounded-full mt-1 inline-block">Consultor</span>
               </div>
             </div>
 
@@ -124,7 +124,7 @@ const ConsultorSettings: React.FC<ConsultorSettingsProps> = ({ db, onClose }) =>
                     headerSubtitle: 'text-zinc-500',
                     formFieldLabel: 'text-zinc-400 text-xs uppercase tracking-widest',
                     formFieldInput: 'bg-zinc-800 border-zinc-700 text-white rounded-xl',
-                    formButtonPrimary: 'bg-yellow-600 hover:bg-yellow-500 text-black font-black uppercase text-xs',
+                    formButtonPrimary: 'bg-green-500 hover:bg-green-400 text-black font-black uppercase text-xs',
                     navbarButton__apiKeys: { display: 'none' },
                   }
                 }}
@@ -147,7 +147,7 @@ const ConsultorSettings: React.FC<ConsultorSettingsProps> = ({ db, onClose }) =>
           <div className="space-y-5">
             <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
               <h3 className="text-white font-black uppercase italic tracking-tight mb-1 flex items-center gap-2">
-                <i className="fas fa-user-plus text-yellow-500"></i>
+                <i className="fas fa-user-plus text-green-400"></i>
                 Adicionar Assistente
               </h3>
               <p className="text-zinc-500 text-xs mb-5">
@@ -160,21 +160,21 @@ const ConsultorSettings: React.FC<ConsultorSettingsProps> = ({ db, onClose }) =>
                   value={newName}
                   onChange={e => setNewName(e.target.value)}
                   placeholder="Nome da assistente"
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-500 transition-all"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white text-sm outline-none focus:border-green-400 transition-all"
                 />
                 <input
                   type="email"
                   value={newEmail}
                   onChange={e => setNewEmail(e.target.value)}
                   placeholder="email@exemplo.com"
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-500 transition-all"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white text-sm outline-none focus:border-green-400 transition-all"
                 />
                 {addError && <p className="text-red-400 text-xs">{addError}</p>}
                 {addSuccess && <p className="text-green-400 text-xs">{addSuccess}</p>}
                 <button
                   type="submit"
                   disabled={adding || !newEmail || !newName}
-                  className="w-full bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50 text-black font-black py-3 rounded-2xl transition-all text-sm uppercase"
+                  className="w-full bg-green-500 hover:bg-green-400 disabled:opacity-50 text-black font-black py-3 rounded-2xl transition-all text-sm uppercase"
                 >
                   {adding ? <i className="fas fa-circle-notch animate-spin"></i> : 'Adicionar à equipe'}
                 </button>
@@ -185,7 +185,7 @@ const ConsultorSettings: React.FC<ConsultorSettingsProps> = ({ db, onClose }) =>
             {assistants.length > 0 && (
               <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
                 <h3 className="text-white font-black uppercase italic tracking-tight mb-4 flex items-center gap-2">
-                  <i className="fas fa-users text-yellow-500"></i>
+                  <i className="fas fa-users text-green-400"></i>
                   Equipe Ativa
                 </h3>
                 <div className="space-y-3">

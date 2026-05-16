@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useEffect, useRef } from 'react';
 import { CategoryType, FinanceItem, LinkType } from '../types';
 import { formatCurrency } from '../constants';
@@ -13,6 +13,7 @@ interface BlockSectionProps {
   totalIncome: number;
   mobileMonthIdx?: number;
   onAddItem: (category: CategoryType, customData?: Partial<FinanceItem>) => void;
+  onRequestExpenseSheet?: () => void;
   onUpdateValue: (id: string, monthIdx: number, value: string) => void;
   onTogglePaid: (id: string, monthIdx: number) => void;
   onRemoveItem: (id: string) => void;
@@ -27,15 +28,12 @@ interface BlockSectionProps {
 const BlockSection: React.FC<BlockSectionProps> = ({
   title, subtitle, category, items, allCards = [], months, totalIncome, mobileMonthIdx = 0,
   onAddItem, onUpdateValue, onTogglePaid, onRemoveItem, onUpdateDescription, onReplicateValue, onLinkCard,
-  onUpdateCardConfig, onMoveItem, trackedByCardId
+  onUpdateCardConfig, onMoveItem, trackedByCardId, onRequestExpenseSheet
 }) => {
-  const [showTooltip, setShowTooltip] = useState(false);
   const [showInstructionModal, setShowInstructionModal] = useState(false);
   const [installmentWarning, setInstallmentWarning] = useState<string | null>(null);
   const [paidToast, setPaidToast] = useState<string | null>(null);
   const [replicateToast, setReplicateToast] = useState(false);
-  const [varInstallModal, setVarInstallModal] = useState<{ step: 'ask' | 'count' } | null>(null);
-  const [varInstallCount, setVarInstallCount] = useState('');
   const [cardInstallModal, setCardInstallModal] = useState<{
     itemId: string; cardId: string; totalInput: string; currentInput: string;
   } | null>(null);
@@ -74,15 +72,18 @@ const BlockSection: React.FC<BlockSectionProps> = ({
 
   const executeAdd = (installments?: number) => {
     setShowInstructionModal(false);
-    setVarInstallModal(null);
     if (category === CategoryType.PERSONAL_LEISURE) {
-      const suggestedLeisure = totalIncome * 0.15;
+      const suggestedLeisure = Math.round(totalIncome * 0.15);
       onAddItem(category, {
         description: 'Lazer e Despesas Pessoais',
-        values: new Array(12).fill(suggestedLeisure)
+        values: new Array(12).fill(suggestedLeisure),
       });
-    } else if (category === CategoryType.VARIABLE_EXPENSE && installments && installments > 1) {
-      onAddItem(category, { values: new Array(12).fill(0) });
+    } else if (category === CategoryType.VARIABLE_EXPENSE) {
+      if (onRequestExpenseSheet) {
+        onRequestExpenseSheet();
+      } else {
+        onAddItem(category, { values: new Array(12).fill(0) });
+      }
     } else {
       onAddItem(category);
     }
@@ -177,51 +178,6 @@ const BlockSection: React.FC<BlockSectionProps> = ({
         </div>
       )}
 
-      {/* Variable expense installment modal */}
-      {varInstallModal && (
-        <div className="fixed inset-0 z-[200] flex items-end p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-2xl">
-            {varInstallModal.step === 'ask' ? (
-              <>
-                <h3 className="text-white font-black uppercase italic tracking-tight text-lg mb-2">Este gasto é parcelado?</h3>
-                <p className="text-zinc-400 text-sm mb-6">Se sim, posso já preencher os meses automaticamente.</p>
-                <div className="flex gap-3">
-                  <button onClick={() => setVarInstallModal({ step: 'count' })} className="flex-1 bg-yellow-500 active:bg-yellow-400 text-black font-black py-3.5 rounded-2xl text-sm uppercase">Sim, é parcelado</button>
-                  <button onClick={() => executeAdd()} className="flex-1 bg-zinc-800 active:bg-zinc-700 text-zinc-300 font-black py-3.5 rounded-2xl text-sm uppercase">Não, gasto único</button>
-                </div>
-              </>
-            ) : (
-              <>
-                <h3 className="text-white font-black uppercase italic tracking-tight text-lg mb-2">Em quantas parcelas?</h3>
-                <p className="text-zinc-400 text-sm mb-4">O valor mensal será preenchido automaticamente nos próximos meses.</p>
-                <div className="bg-zinc-800 border-2 border-yellow-500 rounded-2xl flex items-center px-4 mb-5">
-                  <input
-                    type="number"
-                    min="2"
-                    max="48"
-                    value={varInstallCount}
-                    onChange={e => setVarInstallCount(e.target.value)}
-                    placeholder="Ex: 12"
-                    className="flex-1 bg-transparent py-3.5 text-white font-mono text-lg font-black outline-none placeholder:text-zinc-600 text-center"
-                    autoFocus
-                  />
-                  <span className="text-zinc-500 text-sm font-bold">x</span>
-                </div>
-                <div className="flex gap-3">
-                  <button onClick={() => setVarInstallModal({ step: 'ask' })} className="w-12 h-12 bg-zinc-800 rounded-xl flex items-center justify-center shrink-0">
-                    <i className="fas fa-arrow-left text-zinc-400"></i>
-                  </button>
-                  <button
-                    onClick={() => { executeAdd(parseInt(varInstallCount) || 1); setVarInstallCount(''); }}
-                    className="flex-1 bg-yellow-500 active:bg-yellow-400 text-black font-black py-3.5 rounded-2xl text-sm uppercase"
-                  >Confirmar</button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Credit card installment modal */}
       {cardInstallModal && (
         <div className="fixed inset-0 z-[200] flex items-end p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -260,7 +216,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
               <button onClick={() => setCardInstallModal(null)} className="w-12 h-12 bg-zinc-800 rounded-xl flex items-center justify-center shrink-0">
                 <i className="fas fa-times text-zinc-400"></i>
               </button>
-              <button onClick={handleCardInstallConfirm} className="flex-1 bg-yellow-500 active:bg-yellow-400 text-black font-black py-3.5 rounded-2xl text-sm uppercase">
+              <button onClick={handleCardInstallConfirm} className="flex-1 bg-green-400 active:bg-green-300 text-black font-black py-3.5 rounded-2xl text-sm uppercase">
                 Confirmar e preencher
               </button>
             </div>
@@ -269,13 +225,13 @@ const BlockSection: React.FC<BlockSectionProps> = ({
       )}
 
       {installmentWarning && (
-        <div className="fixed bottom-6 right-6 z-[300] max-w-sm w-full bg-zinc-900 border border-yellow-600/40 rounded-2xl p-4 shadow-2xl animate-in slide-in-from-bottom-4">
+        <div className="fixed bottom-6 right-6 z-[300] max-w-sm w-full bg-zinc-900 border border-green-500/40 rounded-2xl p-4 shadow-2xl animate-in slide-in-from-bottom-4">
           <div className="flex items-start gap-3">
-            <div className="w-8 h-8 bg-yellow-500/10 rounded-xl flex items-center justify-center shrink-0">
-              <i className="fas fa-exclamation-triangle text-yellow-500 text-sm"></i>
+            <div className="w-8 h-8 bg-green-400/10 rounded-xl flex items-center justify-center shrink-0">
+              <i className="fas fa-exclamation-triangle text-green-400 text-sm"></i>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-yellow-500 font-black text-xs uppercase tracking-widest mb-1">Aviso de classificação</p>
+              <p className="text-green-400 font-black text-xs uppercase tracking-widest mb-1">Aviso de classificação</p>
               <p className="text-zinc-300 text-xs leading-relaxed">{installmentWarning}</p>
             </div>
             <button onClick={() => setInstallmentWarning(null)} className="text-zinc-500 hover:text-white transition-colors shrink-0">
@@ -288,13 +244,13 @@ const BlockSection: React.FC<BlockSectionProps> = ({
       {showInstructionModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-[30px] p-8 shadow-2xl">
-            <div className="w-16 h-16 bg-yellow-500/10 rounded-2xl flex items-center justify-center mb-6">
+            <div className="w-16 h-16 bg-green-400/10 rounded-2xl flex items-center justify-center mb-6">
               <i className={`fas ${
                 category === CategoryType.INCOME ? 'fa-wallet' :
                 category === CategoryType.CREDIT_CARD ? 'fa-credit-card' : 
                 category === CategoryType.FIXED_EXPENSE ? 'fa-anchor' :
                 category === CategoryType.VARIABLE_EXPENSE ? 'fa-random' : 'fa-cocktail'
-              } text-2xl text-yellow-500`}></i>
+              } text-2xl text-green-400`}></i>
             </div>
             <h3 className="text-white text-xl font-black uppercase italic tracking-tighter mb-4">Instruções: {title}</h3>
             
@@ -302,7 +258,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
               {category === CategoryType.INCOME && (
                 <div className="space-y-3">
                   <p>Aqui você vai inserir suas fontes de renda.</p>
-                  <p className="bg-yellow-500/10 p-4 rounded-xl border border-yellow-500/20 text-yellow-500 font-bold">
+                  <p className="bg-green-400/10 p-4 rounded-xl border border-green-400/20 text-green-400 font-bold">
                     DICA: Coloque sempre o MÍNIMO que você garante que ganha. Depois, você vai atualizando o que ganhar a mais mês a mês.
                   </p>
                 </div>
@@ -312,7 +268,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   <p>Não detalhe a fatura item por item. Insira o valor total projetado ou real.</p>
                   <p className="text-xs text-zinc-400">Dica: Informe o dia de fechamento para que o sistema saiba se um gasto cairá nesta fatura ou na próxima.</p>
                   <div className="bg-zinc-800 p-4 rounded-xl border border-zinc-700 font-mono text-[11px]">
-                    <p className="text-yellow-500 mb-1">Exemplo Banco Inter:</p>
+                    <p className="text-green-400 mb-1">Exemplo Banco Inter:</p>
                     <p>Mês 1: R$ 799 | Mês 2: R$ 699 | Mês 3: R$ 399</p>
                   </div>
                 </>
@@ -325,68 +281,51 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                     <p className="font-black mb-1 uppercase tracking-wide">⚠️ Esse gasto se repete todo mês?</p>
                     <p>Se for algo eventual ou com <b>menos de 18 parcelas</b>, use <b className="text-white">Contas Variáveis</b> para manter seu diagnóstico correto.</p>
                   </div>
-                  <div className="bg-yellow-500/10 p-3 rounded-lg border border-yellow-500/20 text-yellow-200 text-xs italic">
+                  <div className="bg-green-400/10 p-3 rounded-lg border border-green-400/20 text-green-100 text-xs italic">
                     Mesmo se estiver no cartão, cite aqui! O sistema abaterá do cartão automaticamente para evitar duplicidade.
                   </div>
                 </div>
               )}
               {category === CategoryType.VARIABLE_EXPENSE && (
                 <div className="space-y-3">
-                  <p>Insira gastos que não são recorrentes ou parcelamentos de <b>curta duração</b> (menos de 12 meses).</p>
-                  <p>Ex: Conserto de carro, presente de aniversário, viagem parcelada em 6x.</p>
+                  <p>Gastos que <b>não se repetem todo mês</b> ou parcelamentos de <b>curta duração</b> (menos de 12 meses).</p>
+                  <p>Ex: Conserto de carro, multa de trânsito, eletrodoméstico quebrado, remédios repentinos <b>NÃO recorrentes</b>, imprevistos parcelados em poucas vezes.</p>
                 </div>
               )}
               {category === CategoryType.PERSONAL_LEISURE && (
                 <div className="space-y-3">
                   <p>Este é o seu teto de felicidade. O método sugere no máximo <b>15% da sua renda</b>.</p>
                   <p>Se você costuma passar o lazer no cartão, pode vinculá-lo abaixo para que o sistema organize sua fatura automaticamente.</p>
-                  <p>Com base na sua renda atual, sugerimos um teto de: <b className="text-yellow-500">{formatCurrency(totalIncome * 0.15)}</b></p>
+                  <p>Com base na sua renda atual, sugerimos um teto de: <b className="text-green-400">{formatCurrency(totalIncome * 0.15)}</b></p>
                 </div>
               )}
             </div>
 
             <div className="flex flex-col gap-3">
               <button
-                onClick={() => {
-                  if (category === CategoryType.VARIABLE_EXPENSE) {
-                    setShowInstructionModal(false);
-                    setVarInstallModal({ step: 'ask' });
-                  } else {
-                    executeAdd();
-                  }
-                }}
-                className="w-full bg-yellow-600 hover:bg-yellow-500 text-black font-black py-4 rounded-2xl transition-all uppercase text-xs tracking-widest"
+                onClick={() => executeAdd()}
+                className="w-full bg-green-500 hover:bg-green-400 text-black font-black py-4 rounded-2xl transition-all uppercase text-xs tracking-widest"
               >OK, Continuar</button>
-              <button onClick={handleDontShowAgain} className="text-zinc-500 hover:text-white text-[10px] font-bold uppercase tracking-[0.2em] py-2 transition-colors">Não mostrar novamente</button>
+              <button onClick={() => setShowInstructionModal(false)} className="text-zinc-500 hover:text-white text-[10px] font-bold uppercase tracking-[0.2em] py-2 transition-colors">Fechar</button>
             </div>
           </div>
         </div>
       )}
 
-      <div className="bg-zinc-900 px-4 py-3 flex items-center gap-3 border-b border-yellow-600/20">
+      <div className="bg-zinc-900 px-4 py-3 flex items-center gap-3 border-b border-green-500/20">
         <div className="flex flex-col min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="text-yellow-500 font-black text-base uppercase tracking-widest italic leading-tight">{title}</h3>
+            <h3 className="text-green-400 font-black text-base uppercase tracking-widest italic leading-tight">{title}</h3>
             {tooltip && (
-              <div className="relative shrink-0">
-                <button
-                  onMouseEnter={() => setShowTooltip(true)}
-                  onMouseLeave={() => setShowTooltip(false)}
-                  onClick={() => setShowTooltip(v => !v)}
-                  className="text-yellow-500/40 hover:text-yellow-500 active:text-yellow-500 transition-colors"
-                >
-                  <i className="fas fa-question-circle text-sm"></i>
-                </button>
-                {showTooltip && (
-                  <div className="absolute z-50 left-0 top-full mt-2 w-72 bg-[#1a1a1a] text-white p-4 rounded-xl shadow-2xl border border-zinc-800 text-[11px] leading-relaxed animate-in fade-in zoom-in-95">
-                    <p className="font-black text-yellow-500 uppercase mb-2 italic">{tooltip.title}</p>
-                    <p>{tooltip.text}</p>
-                  </div>
-                )}
-              </div>
+              <button
+                onClick={() => setShowInstructionModal(true)}
+                className="text-green-400/40 hover:text-green-400 active:text-green-400 transition-colors shrink-0"
+              >
+                <i className="fas fa-question-circle text-sm"></i>
+              </button>
             )}
           </div>
-          {subtitle && <p className="text-yellow-500/50 text-[9px] uppercase font-bold tracking-wider mt-0.5">{subtitle}</p>}
+          {subtitle && <p className="text-green-400/50 text-[9px] uppercase font-bold tracking-wider mt-0.5">{subtitle}</p>}
         </div>
       </div>
       
@@ -436,7 +375,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   {(category === CategoryType.INCOME || category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE) && (
                     <button
                       onClick={() => handleReplicateWithToast(item.id, mobileMonthIdx)}
-                      className="w-5 h-5 rounded-full bg-yellow-500 flex items-center justify-center shrink-0 active:scale-90 shadow-sm"
+                      className="w-5 h-5 rounded-full bg-green-400 flex items-center justify-center shrink-0 active:scale-90 shadow-sm"
                       title="Replicar para todos os meses"
                     >
                       <i className="fas fa-copy text-[7px] text-black"></i>
@@ -544,7 +483,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                             <i className="fas fa-wallet mr-1"></i>Débito
                           </button>
                           <select
-                            className="flex-1 text-[10px] bg-zinc-700 border border-zinc-600 text-zinc-300 rounded-lg px-2 py-1.5 outline-none focus:border-yellow-500"
+                            className="flex-1 text-[10px] bg-zinc-700 border border-zinc-600 text-zinc-300 rounded-lg px-2 py-1.5 outline-none focus:border-green-400"
                             value={item.linkedCardId || ''}
                             onChange={(e) => {
                               if (e.target.value) onLinkCard!(item.id, e.target.value, item.linkType === LinkType.INSTALLMENT ? LinkType.INSTALLMENT : LinkType.RECURRING);
@@ -561,7 +500,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                         {item.linkedCardId && item.linkType !== LinkType.DEBIT && (
                           <div className="flex items-center gap-2 pl-[72px]">
                             <select
-                              className="flex-1 text-[10px] bg-zinc-700 border border-zinc-600 text-zinc-300 rounded-lg px-2 py-1.5 outline-none focus:border-yellow-500"
+                              className="flex-1 text-[10px] bg-zinc-700 border border-zinc-600 text-zinc-300 rounded-lg px-2 py-1.5 outline-none focus:border-green-400"
                               value={item.linkType || LinkType.RECURRING}
                               onChange={(e) => {
                                 const newType = e.target.value as LinkType;
@@ -578,7 +517,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                             </select>
                             <button
                               onClick={() => setOpenPaymentItemId(null)}
-                              className="px-3 py-1.5 bg-yellow-500 active:bg-yellow-400 text-black font-black rounded-lg text-[10px] uppercase active:scale-95 transition-all shrink-0"
+                              className="px-3 py-1.5 bg-green-400 active:bg-green-300 text-black font-black rounded-lg text-[10px] uppercase active:scale-95 transition-all shrink-0"
                             >
                               OK
                             </button>
@@ -595,7 +534,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
         <div className="px-3 py-2.5 flex justify-center">
           <button
             onClick={handleAddWithInstruction}
-            className="w-7 h-7 rounded-full bg-yellow-500 flex items-center justify-center active:scale-90 shadow-sm"
+            className="w-7 h-7 rounded-full bg-green-400 flex items-center justify-center active:scale-90 shadow-sm"
             title="Adicionar linha"
           >
             <i className="fas fa-plus text-[10px] text-black"></i>
@@ -609,7 +548,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
             <span className={`text-[10px] font-black uppercase tracking-widest ${category === CategoryType.CREDIT_CARD ? 'text-orange-400' : 'text-zinc-500'}`}>
               {category === CategoryType.CREDIT_CARD ? 'Total Faturas do Mês' : 'Total'}
             </span>
-            <span className={`font-black font-mono ${category === CategoryType.CREDIT_CARD ? 'text-orange-400 text-base' : 'text-yellow-500'}`}>
+            <span className={`font-black font-mono ${category === CategoryType.CREDIT_CARD ? 'text-orange-400 text-base' : 'text-green-400'}`}>
               {formatCurrency(items.reduce((sum, i) => sum + (i.values[mobileMonthIdx] || 0), 0))}
             </span>
           </div>
@@ -639,13 +578,13 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                 <td className="p-2 text-center">
                   <div className="flex flex-col items-center gap-0.5">
                     {onMoveItem && (
-                      <button onClick={() => onMoveItem(item.id, 'up')} className="text-gray-300 hover:text-yellow-500 transition-colors px-1" title="Mover para cima">
+                      <button onClick={() => onMoveItem(item.id, 'up')} className="text-gray-300 hover:text-green-400 transition-colors px-1" title="Mover para cima">
                         <i className="fas fa-chevron-up text-[9px]"></i>
                       </button>
                     )}
                     <button onClick={() => onRemoveItem(item.id)} className="text-red-400/50 hover:text-red-500 transition-colors p-1"><i className="fas fa-trash-alt text-xs"></i></button>
                     {onMoveItem && (
-                      <button onClick={() => onMoveItem(item.id, 'down')} className="text-gray-300 hover:text-yellow-500 transition-colors px-1" title="Mover para baixo">
+                      <button onClick={() => onMoveItem(item.id, 'down')} className="text-gray-300 hover:text-green-400 transition-colors px-1" title="Mover para baixo">
                         <i className="fas fa-chevron-down text-[9px]"></i>
                       </button>
                     )}
@@ -659,7 +598,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                       key={item.id}
                       onBlur={(e) => onUpdateDescription(item.id, e.target.value)}
                       onChange={(e) => onUpdateDescription(item.id, e.target.value)}
-                      className="w-full bg-transparent border-b border-transparent focus:border-yellow-500 outline-none p-2 text-gray-900 font-medium"
+                      className="w-full bg-transparent border-b border-transparent focus:border-green-400 outline-none p-2 text-gray-900 font-medium"
                       placeholder="Nome do item..."
                     />
                     {category === CategoryType.CREDIT_CARD && onUpdateCardConfig && (
@@ -670,7 +609,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                             type="number" min="1" max="31"
                             value={item.closingDay || ''}
                             onChange={(e) => onUpdateCardConfig(item.id, 'closingDay', parseInt(e.target.value))}
-                            className="bg-zinc-100 rounded px-1 text-[10px] w-12 outline-none border border-zinc-200 focus:border-yellow-500"
+                            className="bg-zinc-100 rounded px-1 text-[10px] w-12 outline-none border border-zinc-200 focus:border-green-400"
                             placeholder="Dia"
                           />
                         </div>
@@ -680,7 +619,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                             type="number" min="1" max="31"
                             value={item.dueDay || ''}
                             onChange={(e) => onUpdateCardConfig(item.id, 'dueDay', parseInt(e.target.value))}
-                            className="bg-zinc-100 rounded px-1 text-[10px] w-12 outline-none border border-zinc-200 focus:border-yellow-500"
+                            className="bg-zinc-100 rounded px-1 text-[10px] w-12 outline-none border border-zinc-200 focus:border-green-400"
                             placeholder="Dia"
                           />
                         </div>
@@ -693,7 +632,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                         <select
                           value={item.dueDay || ''}
                           onChange={(e) => onUpdateCardConfig(item.id, 'dueDay', parseInt(e.target.value))}
-                          className="bg-zinc-100 rounded px-1 text-[10px] outline-none border border-zinc-200 focus:border-yellow-500 text-zinc-700"
+                          className="bg-zinc-100 rounded px-1 text-[10px] outline-none border border-zinc-200 focus:border-green-400 text-zinc-700"
                         >
                           <option value="">--</option>
                           {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
@@ -734,7 +673,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                             Débito
                           </button>
                           <select
-                            className="text-[9px] bg-zinc-50 border border-zinc-300 rounded px-1 py-0.5 outline-none focus:border-yellow-500"
+                            className="text-[9px] bg-zinc-50 border border-zinc-300 rounded px-1 py-0.5 outline-none focus:border-green-400"
                             value={item.linkedCardId || ''}
                             onChange={(e) => {
                               if (e.target.value) { onLinkCard(item.id, e.target.value, item.linkType === LinkType.INSTALLMENT ? LinkType.INSTALLMENT : LinkType.RECURRING); }
@@ -797,7 +736,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           />
                           <button
                             onClick={() => onReplicateValue(item.id, mIdx)}
-                            className="absolute -right-1 -top-1 opacity-0 group-hover:opacity-100 bg-yellow-500 text-black w-4 h-4 rounded-full flex items-center justify-center text-[8px] shadow-sm transition-opacity hover:scale-110 z-10"
+                            className="absolute -right-1 -top-1 opacity-0 group-hover:opacity-100 bg-green-400 text-black w-4 h-4 rounded-full flex items-center justify-center text-[8px] shadow-sm transition-opacity hover:scale-110 z-10"
                           >
                             <i className="fas fa-copy"></i>
                           </button>
@@ -821,7 +760,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
               <td colSpan={months.length + 2} className="p-2 border-t border-zinc-100 text-center">
                 <button
                   onClick={handleAddWithInstruction}
-                  className="w-6 h-6 rounded-full bg-yellow-500 inline-flex items-center justify-center active:scale-90 shadow-sm hover:bg-yellow-400 transition-colors"
+                  className="w-6 h-6 rounded-full bg-green-400 inline-flex items-center justify-center active:scale-90 shadow-sm hover:bg-green-300 transition-colors"
                   title="Adicionar linha"
                 >
                   <i className="fas fa-plus text-[9px] text-black"></i>

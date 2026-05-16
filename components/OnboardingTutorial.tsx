@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState } from 'react';
 
 interface TutorialStep {
@@ -62,17 +62,17 @@ const OnboardingTutorial: React.FC<OnboardingTutorialProps> = ({ onComplete }) =
         {/* Progress Bar */}
         <div className="absolute top-0 left-0 w-full h-1 bg-zinc-800">
           <div 
-            className="h-full bg-yellow-500 transition-all duration-500" 
+            className="h-full bg-green-400 transition-all duration-500" 
             style={{ width: `${((currentStep + 1) / steps.length) * 100}%` }}
           ></div>
         </div>
 
         <div className="text-center mt-4">
-          <div className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-8 overflow-hidden bg-yellow-500/10 border border-yellow-500/20">
+          <div className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-8 overflow-hidden bg-green-400/10 border border-green-400/20">
             {currentStep === 0 ? (
               <img src="/kashim-icon.png" alt="Kashim" className="w-20 h-20 object-cover rounded-3xl" />
             ) : (
-              <i className={`fas ${steps[currentStep].icon} text-4xl text-yellow-500`}></i>
+              <i className={`fas ${steps[currentStep].icon} text-4xl text-green-400`}></i>
             )}
           </div>
           
@@ -87,7 +87,7 @@ const OnboardingTutorial: React.FC<OnboardingTutorialProps> = ({ onComplete }) =
           <div className="flex flex-col gap-3">
             <button 
               onClick={nextStep}
-              className="w-full bg-yellow-600 hover:bg-yellow-500 text-black font-black py-4 rounded-2xl transition-all active:scale-95 shadow-lg uppercase text-xs tracking-widest"
+              className="w-full bg-green-500 hover:bg-green-400 text-black font-black py-4 rounded-2xl transition-all active:scale-95 shadow-lg uppercase text-xs tracking-widest"
             >
               {currentStep === steps.length - 1 ? 'Entendido, vamos lá!' : 'Próximo Passo'}
             </button>
@@ -105,7 +105,7 @@ const OnboardingTutorial: React.FC<OnboardingTutorialProps> = ({ onComplete }) =
           {steps.map((_, idx) => (
             <div 
               key={idx} 
-              className={`h-1 rounded-full transition-all ${idx === currentStep ? 'w-8 bg-yellow-500' : 'w-2 bg-zinc-800'}`}
+              className={`h-1 rounded-full transition-all ${idx === currentStep ? 'w-8 bg-green-400' : 'w-2 bg-zinc-800'}`}
             ></div>
           ))}
         </div>

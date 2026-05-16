@@ -1,4 +1,4 @@
-
+﻿
 import React from 'react';
 import { SummaryData } from '../types';
 import { IDEAL_LIMITS, formatCurrency } from '../constants';
@@ -37,7 +37,7 @@ const Diagnosis: React.FC<DiagnosisProps> = ({ summary, monthName }) => {
         <div className={`p-4 rounded-lg border transition-all ${isLeisureOk ? 'bg-green-50 border-green-100' : 'bg-yellow-50 border-yellow-100'}`}>
           <div className="flex justify-between items-center mb-2">
             <span className="font-bold text-xs uppercase text-gray-500 tracking-widest">Lazer / Pessoal</span>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${isLeisureOk ? 'bg-green-600 text-white' : 'bg-yellow-600 text-black'}`}>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${isLeisureOk ? 'bg-green-600 text-white' : 'bg-green-500 text-black'}`}>
               {(leisurePercent * 100).toFixed(1)}%
             </span>
           </div>

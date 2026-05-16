@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useEffect } from 'react';
 import { useAuth, useUser, useClerk } from '@clerk/clerk-react';
 import { useSupabase } from '../lib/useSupabase';
@@ -194,17 +194,17 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
       )}
 
       {/* Header */}
-      <header className="bg-[#0f0f0f] border-b border-yellow-600/30 px-6 py-3 sticky top-0 z-50">
+      <header className="bg-[#0f0f0f] border-b border-green-500/30 px-6 py-3 sticky top-0 z-50">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img src="/kashim-icon.png" alt="Kashim" className="h-9 w-9 rounded-xl" />
             <span className="text-xl font-black text-white uppercase tracking-widest hidden md:block">Kashim</span>
-            <span className="text-[9px] font-black uppercase text-yellow-500 bg-yellow-500/10 border border-yellow-500/20 px-2 py-0.5 rounded-full ml-1">Consultor</span>
+            <span className="text-[9px] font-black uppercase text-green-400 bg-green-400/10 border border-green-400/20 px-2 py-0.5 rounded-full ml-1">Consultor</span>
           </div>
           <div className="flex items-center gap-2">
             {user && (
               <div className="hidden md:flex items-center gap-2 border-r border-zinc-800 pr-3 mr-1">
-                <img src={user.imageUrl} className="w-7 h-7 rounded-full border border-yellow-500/30" alt="Avatar" />
+                <img src={user.imageUrl} className="w-7 h-7 rounded-full border border-green-400/30" alt="Avatar" />
                 <span className="text-[10px] font-black uppercase text-zinc-400">{user.firstName || user.emailAddresses[0]?.emailAddress.split('@')[0]}</span>
               </div>
             )}
@@ -231,7 +231,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
           </div>
           <button
             onClick={() => setShowCreateForm(true)}
-            className="bg-yellow-600 active:bg-yellow-500 text-black font-black px-4 py-2.5 rounded-xl transition-all shadow-lg flex items-center gap-2 uppercase text-xs"
+            className="bg-green-500 active:bg-green-400 text-black font-black px-4 py-2.5 rounded-xl transition-all shadow-lg flex items-center gap-2 uppercase text-xs"
           >
             <i className="fas fa-plus"></i> Criar novo perfil
           </button>
@@ -240,7 +240,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
         {/* Lista */}
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <i className="fas fa-circle-notch animate-spin text-yellow-500 text-3xl"></i>
+            <i className="fas fa-circle-notch animate-spin text-green-400 text-3xl"></i>
           </div>
         ) : clients.length === 0 ? (
           <div className="text-center py-20 text-zinc-600">
@@ -294,7 +294,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
                     <div className="flex items-center gap-2 mt-3 flex-wrap">
                       <button
                         onClick={() => onEnterClient(client.householdId, client.clientName)}
-                        className="bg-yellow-600 active:bg-yellow-500 text-black font-black px-4 py-2 rounded-xl text-xs uppercase transition-all flex items-center gap-1.5"
+                        className="bg-green-500 active:bg-green-400 text-black font-black px-4 py-2 rounded-xl text-xs uppercase transition-all flex items-center gap-1.5"
                       >
                         <i className="fas fa-eye text-xs"></i> Acessar
                       </button>
@@ -326,7 +326,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
                           onClick={() => handleTogglePrivacy(client.householdId, client.isPrivate)}
                           disabled={privacyLoading === client.householdId}
                           className={`w-9 h-9 rounded-xl transition-all flex items-center justify-center disabled:opacity-50 ${
-                            client.isPrivate ? 'bg-yellow-600/20 text-yellow-500' : 'bg-zinc-800 text-zinc-500'
+                            client.isPrivate ? 'bg-green-500/20 text-green-400' : 'bg-zinc-800 text-zinc-500'
                           }`}
                         >
                           {privacyLoading === client.householdId
@@ -395,7 +395,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
             </button>
 
             <h2 className="text-xl font-black uppercase italic tracking-tighter text-white mb-1">
-              <i className="fas fa-user-plus text-yellow-500 mr-2"></i>
+              <i className="fas fa-user-plus text-green-400 mr-2"></i>
               Novo Perfil de Cliente
             </h2>
             <p className="text-zinc-500 text-xs mb-6">O cliente não receberá e-mail agora. O acesso só é enviado ao clicar em "Ativar".</p>
@@ -405,12 +405,12 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
                 <div>
                   <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest mb-1 block">Nome completo</label>
                   <input type="text" value={clientName} onChange={e => setClientName(e.target.value)} required placeholder="Maria Silva"
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-500 transition-all" />
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white text-sm outline-none focus:border-green-400 transition-all" />
                 </div>
                 <div>
                   <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest mb-1 block">E-mail do cliente</label>
                   <input type="email" value={clientEmail} onChange={e => setClientEmail(e.target.value)} required placeholder="maria@email.com"
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-500 transition-all" />
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white text-sm outline-none focus:border-green-400 transition-all" />
                 </div>
               </div>
 
@@ -418,9 +418,9 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
                 <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest mb-1 block">Formulário financeiro (opcional)</label>
                 <textarea value={formText} onChange={e => setFormText(e.target.value)}
                   placeholder="Cole aqui o formulário preenchido pelo cliente..." rows={8}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-500 transition-all resize-none font-mono" />
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white text-sm outline-none focus:border-green-400 transition-all resize-none font-mono" />
                 {formText && (
-                  <button type="button" onClick={handleParseText} className="mt-2 text-xs text-yellow-500 hover:text-yellow-400 font-black uppercase underline">
+                  <button type="button" onClick={handleParseText} className="mt-2 text-xs text-green-400 hover:text-green-300 font-black uppercase underline">
                     Interpretar formulário
                   </button>
                 )}
@@ -433,7 +433,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
                     {parsedFields.map((f, i) => (
                       <div key={i} className="flex justify-between text-xs">
                         <span className={f.isIncome ? 'text-green-400' : 'text-zinc-400'}>{f.description}</span>
-                        <span className="text-yellow-400 font-bold">{formatCurrency(f.value)}</span>
+                        <span className="text-green-300 font-bold">{formatCurrency(f.value)}</span>
                       </div>
                     ))}
                   </div>
@@ -445,7 +445,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
               )}
 
               <button type="submit" disabled={creating}
-                className="w-full bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50 text-black font-black py-4 rounded-2xl transition-all shadow-lg uppercase text-sm">
+                className="w-full bg-green-500 hover:bg-green-400 disabled:opacity-50 text-black font-black py-4 rounded-2xl transition-all shadow-lg uppercase text-sm">
                 {creating ? <i className="fas fa-circle-notch animate-spin"></i> : 'Criar perfil'}
               </button>
             </form>

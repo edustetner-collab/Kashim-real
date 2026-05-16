@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useEffect } from 'react';
 import { SupabaseClient } from '@supabase/supabase-js';
 
@@ -100,8 +100,8 @@ const InvitePartner: React.FC<InvitePartnerProps> = ({ db, householdId, currentU
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 mb-8">
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 bg-yellow-500/10 rounded-full flex items-center justify-center">
-          <i className="fas fa-user-friends text-yellow-500"></i>
+        <div className="w-10 h-10 bg-green-400/10 rounded-full flex items-center justify-center">
+          <i className="fas fa-user-friends text-green-400"></i>
         </div>
         <div>
           <h3 className="text-white font-black text-lg uppercase italic tracking-tighter">Acesso do Casal</h3>
@@ -115,8 +115,8 @@ const InvitePartner: React.FC<InvitePartnerProps> = ({ db, householdId, currentU
         <div className="flex flex-col gap-2">
           {members.map((m, i) => (
             <div key={m.clerk_user_id} className="flex items-center gap-3 bg-zinc-800/50 rounded-2xl px-4 py-3">
-              <div className="w-8 h-8 bg-yellow-600/20 rounded-full flex items-center justify-center">
-                <i className="fas fa-user text-yellow-500 text-xs"></i>
+              <div className="w-8 h-8 bg-green-500/20 rounded-full flex items-center justify-center">
+                <i className="fas fa-user text-green-400 text-xs"></i>
               </div>
               <div>
                 <p className="text-white text-sm font-bold">
@@ -125,7 +125,7 @@ const InvitePartner: React.FC<InvitePartnerProps> = ({ db, householdId, currentU
                 <p className="text-zinc-500 text-[10px] uppercase">{m.role}</p>
               </div>
               {m.clerk_user_id === currentUserId && (
-                <span className="ml-auto text-[9px] bg-yellow-600/20 text-yellow-500 px-2 py-1 rounded-full font-black uppercase">Você</span>
+                <span className="ml-auto text-[9px] bg-green-500/20 text-green-400 px-2 py-1 rounded-full font-black uppercase">Você</span>
               )}
             </div>
           ))}
@@ -137,9 +137,9 @@ const InvitePartner: React.FC<InvitePartnerProps> = ({ db, householdId, currentU
         <div className="mb-6">
           <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest mb-3">Convites pendentes</p>
           {invites.map(inv => (
-            <div key={inv.id} className="flex items-center justify-between bg-yellow-500/5 border border-yellow-500/20 rounded-2xl px-4 py-3 mb-2">
+            <div key={inv.id} className="flex items-center justify-between bg-green-400/5 border border-green-400/20 rounded-2xl px-4 py-3 mb-2">
               <div>
-                <p className="text-yellow-400 text-sm font-bold">{inv.email}</p>
+                <p className="text-green-300 text-sm font-bold">{inv.email}</p>
                 <p className="text-zinc-500 text-[10px]">Aguardando aceite</p>
               </div>
               <button
@@ -163,12 +163,12 @@ const InvitePartner: React.FC<InvitePartnerProps> = ({ db, householdId, currentU
               value={email}
               onChange={e => setEmail(e.target.value)}
               placeholder="email@exemplo.com"
-              className="flex-1 bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-500 transition-all"
+              className="flex-1 bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white text-sm outline-none focus:border-green-400 transition-all"
             />
             <button
               type="submit"
               disabled={loading}
-              className="bg-yellow-600 hover:bg-yellow-500 text-black font-black px-6 py-3 rounded-2xl transition-all disabled:opacity-50 text-xs uppercase"
+              className="bg-green-500 hover:bg-green-400 text-black font-black px-6 py-3 rounded-2xl transition-all disabled:opacity-50 text-xs uppercase"
             >
               {loading ? <i className="fas fa-circle-notch animate-spin"></i> : 'Convidar'}
             </button>

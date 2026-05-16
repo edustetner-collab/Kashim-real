@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useEffect, useRef } from 'react';
 import { FinanceItem, CategoryType } from '../types';
 import { formatCurrency } from '../constants';
@@ -97,11 +97,12 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
       setStep('category');
       setCategory(null);
       setItemId('');
-      setVariableDesc('');
-      setValue('');
+      setVariableDesc(initialDescription ?? '');
+      setValue(initialValue ? String(initialValue) : '');
       setPayMethod('');
       setCreditType('');
-      setInstallCount('');
+      const initManual = Math.max(1, initialInstallments ?? 1);
+      setInstallCount(initManual > 1 ? String(initManual) : '');
     }
   }, [open, source, initialItemId, initialValue, initialDescription, initialInstallments]);
 
@@ -175,7 +176,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
       </button>
 
       {/* Value */}
-      <div className="px-4 py-3 bg-zinc-800 rounded-2xl border border-zinc-700 focus-within:border-yellow-500/40 transition-colors">
+      <div className="px-4 py-3 bg-zinc-800 rounded-2xl border border-zinc-700 focus-within:border-green-400/40 transition-colors">
         <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-1">Valor</p>
         <div className="flex items-center gap-2">
           <span className="text-zinc-500 font-mono text-sm">R$</span>
@@ -210,7 +211,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
           </button>
           <button
             onClick={() => { setPayMethod('credit'); if (!creditType) setCreditType('avista'); }}
-            className={`py-3 rounded-2xl text-sm font-black transition-all active:scale-95 border ${payMethod === 'credit' ? 'bg-yellow-500 text-black border-yellow-500' : 'bg-zinc-800 text-zinc-400 border-zinc-700'}`}
+            className={`py-3 rounded-2xl text-sm font-black transition-all active:scale-95 border ${payMethod === 'credit' ? 'bg-green-400 text-black border-green-400' : 'bg-zinc-800 text-zinc-400 border-zinc-700'}`}
           >
             <i className="fas fa-credit-card mr-2 text-xs" />
             Crédito
@@ -225,13 +226,13 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => { setCreditType('avista'); setInstallCount(''); }}
-              className={`py-2.5 rounded-2xl text-sm font-black transition-all active:scale-95 border ${creditType === 'avista' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/40' : 'bg-zinc-800 text-zinc-500 border-zinc-700'}`}
+              className={`py-2.5 rounded-2xl text-sm font-black transition-all active:scale-95 border ${creditType === 'avista' ? 'bg-green-400/20 text-green-300 border-green-400/40' : 'bg-zinc-800 text-zinc-500 border-zinc-700'}`}
             >
               À vista
             </button>
             <button
               onClick={() => setCreditType('parcelado')}
-              className={`py-2.5 rounded-2xl text-sm font-black transition-all active:scale-95 border ${creditType === 'parcelado' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/40' : 'bg-zinc-800 text-zinc-500 border-zinc-700'}`}
+              className={`py-2.5 rounded-2xl text-sm font-black transition-all active:scale-95 border ${creditType === 'parcelado' ? 'bg-green-400/20 text-green-300 border-green-400/40' : 'bg-zinc-800 text-zinc-500 border-zinc-700'}`}
             >
               Parcelado
             </button>
@@ -241,7 +242,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
 
       {/* Installment count */}
       {isParcelado && (
-        <div className="px-4 py-3 bg-zinc-800 rounded-2xl border border-zinc-700 focus-within:border-yellow-500/40">
+        <div className="px-4 py-3 bg-zinc-800 rounded-2xl border border-zinc-700 focus-within:border-green-400/40">
           <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-1">Em quantas vezes?</p>
           <input
             type="number"
@@ -265,7 +266,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
         <button
           onClick={handleConfirmClick}
           disabled={!canConfirm}
-          className={`flex-[2] py-3.5 rounded-2xl font-black text-sm transition-all ${canConfirm ? 'bg-yellow-500 text-black active:scale-95' : 'bg-zinc-800 text-zinc-600'}`}
+          className={`flex-[2] py-3.5 rounded-2xl font-black text-sm transition-all ${canConfirm ? 'bg-green-400 text-black active:scale-95' : 'bg-zinc-800 text-zinc-600'}`}
         >
           {source === 'ai' ? 'CONFIRMAR' : 'LANÇAR'}
         </button>
@@ -284,7 +285,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
         onChange={e => setSearch(e.target.value)}
         placeholder="Buscar..."
         autoFocus
-        className="w-full px-4 py-2.5 bg-zinc-800 rounded-2xl border border-zinc-700 text-white text-sm outline-none focus:border-yellow-500/50 placeholder:text-zinc-600"
+        className="w-full px-4 py-2.5 bg-zinc-800 rounded-2xl border border-zinc-700 text-white text-sm outline-none focus:border-green-400/50 placeholder:text-zinc-600"
       />
       <div className="space-y-1 max-h-52 overflow-y-auto">
         {pickerItems.map(item => {
@@ -293,11 +294,11 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
             <button
               key={item.id}
               onClick={() => { setItemId(item.id); setSearch(''); source === 'ai' ? setShowItemPicker(false) : setStep('value-payment'); }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left active:scale-[0.98] ${itemId === item.id ? 'bg-yellow-500/15 border border-yellow-500/30' : 'bg-zinc-800/50 border border-transparent'}`}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left active:scale-[0.98] ${itemId === item.id ? 'bg-green-400/15 border border-green-400/30' : 'bg-zinc-800/50 border border-transparent'}`}
             >
               <i className={`fas ${icon} ${color} text-xs w-4 text-center shrink-0`} />
               <span className="text-white text-sm">{item.description}</span>
-              {itemId === item.id && <i className="fas fa-check text-yellow-500 text-xs ml-auto" />}
+              {itemId === item.id && <i className="fas fa-check text-green-400 text-xs ml-auto" />}
             </button>
           );
         })}
@@ -370,7 +371,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
                 onChange={e => { setVariableDesc(e.target.value); setItemId(''); }}
                 placeholder="Ex: bateria do carro, conserto, médico..."
                 autoFocus
-                className="w-full px-4 py-3 bg-zinc-800 rounded-2xl border border-zinc-700 text-white text-sm outline-none focus:border-yellow-500/50 placeholder:text-zinc-600"
+                className="w-full px-4 py-3 bg-zinc-800 rounded-2xl border border-zinc-700 text-white text-sm outline-none focus:border-green-400/50 placeholder:text-zinc-600"
               />
               {variableSuggestions.length > 0 && (
                 <div className="space-y-1">

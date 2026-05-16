@@ -1,4 +1,4 @@
-
+﻿
 import React from 'react';
 import { SummaryData, FinanceItem, Goal } from '../types';
 import { formatCurrency } from '../constants';
@@ -31,7 +31,7 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
     return (
       <div className="max-w-2xl mx-auto px-4 pt-6 pb-20">
         <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 text-center">
-          <i className="fas fa-chart-pie text-4xl text-yellow-500/30 mb-4 block"></i>
+          <i className="fas fa-chart-pie text-4xl text-green-400/30 mb-4 block"></i>
           <p className="text-zinc-500 text-sm font-bold uppercase tracking-widest">Cadastre suas entradas para ver seu desempenho</p>
         </div>
       </div>
@@ -100,7 +100,7 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
               <div className="text-zinc-600 text-[10px] mt-0.5">próximo: {nextLevel.name} ({nextLevel.minScore} pts)</div>
             )}
             {!nextLevel && (
-              <div className="text-yellow-500 text-[10px] font-black mt-0.5">Nível máximo atingido!</div>
+              <div className="text-green-400 text-[10px] font-black mt-0.5">Nível máximo atingido!</div>
             )}
           </div>
         </div>
@@ -110,7 +110,7 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
           <div className="relative z-10 mt-4">
             <div className="h-2 bg-black/30 rounded-full overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all duration-700 ${score >= 900 ? 'bg-yellow-400' : score >= 700 ? 'bg-orange-400' : score >= 500 ? 'bg-cyan-400' : score >= 300 ? 'bg-purple-400' : score >= 150 ? 'bg-blue-400' : 'bg-zinc-500'}`}
+                className={`h-full rounded-full transition-all duration-700 ${score >= 900 ? 'bg-green-300' : score >= 700 ? 'bg-orange-400' : score >= 500 ? 'bg-cyan-400' : score >= 300 ? 'bg-purple-400' : score >= 150 ? 'bg-blue-400' : 'bg-zinc-500'}`}
                 style={{ width: `${levelProgress}%` }}
               />
             </div>
@@ -136,7 +136,7 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
         <div className="relative z-10 mt-4 flex gap-1">
           {LEVELS.map((l, i) => (
             <div key={i} className="flex-1 flex flex-col items-center gap-1">
-              <div className={`h-1 rounded-full w-full transition-all ${score >= l.minScore ? (score >= 900 ? 'bg-yellow-400' : score >= 700 ? 'bg-orange-400' : score >= 500 ? 'bg-cyan-400' : score >= 300 ? 'bg-purple-400' : score >= 150 ? 'bg-blue-400' : 'bg-zinc-500') : 'bg-zinc-800'}`} />
+              <div className={`h-1 rounded-full w-full transition-all ${score >= l.minScore ? (score >= 900 ? 'bg-green-300' : score >= 700 ? 'bg-orange-400' : score >= 500 ? 'bg-cyan-400' : score >= 300 ? 'bg-purple-400' : score >= 150 ? 'bg-blue-400' : 'bg-zinc-500') : 'bg-zinc-800'}`} />
               <span className={`text-[7px] font-black uppercase hidden sm:block ${score >= l.minScore ? l.textClass : 'text-zinc-700'}`}>{l.emoji}</span>
             </div>
           ))}
@@ -156,13 +156,13 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
                 key={badge.id}
                 className={`flex flex-col items-center gap-1.5 p-3 rounded-2xl border text-center transition-all ${
                   unlocked
-                    ? 'bg-yellow-500/10 border-yellow-600/30 shadow-sm shadow-yellow-500/10'
+                    ? 'bg-green-400/10 border-green-500/30 shadow-sm shadow-green-400/10'
                     : 'bg-zinc-900 border-zinc-800 opacity-40 grayscale'
                 }`}
                 title={badge.description}
               >
                 <span className="text-2xl leading-none">{badge.emoji}</span>
-                <span className={`text-[8px] font-black uppercase leading-tight ${unlocked ? 'text-yellow-400' : 'text-zinc-600'}`}>{badge.name}</span>
+                <span className={`text-[8px] font-black uppercase leading-tight ${unlocked ? 'text-green-300' : 'text-zinc-600'}`}>{badge.name}</span>
               </div>
             );
           })}
@@ -229,14 +229,14 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
       </div>
 
       {/* ── SUGGESTIONS ──────────────────────────────────────────────── */}
-      <div className="bg-zinc-900 border border-yellow-600/20 rounded-2xl p-4">
-        <h3 className="text-yellow-500 font-black text-xs uppercase tracking-widest mb-3 flex items-center gap-2">
+      <div className="bg-zinc-900 border border-green-500/20 rounded-2xl p-4">
+        <h3 className="text-green-400 font-black text-xs uppercase tracking-widest mb-3 flex items-center gap-2">
           <i className="fas fa-lightbulb"></i> Diagnóstico
         </h3>
         <div className="flex flex-col gap-2">
           {suggestions.map((s, i) => (
             <div key={i} className="flex items-start gap-2 bg-zinc-800/50 rounded-xl p-3">
-              <i className={`fas ${suggestions.length === 1 && i === 0 ? 'fa-trophy text-yellow-500' : 'fa-exclamation-circle text-orange-400'} text-xs mt-0.5 shrink-0`}></i>
+              <i className={`fas ${suggestions.length === 1 && i === 0 ? 'fa-trophy text-green-400' : 'fa-exclamation-circle text-orange-400'} text-xs mt-0.5 shrink-0`}></i>
               <p className="text-zinc-300 text-xs leading-relaxed">{s}</p>
             </div>
           ))}

@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 
@@ -37,10 +37,10 @@ const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onClose }) => {
   return (
     <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-sm flex items-center justify-center p-6">
       <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-[30px] p-8 shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-yellow-600 to-yellow-400"></div>
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-500 to-green-300"></div>
 
-        <div className="w-16 h-16 bg-yellow-600/10 rounded-full flex items-center justify-center mb-6 border border-yellow-600/30">
-          <i className="fas fa-crown text-2xl text-yellow-500"></i>
+        <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mb-6 border border-green-500/30">
+          <i className="fas fa-crown text-2xl text-green-400"></i>
         </div>
 
         <h2 className="text-white text-2xl font-black uppercase italic tracking-tighter mb-3">
@@ -51,8 +51,8 @@ const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onClose }) => {
           Seu período gratuito de acompanhamento encerrou. Para continuar usando o RICO nessa vida e manter sua organização financeira, assine por apenas:
         </p>
 
-        <div className="bg-yellow-600/10 border border-yellow-600/30 rounded-2xl p-5 mb-6 text-center">
-          <p className="text-yellow-500 text-4xl font-black">R$9,99</p>
+        <div className="bg-green-500/10 border border-green-500/30 rounded-2xl p-5 mb-6 text-center">
+          <p className="text-green-400 text-4xl font-black">R$9,99</p>
           <p className="text-zinc-500 text-xs uppercase tracking-widest mt-1">por mês · cancele quando quiser</p>
         </div>
 
@@ -65,7 +65,7 @@ const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onClose }) => {
             'Suporte prioritário',
           ].map((item) => (
             <li key={item} className="flex items-center gap-3 text-zinc-300 text-sm">
-              <i className="fas fa-check text-yellow-500 text-xs w-4"></i>
+              <i className="fas fa-check text-green-400 text-xs w-4"></i>
               {item}
             </li>
           ))}
@@ -76,7 +76,7 @@ const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onClose }) => {
         <button
           onClick={handleSubscribe}
           disabled={loading}
-          className="w-full bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50 text-black font-black py-4 rounded-2xl transition-all shadow-lg uppercase text-sm tracking-widest mb-3"
+          className="w-full bg-green-500 hover:bg-green-400 disabled:opacity-50 text-black font-black py-4 rounded-2xl transition-all shadow-lg uppercase text-sm tracking-widest mb-3"
         >
           {loading ? <i className="fas fa-circle-notch animate-spin"></i> : 'Assinar agora — R$9,99/mês'}
         </button>

@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { FinanceItem, PartialExpense, CategoryType } from '../types';
 import { formatCurrency, MONTHS_BR } from '../constants';
@@ -341,7 +341,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
         {!isHistoricalView && (
           <button
             onClick={addColumn}
-            className="bg-yellow-600 active:bg-yellow-500 text-black font-black px-5 py-2.5 rounded-xl text-xs uppercase transition-all shadow-lg flex items-center gap-2 shrink-0"
+            className="bg-green-500 active:bg-green-400 text-black font-black px-5 py-2.5 rounded-xl text-xs uppercase transition-all shadow-lg flex items-center gap-2 shrink-0"
           >
             <i className="fas fa-plus-circle"></i> Adicionar
           </button>
@@ -350,7 +350,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
       {isHistoricalView && (
         <div className="mb-3 flex items-center gap-2 bg-zinc-800/60 border border-zinc-700 rounded-xl px-4 py-2">
-          <i className="fas fa-history text-yellow-500 text-xs"></i>
+          <i className="fas fa-history text-green-400 text-xs"></i>
           <span className="text-zinc-400 text-xs font-bold uppercase tracking-widest">
             Histórico: {labelForKey(selectedMonthKey)} — somente leitura
           </span>
@@ -358,7 +358,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       )}
 
       {sortColId && (
-        <p className="text-[9px] font-black uppercase tracking-widest text-yellow-500 text-center mb-2 animate-pulse">
+        <p className="text-[9px] font-black uppercase tracking-widest text-green-400 text-center mb-2 animate-pulse">
           Use ← → para mover • toque no card para fechar
         </p>
       )}
@@ -369,7 +369,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
           <button
             onClick={() => scrollToCard(visibleColIdx - 1)}
             disabled={visibleColIdx === 0}
-            className={`w-8 h-8 flex items-center justify-center rounded-full transition-all ${visibleColIdx === 0 ? 'text-zinc-700' : 'text-yellow-500 active:bg-yellow-500/10'}`}
+            className={`w-8 h-8 flex items-center justify-center rounded-full transition-all ${visibleColIdx === 0 ? 'text-zinc-700' : 'text-green-400 active:bg-green-400/10'}`}
           >
             <i className="fas fa-chevron-left text-sm"></i>
           </button>
@@ -378,14 +378,14 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
               <button
                 key={i}
                 onClick={() => scrollToCard(i)}
-                className={`rounded-full transition-all ${i === visibleColIdx ? 'w-4 h-1.5 bg-yellow-500' : 'w-1.5 h-1.5 bg-zinc-600'}`}
+                className={`rounded-full transition-all ${i === visibleColIdx ? 'w-4 h-1.5 bg-green-400' : 'w-1.5 h-1.5 bg-zinc-600'}`}
               />
             ))}
           </div>
           <button
             onClick={() => scrollToCard(visibleColIdx + 1)}
             disabled={visibleColIdx === columns.length - 1}
-            className={`w-8 h-8 flex items-center justify-center rounded-full transition-all ${visibleColIdx === columns.length - 1 ? 'text-zinc-700' : 'text-yellow-500 active:bg-yellow-500/10'}`}
+            className={`w-8 h-8 flex items-center justify-center rounded-full transition-all ${visibleColIdx === columns.length - 1 ? 'text-zinc-700' : 'text-green-400 active:bg-green-400/10'}`}
           >
             <i className="fas fa-chevron-right text-sm"></i>
           </button>
@@ -426,14 +426,14 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
               onTouchEnd={handleColTouchEnd}
               onClick={() => { if (isSorting) setSortColId(null); }}
               className={`w-[calc(100vw-48px)] lg:w-64 flex-shrink-0 snap-start flex flex-col rounded-2xl border overflow-hidden transition-all duration-150 ${
-                isSorting ? 'border-yellow-500 ring-2 ring-yellow-500/40 scale-[0.98]' :
+                isSorting ? 'border-green-400 ring-2 ring-green-400/40 scale-[0.98]' :
                 isUnlinked ? 'border-orange-500/40' :
                 'border-zinc-800'
               }`}
             >
 
               {/* Header */}
-              <div className={isUnlinked ? 'bg-orange-500/10 border-b border-orange-500/20' : 'bg-yellow-500'}>
+              <div className={isUnlinked ? 'bg-orange-500/10 border-b border-orange-500/20' : 'bg-green-400'}>
                 {isSorting && (
                   <div className="flex items-center justify-between px-2 pt-1.5 pb-0">
                     <button
@@ -522,7 +522,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                   </div>
                   <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all ${isOverLimit ? 'bg-red-500' : progressPct > 80 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                      className={`h-full rounded-full transition-all ${isOverLimit ? 'bg-red-500' : progressPct > 80 ? 'bg-green-400' : 'bg-green-500'}`}
                       style={{ width: `${progressPct}%` }}
                     />
                   </div>
@@ -562,14 +562,14 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                         />
                         <button
                           onClick={() => handleSubmitEntry(col.id, col.linkedItemId, valueInputRefs.current[col.id]?.value ?? '')}
-                          className="mr-2 bg-yellow-500 active:bg-yellow-400 text-black font-black text-[10px] px-3 py-1.5 rounded-lg uppercase shrink-0"
+                          className="mr-2 bg-green-400 active:bg-green-300 text-black font-black text-[10px] px-3 py-1.5 rounded-lg uppercase shrink-0"
                         >
                           OK
                         </button>
                       </div>
                       <button
                         onClick={() => setInstallMode(prev => ({ ...prev, [col.id]: true }))}
-                        className="w-full text-center text-[9px] text-zinc-400 active:text-yellow-600 py-1.5 font-bold uppercase tracking-widest border-t border-zinc-100 transition-colors"
+                        className="w-full text-center text-[9px] text-zinc-400 active:text-green-500 py-1.5 font-bold uppercase tracking-widest border-t border-zinc-100 transition-colors"
                       >
                         <i className="fas fa-credit-card mr-1"></i>Parcelar
                       </button>
@@ -577,7 +577,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                   ) : (
                     <div className="p-3 space-y-2">
                       <p className="text-[9px] font-black uppercase text-zinc-500 tracking-widest flex items-center gap-1">
-                        <i className="fas fa-credit-card text-yellow-500"></i> Compra Parcelada
+                        <i className="fas fa-credit-card text-green-400"></i> Compra Parcelada
                       </p>
                       <input
                         type="text"
@@ -616,7 +616,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleSubmitInstallment(col.id, col.linkedItemId)}
-                          className="flex-1 bg-yellow-500 active:bg-yellow-400 text-black font-black text-[10px] py-2.5 rounded-lg uppercase"
+                          className="flex-1 bg-green-400 active:bg-green-300 text-black font-black text-[10px] py-2.5 rounded-lg uppercase"
                         >
                           Confirmar
                         </button>
@@ -655,7 +655,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
               {totalSpent > 0 && (
                 <div className={`px-4 py-3 text-center mt-auto ${isOverLimit ? 'bg-red-50' : 'bg-zinc-900'} ${card ? '' : 'rounded-b-2xl'}`}>
                   <p className={`text-[9px] font-black uppercase mb-0.5 ${isOverLimit ? 'text-red-500' : 'text-zinc-500'}`}>Total Lançado</p>
-                  <p className={`text-lg font-black font-mono tracking-tighter ${isOverLimit ? 'text-red-500' : 'text-yellow-500'}`}>
+                  <p className={`text-lg font-black font-mono tracking-tighter ${isOverLimit ? 'text-red-500' : 'text-green-400'}`}>
                     {formatCurrency(totalSpent)}
                   </p>
                   {isOverLimit && teto > 0 && (
@@ -667,8 +667,8 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
               {card && (
                 <div className="rounded-b-2xl border-t border-zinc-700 bg-zinc-800 px-3 py-2 text-center">
                   <p className="text-[9px] text-zinc-400 leading-relaxed">
-                    <i className="fas fa-credit-card mr-1 text-yellow-500"></i>
-                    Fatura <span className="text-yellow-400 font-black">{billingMonthName}</span>
+                    <i className="fas fa-credit-card mr-1 text-green-400"></i>
+                    Fatura <span className="text-green-300 font-black">{billingMonthName}</span>
                     {!isAfterClosing && <span className="text-zinc-600"> (aberta)</span>}
                   </p>
                 </div>

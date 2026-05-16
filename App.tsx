@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useUser, useClerk, useSignIn, SignIn, SignUp } from '@clerk/clerk-react';
 import { CategoryType, FinanceItem, SummaryData, LinkType, PartialExpense, Goal } from './types';
@@ -507,7 +507,8 @@ const App: React.FC = () => {
   };
 
   const handleExpenseDetected = (data: DetectedExpense) => {
-    setPendingExpense({ ...data, source: 'ai' });
+    const source = data.itemId ? 'ai' : 'manual';
+    setPendingExpense({ ...data, source });
   };
 
   const handleConfirmExpense = (data: DetectedExpense) => {
@@ -695,7 +696,7 @@ const App: React.FC = () => {
           <p className="text-zinc-400 text-sm text-center">Falha ao conectar. Verifique sua internet e tente novamente.</p>
           <button
             onClick={() => window.location.reload()}
-            className="px-6 py-3 bg-yellow-600 text-black font-bold rounded-xl text-sm"
+            className="px-6 py-3 bg-green-500 text-black font-bold rounded-xl text-sm"
           >
             Tentar novamente
           </button>
@@ -704,7 +705,7 @@ const App: React.FC = () => {
     }
     return (
       <div className="min-h-screen bg-[#050505] flex items-center justify-center">
-        <div className="w-10 h-10 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-10 h-10 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -712,12 +713,12 @@ const App: React.FC = () => {
   if (!isSignedIn) {
     return (
       <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6 relative overflow-hidden">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-yellow-600/10 rounded-full blur-[120px]"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-yellow-600/5 rounded-full blur-[120px]"></div>
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-green-500/10 rounded-full blur-[120px]"></div>
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-green-500/5 rounded-full blur-[120px]"></div>
 
         <div className="max-w-md w-full relative z-10 flex flex-col items-center gap-10">
           <div className="text-center flex flex-col items-center gap-4">
-            <img src="/kashim-icon.png" alt="Kashim" className="w-20 h-20 rounded-3xl shadow-2xl shadow-yellow-600/20" />
+            <img src="/kashim-icon.png" alt="Kashim" className="w-20 h-20 rounded-3xl shadow-2xl shadow-green-500/20" />
             <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Kashim</h1>
             <p className="text-zinc-400 text-xs font-bold uppercase tracking-[0.2em] leading-relaxed">
               A forma mais simples de se manter organizado financeiramente.
@@ -742,7 +743,7 @@ const App: React.FC = () => {
 
           <button
             onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
-            className="text-zinc-500 hover:text-yellow-500 text-[10px] font-black uppercase tracking-[0.2em] transition-colors"
+            className="text-zinc-500 hover:text-green-400 text-[10px] font-black uppercase tracking-[0.2em] transition-colors"
           >
             {authMode === 'login' ? 'Ainda não é membro? Criar conta' : 'Já possuo conta? Entrar'}
           </button>
@@ -766,10 +767,10 @@ const App: React.FC = () => {
 
       {showWebNotice && (
         <div className="fixed bottom-20 left-3 right-3 z-[90] animate-in slide-in-from-bottom-4 fade-in duration-300">
-          <div className="bg-zinc-900 border border-yellow-600/30 rounded-2xl px-4 py-3 shadow-2xl flex items-center gap-3">
-            <i className="fas fa-desktop text-yellow-500 shrink-0"></i>
+          <div className="bg-zinc-900 border border-green-500/30 rounded-2xl px-4 py-3 shadow-2xl flex items-center gap-3">
+            <i className="fas fa-desktop text-green-400 shrink-0"></i>
             <p className="text-zinc-300 text-xs leading-relaxed flex-1">
-              Sabia que você também acessa o Kashim pelo navegador em <span className="text-yellow-400 font-bold">app.kashim.com.br</span> com uma experiência ainda mais completa?
+              Sabia que você também acessa o Kashim pelo navegador em <span className="text-green-300 font-bold">app.kashim.com.br</span> com uma experiência ainda mais completa?
             </p>
             <button
               onClick={() => { localStorage.setItem('web_notice_dismissed', 'true'); setShowWebNotice(false); }}
@@ -791,11 +792,11 @@ const App: React.FC = () => {
             <div className="w-10 h-1 bg-zinc-700 rounded-full mx-auto mb-6"></div>
             {user && (
               <div className="flex items-center gap-3 mb-6 p-4 bg-zinc-800 rounded-2xl">
-                <img src={user.imageUrl} className="w-12 h-12 rounded-full border-2 border-yellow-500/30" alt="Avatar" />
+                <img src={user.imageUrl} className="w-12 h-12 rounded-full border-2 border-green-400/30" alt="Avatar" />
                 <div>
                   <p className="text-white font-black text-sm uppercase italic">{user.firstName} {user.lastName}</p>
                   <p className="text-zinc-500 text-xs">{user.emailAddresses[0]?.emailAddress}</p>
-                  <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 mt-1 inline-block">Consultor</span>
+                  <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-green-400/10 border border-green-400/20 text-green-400 mt-1 inline-block">Consultor</span>
                 </div>
               </div>
             )}
@@ -825,7 +826,7 @@ const App: React.FC = () => {
       ) : showSettings && dbLoading ? (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowSettings(false)}>
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 text-center">
-            <div className="w-10 h-10 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <div className="w-10 h-10 border-2 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
             <p className="text-zinc-400 text-sm">Carregando perfil...</p>
           </div>
         </div>
@@ -835,7 +836,7 @@ const App: React.FC = () => {
             <div className="w-10 h-1 bg-zinc-700 rounded-full mx-auto mb-6"></div>
             {user && (
               <div className="flex items-center gap-3 mb-6 p-4 bg-zinc-800 rounded-2xl">
-                <img src={user.imageUrl} className="w-12 h-12 rounded-full border-2 border-yellow-500/30" alt="Avatar" />
+                <img src={user.imageUrl} className="w-12 h-12 rounded-full border-2 border-green-400/30" alt="Avatar" />
                 <div>
                   <p className="text-white font-black text-sm uppercase italic">{user.firstName} {user.lastName}</p>
                   <p className="text-zinc-500 text-xs">{user.emailAddresses[0]?.emailAddress}</p>
@@ -876,7 +877,7 @@ const App: React.FC = () => {
             </div>
             <h3 className="text-white text-xl font-black uppercase italic tracking-tighter mb-4">Reprojetar Plano</h3>
             <div className="space-y-4 text-zinc-400 text-sm mb-10 leading-relaxed">
-              <p>Você selecionou projetar a partir de <span className="text-yellow-500 font-bold uppercase">{MONTHS_BR[pendingStartMonth?.month || 0]} {pendingStartMonth?.year}</span>.</p>
+              <p>Você selecionou projetar a partir de <span className="text-green-400 font-bold uppercase">{MONTHS_BR[pendingStartMonth?.month || 0]} {pendingStartMonth?.year}</span>.</p>
               <div className="bg-zinc-950 p-5 rounded-2xl border border-zinc-800 flex flex-col gap-4">
                 <div className="flex gap-4">
                   <i className="fas fa-trash-alt text-red-500 mt-1"></i>
@@ -891,7 +892,7 @@ const App: React.FC = () => {
             <div className="flex flex-col gap-3">
               <button 
                 onClick={() => pendingStartMonth && handleReproject(pendingStartMonth.month, pendingStartMonth.year)}
-                className="w-full bg-yellow-600 hover:bg-yellow-500 text-black font-black py-4 rounded-2xl transition-all shadow-lg uppercase text-xs tracking-widest"
+                className="w-full bg-green-500 hover:bg-green-400 text-black font-black py-4 rounded-2xl transition-all shadow-lg uppercase text-xs tracking-widest"
               >
                 Sim, Reprojetar e Baixar Backup
               </button>
@@ -902,19 +903,19 @@ const App: React.FC = () => {
       )}
 
       {/* ── HEADER DESKTOP ─────────────────────────────────────────────── */}
-      <header id="header" className="bg-[#0f0f0f] text-white safe-top shadow-2xl sticky top-0 z-50 border-b-2 border-yellow-600/50">
+      <header id="header" className="bg-[#0f0f0f] text-white safe-top shadow-2xl sticky top-0 z-50 border-b-2 border-green-500/50">
 
         {/* Mobile header */}
         <div className="lg:hidden flex items-center justify-between px-4 py-0.5">
           <div className="flex items-center gap-2">
             <img src="/kashim-icon.png" alt="Kashim" className="h-8 w-8 rounded-xl" />
             <span className="text-white font-black text-sm uppercase italic tracking-tight">Kashim</span>
-            {dbLoading && <i className="fas fa-circle-notch animate-spin text-yellow-500 text-xs ml-1"></i>}
+            {dbLoading && <i className="fas fa-circle-notch animate-spin text-green-400 text-xs ml-1"></i>}
           </div>
           {coachViewHouseholdId && (
-            <div className="flex items-center gap-1 bg-yellow-600/10 border border-yellow-600/30 px-2 py-1 rounded-lg">
-              <i className="fas fa-eye text-yellow-500 text-xs"></i>
-              <span className="text-yellow-500 text-[9px] font-black uppercase truncate max-w-[80px]">{coachViewClientName}</span>
+            <div className="flex items-center gap-1 bg-green-500/10 border border-green-500/30 px-2 py-1 rounded-lg">
+              <i className="fas fa-eye text-green-400 text-xs"></i>
+              <span className="text-green-400 text-[9px] font-black uppercase truncate max-w-[80px]">{coachViewClientName}</span>
               <button onClick={() => { setCoachViewHouseholdId(null); setCoachViewClientName(''); }} className="text-zinc-500 ml-1">
                 <i className="fas fa-times text-xs"></i>
               </button>
@@ -922,14 +923,14 @@ const App: React.FC = () => {
           )}
           <div className="flex items-center gap-1">
             {!isAdmin && (
-              <button onClick={() => setShowInvitePanel(p => !p)} className="w-10 h-10 flex items-center justify-center text-zinc-400 active:text-yellow-500">
+              <button onClick={() => setShowInvitePanel(p => !p)} className="w-10 h-10 flex items-center justify-center text-zinc-400 active:text-green-400">
                 <i className="fas fa-user-plus text-base"></i>
               </button>
             )}
             {user?.imageUrl ? (
               <img src={user.imageUrl} className="w-8 h-8 rounded-full border border-zinc-700 cursor-pointer" onClick={() => setShowSettings(true)} />
             ) : (
-              <button onClick={() => setShowSettings(true)} className="w-10 h-10 flex items-center justify-center text-zinc-400 active:text-yellow-500">
+              <button onClick={() => setShowSettings(true)} className="w-10 h-10 flex items-center justify-center text-zinc-400 active:text-green-400">
                 <i className="fas fa-user-circle text-xl"></i>
               </button>
             )}
@@ -947,27 +948,27 @@ const App: React.FC = () => {
             )}
           </div>
           <div className="flex gap-2 bg-zinc-900 p-1 rounded-xl border border-zinc-800">
-            <button onClick={() => setActiveTab('plan')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'plan' ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/20' : 'text-gray-400 hover:text-white'}`}>Gastos Mensais</button>
-            <button id="tab-gastos-frequentes" onClick={() => setActiveTab('teto')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'teto' ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/20' : 'text-gray-400 hover:text-white'}`}>Gastos Frequentes</button>
-            <button onClick={() => setActiveTab('metas')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'metas' ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/20' : 'text-gray-400 hover:text-white'}`}>Metas</button>
-            <button onClick={() => setActiveTab('desempenho')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'desempenho' ? 'bg-yellow-600 text-black shadow-lg shadow-yellow-600/20' : 'text-gray-400 hover:text-white'}`}>Desempenho</button>
+            <button onClick={() => setActiveTab('plan')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'plan' ? 'bg-green-500 text-black shadow-lg shadow-green-500/20' : 'text-gray-400 hover:text-white'}`}>Gastos Mensais</button>
+            <button id="tab-gastos-frequentes" onClick={() => setActiveTab('teto')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'teto' ? 'bg-green-500 text-black shadow-lg shadow-green-500/20' : 'text-gray-400 hover:text-white'}`}>Gastos Frequentes</button>
+            <button onClick={() => setActiveTab('metas')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'metas' ? 'bg-green-500 text-black shadow-lg shadow-green-500/20' : 'text-gray-400 hover:text-white'}`}>Metas</button>
+            <button onClick={() => setActiveTab('desempenho')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'desempenho' ? 'bg-green-500 text-black shadow-lg shadow-green-500/20' : 'text-gray-400 hover:text-white'}`}>Desempenho</button>
             {coachViewHouseholdId && (
-              <div className="flex items-center gap-2 bg-yellow-600/10 border border-yellow-600/30 px-3 py-1.5 rounded-xl">
-                <i className="fas fa-eye text-yellow-500 text-xs"></i>
-                <span className="text-yellow-500 text-[10px] font-black uppercase">{coachViewClientName}</span>
+              <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/30 px-3 py-1.5 rounded-xl">
+                <i className="fas fa-eye text-green-400 text-xs"></i>
+                <span className="text-green-400 text-[10px] font-black uppercase">{coachViewClientName}</span>
                 <button onClick={() => { setCoachViewHouseholdId(null); setCoachViewClientName(''); }} className="text-zinc-500 hover:text-white ml-1 transition-colors">
                   <i className="fas fa-times text-xs"></i>
                 </button>
               </div>
             )}
-            {dbLoading && <div className="px-3 py-2 text-yellow-500"><i className="fas fa-circle-notch animate-spin text-xs"></i></div>}
+            {dbLoading && <div className="px-3 py-2 text-green-400"><i className="fas fa-circle-notch animate-spin text-xs"></i></div>}
             {!isAdmin && (
-              <button onClick={() => setShowInvitePanel(p => !p)} className="px-3 py-2 text-zinc-500 hover:text-yellow-500 transition-colors" title="Convidar parceiro(a)">
+              <button onClick={() => setShowInvitePanel(p => !p)} className="px-3 py-2 text-zinc-500 hover:text-green-400 transition-colors" title="Convidar parceiro(a)">
                 <i className="fas fa-user-plus"></i>
               </button>
             )}
             {!isAdmin && (
-              <button onClick={() => setShowSettings(true)} className="px-3 py-2 text-zinc-500 hover:text-yellow-500 transition-colors" title="Configurações">
+              <button onClick={() => setShowSettings(true)} className="px-3 py-2 text-zinc-500 hover:text-green-400 transition-colors" title="Configurações">
                 <i className="fas fa-cog"></i>
               </button>
             )}
@@ -990,13 +991,13 @@ const App: React.FC = () => {
             {/* ── MOBILE SUMMARY CARDS ──────────────────────────────── */}
             {/* Acumulado Rico — destaque principal */}
             <div className="lg:hidden px-1 mb-2">
-              <div className="bg-yellow-500/10 border border-yellow-600/30 rounded-2xl p-3 flex items-center justify-between">
+              <div className="bg-green-400/10 border border-green-500/30 rounded-2xl p-3 flex items-center justify-between">
                 <div>
-                  <div className="text-[8px] font-black uppercase text-yellow-600 tracking-widest mb-0.5">Acumulado Rico</div>
-                  <div className="text-yellow-500 font-black font-mono text-xl leading-none">{formatCurrency(monthlySummaries[mobileMonthIdx].accumulated)}</div>
+                  <div className="text-[8px] font-black uppercase text-green-500 tracking-widest mb-0.5">Acumulado Rico</div>
+                  <div className="text-green-400 font-black font-mono text-xl leading-none">{formatCurrency(monthlySummaries[mobileMonthIdx].accumulated)}</div>
                 </div>
-                <div className="w-9 h-9 bg-yellow-500/10 rounded-xl flex items-center justify-center">
-                  <i className="fas fa-vault text-yellow-500 text-sm"></i>
+                <div className="w-9 h-9 bg-green-400/10 rounded-xl flex items-center justify-center">
+                  <i className="fas fa-vault text-green-400 text-sm"></i>
                 </div>
               </div>
             </div>
@@ -1018,20 +1019,20 @@ const App: React.FC = () => {
             {/* ── MOBILE MONTH NAVIGATOR (between cards and blocks) ── */}
             <div className="lg:hidden bg-zinc-900/95 border border-zinc-800 rounded-2xl mx-1 mb-2">
               <div className="flex items-center justify-between px-2 py-2">
-                <button onClick={() => setMobileMonthIdx(i => Math.max(0, i - 1))} disabled={mobileMonthIdx === 0} className="w-11 h-11 flex items-center justify-center text-zinc-400 disabled:opacity-20 active:text-yellow-500 rounded-xl active:bg-zinc-800">
+                <button onClick={() => setMobileMonthIdx(i => Math.max(0, i - 1))} disabled={mobileMonthIdx === 0} className="w-11 h-11 flex items-center justify-center text-zinc-400 disabled:opacity-20 active:text-green-400 rounded-xl active:bg-zinc-800">
                   <i className="fas fa-chevron-left text-base"></i>
                 </button>
                 <div className="text-center">
                   <div className="text-white font-black uppercase italic tracking-tight text-base">{months[mobileMonthIdx].monthName} {months[mobileMonthIdx].year}</div>
-                  {mobileMonthIdx === 0 && <div className="text-yellow-500 text-[9px] font-black uppercase tracking-widest -mt-0.5">Mês atual</div>}
+                  {mobileMonthIdx === 0 && <div className="text-green-400 text-[9px] font-black uppercase tracking-widest -mt-0.5">Mês atual</div>}
                 </div>
-                <button onClick={() => setMobileMonthIdx(i => Math.min(11, i + 1))} disabled={mobileMonthIdx === 11} className="w-11 h-11 flex items-center justify-center text-zinc-400 disabled:opacity-20 active:text-yellow-500 rounded-xl active:bg-zinc-800">
+                <button onClick={() => setMobileMonthIdx(i => Math.min(11, i + 1))} disabled={mobileMonthIdx === 11} className="w-11 h-11 flex items-center justify-center text-zinc-400 disabled:opacity-20 active:text-green-400 rounded-xl active:bg-zinc-800">
                   <i className="fas fa-chevron-right text-base"></i>
                 </button>
               </div>
               <div className="flex justify-center gap-1 pb-2">
                 {months.map((_, i) => (
-                  <button key={i} onClick={() => setMobileMonthIdx(i)} className={`rounded-full transition-all ${i === mobileMonthIdx ? 'w-4 h-1.5 bg-yellow-500' : 'w-1.5 h-1.5 bg-zinc-700'}`} />
+                  <button key={i} onClick={() => setMobileMonthIdx(i)} className={`rounded-full transition-all ${i === mobileMonthIdx ? 'w-4 h-1.5 bg-green-400' : 'w-1.5 h-1.5 bg-zinc-700'}`} />
                 ))}
               </div>
             </div>
@@ -1054,19 +1055,22 @@ const App: React.FC = () => {
                   onReplicateValue={handleReplicateValue} onLinkCard={handleLinkCard}
                   onUpdateCardConfig={handleUpdateCardConfig} onMoveItem={handleMoveItem}
                   trackedByCardId={block.type === CategoryType.CREDIT_CARD ? trackedByCardPrevMonth : undefined}
+                  onRequestExpenseSheet={block.type === CategoryType.VARIABLE_EXPENSE
+                    ? () => setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1, isCredit: false })
+                    : undefined}
                 />
               ))}
             </div>
 
-            <div id="summary-section" className="hidden lg:block bg-zinc-900 border border-yellow-600/30 rounded-[40px] p-8 mt-12 mb-8 shadow-2xl overflow-hidden">
-              <h3 className="text-yellow-500 font-black text-xl uppercase italic tracking-tighter mb-8 flex items-center gap-3"><i className="fas fa-vault"></i> Compilação Financeira</h3>
+            <div id="summary-section" className="hidden lg:block bg-zinc-900 border border-green-500/30 rounded-[40px] p-8 mt-12 mb-8 shadow-2xl overflow-hidden">
+              <h3 className="text-green-400 font-black text-xl uppercase italic tracking-tighter mb-8 flex items-center gap-3"><i className="fas fa-vault"></i> Compilação Financeira</h3>
               <div className="overflow-x-auto pb-4">
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="text-zinc-500 font-black uppercase text-[10px] tracking-widest border-b border-zinc-800">
                       <th className="p-4 bg-zinc-950/50 rounded-tl-2xl">Mês / Ano</th>
                       {months.map((m, i) => (
-                        <th key={i} className={`p-4 text-center ${i === 0 ? 'text-yellow-500 bg-yellow-500/5 font-black' : 'font-bold'}`}>
+                        <th key={i} className={`p-4 text-center ${i === 0 ? 'text-green-400 bg-green-400/5 font-black' : 'font-bold'}`}>
                           <div className="flex flex-col">
                             <span>{m.monthName}</span>
                             <span className="text-[8px] opacity-50">{m.year}</span>
@@ -1104,9 +1108,9 @@ const App: React.FC = () => {
                         </td>
                       ))}
                     </tr>
-                    <tr className="bg-yellow-600/5">
-                      <td className="p-6 font-black text-yellow-500 uppercase italic text-base">ACUMULADO RICO</td>
-                      {monthlySummaries.map((s, i) => <td key={i} className="p-6 text-center font-black font-mono text-lg text-yellow-500 drop-shadow-lg whitespace-nowrap">{formatCurrency(s.accumulated)}</td>)}
+                    <tr className="bg-green-500/5">
+                      <td className="p-6 font-black text-green-400 uppercase italic text-base">ACUMULADO RICO</td>
+                      {monthlySummaries.map((s, i) => <td key={i} className="p-6 text-center font-black font-mono text-lg text-green-400 drop-shadow-lg whitespace-nowrap">{formatCurrency(s.accumulated)}</td>)}
                     </tr>
                   </tbody>
                 </table>
@@ -1120,12 +1124,12 @@ const App: React.FC = () => {
                 </div>
                 <div>
                   <h4 className="text-[10px] font-black uppercase text-zinc-400 tracking-widest">Gestão de Ciclo</h4>
-                  <p className="text-sm font-bold text-zinc-800">Seu plano atual inicia em <span className="text-yellow-600 uppercase italic">{months[0].monthName} {months[0].year}</span></p>
+                  <p className="text-sm font-bold text-zinc-800">Seu plano atual inicia em <span className="text-green-500 uppercase italic">{months[0].monthName} {months[0].year}</span></p>
                 </div>
               </div>
               <div className="flex items-center gap-3 w-full md:w-auto">
                 <select 
-                  className="bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-xs font-black uppercase text-zinc-700 outline-none focus:border-yellow-500 transition-all"
+                  className="bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-xs font-black uppercase text-zinc-700 outline-none focus:border-green-400 transition-all"
                   value={`${startMonth}-${startYear}`}
                   onChange={(e) => {
                     const [m, y] = e.target.value.split('-').map(Number);
@@ -1137,7 +1141,7 @@ const App: React.FC = () => {
                 </select>
                 <button 
                   onClick={() => setShowProjectionModal(true)} 
-                  className="bg-zinc-900 hover:bg-black text-yellow-500 text-[10px] font-black px-6 py-3.5 rounded-xl uppercase transition-all shadow-lg whitespace-nowrap"
+                  className="bg-zinc-900 hover:bg-black text-green-400 text-[10px] font-black px-6 py-3.5 rounded-xl uppercase transition-all shadow-lg whitespace-nowrap"
                 >
                   Reprojetar Ciclo
                 </button>
@@ -1155,26 +1159,26 @@ const App: React.FC = () => {
           <div className="flex min-w-max">
             <button
               onClick={() => setActiveTab('plan')}
-              className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-0 gap-0.5 transition-colors active:scale-95 ${activeTab === 'plan' ? 'text-yellow-500' : 'text-zinc-500'}`}
+              className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-0 gap-0.5 transition-colors active:scale-95 ${activeTab === 'plan' ? 'text-green-400' : 'text-zinc-500'}`}
             >
-              <i className={`fas fa-chart-bar text-xl ${activeTab === 'plan' ? 'text-yellow-500' : ''}`}></i>
+              <i className={`fas fa-chart-bar text-xl ${activeTab === 'plan' ? 'text-green-400' : ''}`}></i>
               <span className="text-[9px] font-black uppercase tracking-wide">Plano</span>
-              {activeTab === 'plan' && <span className="absolute bottom-0 w-8 h-0.5 bg-yellow-500 rounded-full mb-1"></span>}
+              {activeTab === 'plan' && <span className="absolute bottom-0 w-8 h-0.5 bg-green-400 rounded-full mb-1"></span>}
             </button>
 
             <button
               onClick={() => setActiveTab('teto')}
-              className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-0 gap-0.5 transition-colors active:scale-95 ${activeTab === 'teto' ? 'text-yellow-500' : 'text-zinc-500'}`}
+              className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-0 gap-0.5 transition-colors active:scale-95 ${activeTab === 'teto' ? 'text-green-400' : 'text-zinc-500'}`}
             >
-              <i className={`fas fa-wallet text-xl ${activeTab === 'teto' ? 'text-yellow-500' : ''}`}></i>
+              <i className={`fas fa-wallet text-xl ${activeTab === 'teto' ? 'text-green-400' : ''}`}></i>
               <span className="text-[9px] font-black uppercase tracking-wide">Gastos</span>
-              {activeTab === 'teto' && <span className="absolute bottom-0 w-8 h-0.5 bg-yellow-500 rounded-full mb-1"></span>}
+              {activeTab === 'teto' && <span className="absolute bottom-0 w-8 h-0.5 bg-green-400 rounded-full mb-1"></span>}
             </button>
 
             {/* Central launch button */}
             <button
               onClick={() => setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1, isCredit: false })}
-              className="min-w-[72px] flex flex-col items-center justify-center py-1.5 gap-0.5 bg-yellow-500 mx-1 rounded-xl active:scale-95 transition-all shadow-lg shadow-yellow-500/20"
+              className="min-w-[72px] flex flex-col items-center justify-center py-1.5 gap-0.5 bg-green-400 mx-1 rounded-xl active:scale-95 transition-all shadow-lg shadow-green-400/20"
             >
               <i className="fas fa-plus text-black text-xl font-black"></i>
               <span className="text-[9px] font-black uppercase tracking-wide text-black">Lançar</span>
@@ -1182,20 +1186,20 @@ const App: React.FC = () => {
 
             <button
               onClick={() => setActiveTab('metas')}
-              className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-0 gap-0.5 transition-colors active:scale-95 ${activeTab === 'metas' ? 'text-yellow-500' : 'text-zinc-500'}`}
+              className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-0 gap-0.5 transition-colors active:scale-95 ${activeTab === 'metas' ? 'text-green-400' : 'text-zinc-500'}`}
             >
-              <i className={`fas fa-bullseye text-xl ${activeTab === 'metas' ? 'text-yellow-500' : ''}`}></i>
+              <i className={`fas fa-bullseye text-xl ${activeTab === 'metas' ? 'text-green-400' : ''}`}></i>
               <span className="text-[9px] font-black uppercase tracking-wide">Metas</span>
-              {activeTab === 'metas' && <span className="absolute bottom-0 w-8 h-0.5 bg-yellow-500 rounded-full mb-1"></span>}
+              {activeTab === 'metas' && <span className="absolute bottom-0 w-8 h-0.5 bg-green-400 rounded-full mb-1"></span>}
             </button>
 
             <button
               onClick={() => setActiveTab('desempenho')}
-              className={`min-w-[80px] flex flex-col items-center justify-center pt-2 pb-0 gap-0.5 transition-colors active:scale-95 ${activeTab === 'desempenho' ? 'text-yellow-500' : 'text-zinc-500'}`}
+              className={`min-w-[80px] flex flex-col items-center justify-center pt-2 pb-0 gap-0.5 transition-colors active:scale-95 ${activeTab === 'desempenho' ? 'text-green-400' : 'text-zinc-500'}`}
             >
-              <i className={`fas fa-chart-pie text-xl ${activeTab === 'desempenho' ? 'text-yellow-500' : ''}`}></i>
+              <i className={`fas fa-chart-pie text-xl ${activeTab === 'desempenho' ? 'text-green-400' : ''}`}></i>
               <span className="text-[9px] font-black uppercase tracking-wide">Desempenho</span>
-              {activeTab === 'desempenho' && <span className="absolute bottom-0 w-8 h-0.5 bg-yellow-500 rounded-full mb-1"></span>}
+              {activeTab === 'desempenho' && <span className="absolute bottom-0 w-8 h-0.5 bg-green-400 rounded-full mb-1"></span>}
             </button>
 
             <button

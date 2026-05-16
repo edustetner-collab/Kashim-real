@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useEffect, useRef } from 'react';
 import { formatCurrency } from '../constants';
 
@@ -184,11 +184,11 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
         <div className="px-5 pb-5 shrink-0">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-zinc-600 text-[9px] font-black uppercase tracking-widest">Progresso</span>
-            <span className="text-yellow-500 text-[9px] font-black">{clamp}%</span>
+            <span className="text-green-400 text-[9px] font-black">{clamp}%</span>
           </div>
           <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-yellow-600 to-yellow-400 rounded-full transition-all duration-500"
+              className="h-full bg-gradient-to-r from-green-500 to-green-300 rounded-full transition-all duration-500"
               style={{ width: `${clamp}%` }}
             />
           </div>
@@ -204,26 +204,26 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
         {/* WELCOME */}
         {step.type === 'welcome' && (
           <div className="text-center max-w-sm w-full">
-            <div className="w-16 h-16 bg-yellow-500 rounded-2xl flex items-center justify-center mx-auto mb-8 shadow-lg shadow-yellow-500/30">
+            <div className="w-16 h-16 bg-green-400 rounded-2xl flex items-center justify-center mx-auto mb-8 shadow-lg shadow-green-400/30">
               <i className="fas fa-chart-line text-black text-2xl"></i>
             </div>
             <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white mb-3 leading-tight">
               Vamos montar seu plano<br/>financeiro agora?
             </h1>
             <p className="text-zinc-400 text-sm leading-relaxed mb-4">
-              Vou te fazer algumas perguntas rápidas. As respostas já vão <span className="text-yellow-400 font-bold">preencher o seu app</span> automaticamente — renda, contas fixas e lazer tudo organizado em menos de 3 minutos.
+              Vou te fazer algumas perguntas rápidas. As respostas já vão <span className="text-green-300 font-bold">preencher o seu app</span> automaticamente — renda, contas fixas e lazer tudo organizado em menos de 3 minutos.
             </p>
             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 mb-8 flex items-start gap-3 text-left">
-              <i className="fas fa-info-circle text-yellow-500 mt-0.5 shrink-0"></i>
+              <i className="fas fa-info-circle text-green-400 mt-0.5 shrink-0"></i>
               <p className="text-zinc-400 text-xs leading-relaxed">O que você preencher aqui fica salvo direto no seu Kashim. Não é um teste — é o seu planejamento real.</p>
             </div>
             <div className="flex justify-center gap-6 mb-8 text-xs text-zinc-500">
-              <span><i className="fas fa-lock text-yellow-500 mr-1.5"></i>Dados seguros</span>
-              <span><i className="fas fa-bolt text-yellow-500 mr-1.5"></i>Menos de 3 min</span>
+              <span><i className="fas fa-lock text-green-400 mr-1.5"></i>Dados seguros</span>
+              <span><i className="fas fa-bolt text-green-400 mr-1.5"></i>Menos de 3 min</span>
             </div>
             <button
               onClick={handleAdvance}
-              className="w-full bg-yellow-500 active:bg-yellow-400 text-black font-black py-4 rounded-2xl text-base uppercase tracking-widest transition-all shadow-lg shadow-yellow-500/20"
+              className="w-full bg-green-400 active:bg-green-300 text-black font-black py-4 rounded-2xl text-base uppercase tracking-widest transition-all shadow-lg shadow-green-400/20"
             >
               Montar meu plano
             </button>
@@ -233,29 +233,29 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
         {/* TRANSITION */}
         {step.type === 'transition' && (
           <div className="text-center max-w-sm w-full">
-            <div className="w-16 h-16 bg-yellow-500/10 border border-yellow-500/20 rounded-2xl flex items-center justify-center mx-auto mb-8">
-              <i className="fas fa-pen text-yellow-500 text-2xl"></i>
+            <div className="w-16 h-16 bg-green-400/10 border border-green-400/20 rounded-2xl flex items-center justify-center mx-auto mb-8">
+              <i className="fas fa-pen text-green-400 text-2xl"></i>
             </div>
             <h2 className="text-2xl font-black uppercase italic tracking-tighter text-white mb-4 leading-tight">
               Agora vamos preencher<br/>o seu app
             </h2>
             <div className="flex flex-col gap-3 mb-8 text-left">
               <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3">
-                <i className="fas fa-check-circle text-yellow-500 shrink-0"></i>
+                <i className="fas fa-check-circle text-green-400 shrink-0"></i>
                 <p className="text-zinc-300 text-sm">Vou perguntar suas <b className="text-white">rendas</b> e <b className="text-white">contas fixas</b></p>
               </div>
               <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3">
-                <i className="fas fa-check-circle text-yellow-500 shrink-0"></i>
+                <i className="fas fa-check-circle text-green-400 shrink-0"></i>
                 <p className="text-zinc-300 text-sm">Se não souber o valor exato, <b className="text-white">coloca uma média</b> — dá pra ajustar depois</p>
               </div>
               <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3">
-                <i className="fas fa-check-circle text-yellow-500 shrink-0"></i>
+                <i className="fas fa-check-circle text-green-400 shrink-0"></i>
                 <p className="text-zinc-300 text-sm">Se não tiver esse gasto, clica em <b className="text-white">"Não pago"</b> — ele não aparece no app</p>
               </div>
             </div>
             <button
               onClick={handleAdvance}
-              className="w-full bg-yellow-500 active:bg-yellow-400 text-black font-black py-4 rounded-2xl text-base uppercase tracking-widest transition-all shadow-lg shadow-yellow-500/20"
+              className="w-full bg-green-400 active:bg-green-300 text-black font-black py-4 rounded-2xl text-base uppercase tracking-widest transition-all shadow-lg shadow-green-400/20"
             >
               Entendido, vamos lá!
             </button>
@@ -271,7 +271,7 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
               <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 mb-5">
                 {step.explanation && <p className="text-zinc-400 text-sm leading-relaxed">{step.explanation}</p>}
                 {step.tip && (
-                  <p className="text-yellow-500 text-xs font-bold mt-2 flex items-start gap-1.5">
+                  <p className="text-green-400 text-xs font-bold mt-2 flex items-start gap-1.5">
                     <i className="fas fa-lightbulb mt-0.5 shrink-0"></i>
                     {step.tip}
                   </p>
@@ -280,7 +280,7 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
             )}
 
             {/* Input */}
-            <div className="bg-zinc-900 border-2 border-yellow-500 rounded-2xl flex items-center px-4 mb-2 focus-within:border-yellow-400 transition-colors">
+            <div className="bg-zinc-900 border-2 border-green-400 rounded-2xl flex items-center px-4 mb-2 focus-within:border-green-300 transition-colors">
               <span className="text-zinc-400 font-black text-sm mr-2">R$</span>
               <input
                 ref={inputRef}
@@ -308,7 +308,7 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
               </button>
               <button
                 onClick={handleAdvance}
-                className="flex-1 bg-yellow-500 active:bg-yellow-400 text-black font-black py-4 rounded-2xl text-sm uppercase transition-all shadow-lg shadow-yellow-500/20"
+                className="flex-1 bg-green-400 active:bg-green-300 text-black font-black py-4 rounded-2xl text-sm uppercase transition-all shadow-lg shadow-green-400/20"
               >
                 Avançar
               </button>
@@ -328,7 +328,7 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
                   <div key={i} className="flex items-center justify-between bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5">
                     <span className="text-white text-sm font-bold">{e.description}</span>
                     <div className="flex items-center gap-3">
-                      <span className="text-yellow-500 font-mono text-sm font-black">{formatCurrency(e.value)}</span>
+                      <span className="text-green-400 font-mono text-sm font-black">{formatCurrency(e.value)}</span>
                       <button onClick={() => setExtraItems(prev => prev.filter((_, j) => j !== i))} className="text-zinc-600 active:text-red-400">
                         <i className="fas fa-times text-xs"></i>
                       </button>
@@ -345,7 +345,7 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
                 value={extraDesc}
                 onChange={e => setExtraDesc(e.target.value)}
                 placeholder="Ex: Inglês da filha"
-                className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-500 transition-colors placeholder:text-zinc-600"
+                className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-green-400 transition-colors placeholder:text-zinc-600"
               />
               <div className="flex items-center gap-2">
                 <span className="text-zinc-500 font-black text-sm">R$</span>
@@ -358,7 +358,7 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
                   onChange={e => setInputValue(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="0,00"
-                  className="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white font-mono text-sm outline-none focus:border-yellow-500 transition-colors placeholder:text-zinc-600 text-right"
+                  className="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white font-mono text-sm outline-none focus:border-green-400 transition-colors placeholder:text-zinc-600 text-right"
                 />
                 <button
                   onClick={() => {
@@ -370,7 +370,7 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
                       descRef.current?.focus();
                     }
                   }}
-                  className="w-10 h-10 bg-yellow-500 active:bg-yellow-400 text-black rounded-xl flex items-center justify-center shrink-0"
+                  className="w-10 h-10 bg-green-400 active:bg-green-300 text-black rounded-xl flex items-center justify-center shrink-0"
                 >
                   <i className="fas fa-plus text-sm font-black"></i>
                 </button>
@@ -380,7 +380,7 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
             {extraItems.length > 0 ? (
               <button
                 onClick={() => advance(0)}
-                className="w-full bg-yellow-500 active:bg-yellow-400 text-black font-black py-4 rounded-2xl text-sm uppercase tracking-widest transition-all shadow-lg shadow-yellow-500/20"
+                className="w-full bg-green-400 active:bg-green-300 text-black font-black py-4 rounded-2xl text-sm uppercase tracking-widest transition-all shadow-lg shadow-green-400/20"
               >
                 Pronto! Continuar <i className="fas fa-arrow-right ml-1.5"></i>
               </button>
@@ -398,19 +398,19 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
         {/* LEISURE */}
         {step.type === 'leisure' && (
           <div className="w-full max-w-sm text-center">
-            <div className="w-14 h-14 bg-yellow-500/10 border border-yellow-500/20 rounded-2xl flex items-center justify-center mx-auto mb-5">
-              <i className="fas fa-star text-yellow-500 text-xl"></i>
+            <div className="w-14 h-14 bg-green-400/10 border border-green-400/20 rounded-2xl flex items-center justify-center mx-auto mb-5">
+              <i className="fas fa-star text-green-400 text-xl"></i>
             </div>
             <h2 className="text-2xl font-black text-white leading-tight mb-3">
               Seu plano de lazer e gastos pessoais
             </h2>
             <p className="text-zinc-400 text-sm leading-relaxed mb-6">
               Com base na sua renda de <span className="text-white font-black">{formatCurrency(income)}</span>, separar{' '}
-              <span className="text-yellow-400 font-black">{formatCurrency(leisureSuggested)}</span> para lazer e gastos pessoais vai te manter no controle e fora das dívidas.
+              <span className="text-green-300 font-black">{formatCurrency(leisureSuggested)}</span> para lazer e gastos pessoais vai te manter no controle e fora das dívidas.
             </p>
             <p className="text-zinc-500 text-xs mb-5">Isso representa 15% da sua renda — o percentual ideal do método.</p>
 
-            <div className="bg-zinc-900 border-2 border-yellow-500 rounded-2xl flex items-center px-4 mb-6 focus-within:border-yellow-400 transition-colors">
+            <div className="bg-zinc-900 border-2 border-green-400 rounded-2xl flex items-center px-4 mb-6 focus-within:border-green-300 transition-colors">
               <span className="text-zinc-400 font-black text-sm mr-2">R$</span>
               <input
                 ref={inputRef}
@@ -427,7 +427,7 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
 
             <button
               onClick={handleAdvance}
-              className="w-full bg-yellow-500 active:bg-yellow-400 text-black font-black py-4 rounded-2xl text-base uppercase tracking-widest transition-all shadow-lg shadow-yellow-500/20 mb-3"
+              className="w-full bg-green-400 active:bg-green-300 text-black font-black py-4 rounded-2xl text-base uppercase tracking-widest transition-all shadow-lg shadow-green-400/20 mb-3"
             >
               Sim, incluir no meu plano
             </button>
@@ -454,7 +454,7 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
             <div className="flex flex-col gap-3 mb-6">
               <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
                 <p className="text-zinc-500 text-[9px] font-black uppercase tracking-widest mb-1">Sua renda por mês</p>
-                <p className="text-yellow-400 font-black text-xl font-mono">{formatCurrency(income)}</p>
+                <p className="text-green-300 font-black text-xl font-mono">{formatCurrency(income)}</p>
               </div>
               <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
                 <p className="text-zinc-500 text-[9px] font-black uppercase tracking-widest mb-1">Total de gastos fixos</p>
@@ -483,7 +483,7 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
 
             <button
               onClick={handleAdvance}
-              className="w-full bg-yellow-500 active:bg-yellow-400 text-black font-black py-4 rounded-2xl text-base uppercase tracking-widest transition-all shadow-lg shadow-yellow-500/20"
+              className="w-full bg-green-400 active:bg-green-300 text-black font-black py-4 rounded-2xl text-base uppercase tracking-widest transition-all shadow-lg shadow-green-400/20"
             >
               Entrar no meu plano <i className="fas fa-arrow-right ml-2"></i>
             </button>

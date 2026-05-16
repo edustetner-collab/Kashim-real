@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useRef } from 'react';
 import { SpeechRecognition as NativeSpeech } from '@capacitor-community/speech-recognition';
 import { SummaryData, FinanceItem, CategoryType } from '../types';
@@ -120,7 +120,18 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
   const handleResponse = (text: string, expense?: { itemId: string; value: number; description: string; installments: number } | null) => {
     setResponse(text);
     speak(text);
-    if (!expense?.itemId || !expense?.value) return;
+    if (!expense?.value) return;
+
+    if (!expense.itemId) {
+      onExpenseDetected({
+        itemId: '',
+        value: expense.value,
+        description: expense.description || '',
+        installments: Math.max(1, expense.installments ?? 1),
+        isCredit: false,
+      });
+      return;
+    }
 
     const matchedItem = items.find(i => i.id === expense.itemId);
     if (!matchedItem) {
@@ -128,7 +139,6 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
       return;
     }
 
-    // Passa para a tela de confirmação — não salva diretamente
     onExpenseDetected({
       itemId: expense.itemId,
       value: expense.value,
@@ -274,13 +284,13 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
   return (
     <div className="bg-[#0a0a0a] border border-zinc-800 rounded-3xl p-6 mb-8 shadow-2xl relative overflow-hidden group">
       <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
-        <i className="fas fa-user-tie text-8xl text-yellow-500"></i>
+        <i className="fas fa-user-tie text-8xl text-green-400"></i>
       </div>
       <div className="relative z-10">
         <div className="flex items-center justify-between mb-5">
           <div>
             <h3 className="text-white font-black text-xl uppercase italic tracking-tighter leading-none">Stets — Seu Mentor</h3>
-            <p className={`text-[10px] font-bold uppercase tracking-widest mt-1 ${isRecording ? 'text-red-400 animate-pulse' : 'text-yellow-500/50'}`}>
+            <p className={`text-[10px] font-bold uppercase tracking-widest mt-1 ${isRecording ? 'text-red-400 animate-pulse' : 'text-green-400/50'}`}>
               {isRecording ? '● Ouvindo... toque em Parar' : 'Fale, escreva ou envie um comprovante'}
             </p>
           </div>
@@ -293,7 +303,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
                 if (!v) window.speechSynthesis.cancel();
               }}
               className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black uppercase transition-colors border ${
-                ttsEnabled ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' : 'bg-zinc-800 text-zinc-500 border-zinc-700'
+                ttsEnabled ? 'bg-green-400/10 text-green-400 border-green-400/20' : 'bg-zinc-800 text-zinc-500 border-zinc-700'
               }`}
             >
               <i className={`fas ${ttsEnabled ? 'fa-volume-up' : 'fa-volume-mute'} text-xs`}></i>
@@ -310,7 +320,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
             onKeyDown={e => e.key === 'Enter' && analyzeText()}
             placeholder={isRecording ? 'Ouvindo... fale agora' : 'Ex: "gastei 45 reais no mercado" ou "como estou indo?"'}
             disabled={loading}
-            className={`w-full bg-zinc-900 border ${isRecording ? 'border-red-500/40' : 'border-zinc-800'} rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-yellow-500 transition-all shadow-inner disabled:opacity-60`}
+            className={`w-full bg-zinc-900 border ${isRecording ? 'border-red-500/40' : 'border-zinc-800'} rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-green-400 transition-all shadow-inner disabled:opacity-60`}
           />
 
           <div className="flex gap-2 flex-wrap">
@@ -340,7 +350,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
             <button
               onClick={() => analyzeText()}
               disabled={loading || !prompt.trim()}
-              className="ml-auto flex items-center gap-2 bg-gradient-to-br from-yellow-400 to-yellow-600 active:from-yellow-300 active:to-yellow-500 text-black font-black px-6 py-3 rounded-2xl text-xs uppercase transition-all disabled:opacity-40 shadow-lg active:scale-95"
+              className="ml-auto flex items-center gap-2 bg-gradient-to-br from-green-300 to-green-500 active:from-green-200 active:to-green-400 text-black font-black px-6 py-3 rounded-2xl text-xs uppercase transition-all disabled:opacity-40 shadow-lg active:scale-95"
             >
               {loading
                 ? <><i className="fas fa-circle-notch animate-spin"></i><span>Processando</span></>
@@ -352,7 +362,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
           {response && (
             <div className="mt-1 bg-zinc-900/80 border border-zinc-800 p-5 rounded-2xl text-zinc-300 text-sm leading-relaxed animate-in zoom-in-95 duration-300">
               {response.split('\n').map((line, i) => (
-                <p key={i} className={line.startsWith('✅') ? 'text-green-400 font-bold' : line.startsWith('⚠️') ? 'text-yellow-400' : ''}>
+                <p key={i} className={line.startsWith('✅') ? 'text-green-400 font-bold' : line.startsWith('⚠️') ? 'text-green-300' : ''}>
                   {line.replace(/\*\*(.*?)\*\*/g, '$1')}
                 </p>
               ))}

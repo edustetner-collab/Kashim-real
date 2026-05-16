@@ -130,9 +130,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         };
         const idx = Math.round(input.itemIdx ?? -1);
         const matchedItem = availableItems[idx];
-        if (input.hasExpense && matchedItem && input.value > 0) {
+        if (input.hasExpense && input.value > 0) {
           expense = {
-            itemId: matchedItem.id,
+            itemId: matchedItem ? matchedItem.id : '',
             value: input.value,
             description: input.description,
             installments: Math.max(1, Math.round(input.installments ?? 1)),
