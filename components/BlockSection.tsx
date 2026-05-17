@@ -378,47 +378,36 @@ const BlockSection: React.FC<BlockSectionProps> = ({
         </div>
       </div>
 
-      {/* 3 progress bars: Ideal / Definido / Realizado */}
+      {/* 2 progress bars: Ideal / Definido */}
       {(category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE) && totalIncome > 0 && (() => {
         const idealPct = category === CategoryType.PERSONAL_LEISURE ? 15 : 55;
         const idealValue = Math.round(totalIncome * (idealPct / 100));
         const determinedValue = items.reduce((s, i) => s + (i.values[mobileMonthIdx] || 0), 0);
-        const monthData = months[mobileMonthIdx];
-        const monthKey = monthData ? `${monthData.year}-${monthData.index}` : '';
-        const realizedValue = items.reduce((s, item) => {
-          const partials: any[] = (item.partialExpenses as any)?.[monthKey] || [];
-          return s + partials.reduce((ps: number, p: any) => ps + p.value, 0);
-        }, 0);
         const toBarPct = (v: number) => Math.min(100, (v / totalIncome) * 100);
         const detOk = determinedValue <= idealValue * 1.05;
-        const realOk = realizedValue <= determinedValue * 1.05;
         return (
           <div className="bg-black px-4 py-3 border-b border-zinc-800/60 space-y-3">
-            {/* Ideal — dashed reference, no bar */}
-            <div className="flex items-center gap-3">
-              <span className="text-[8px] font-black uppercase tracking-widest text-zinc-500 w-[58px] shrink-0">Ideal</span>
-              <div className="flex-1 border-t border-dashed border-zinc-700" />
-              <span className="text-[9px] font-mono font-black text-zinc-500">{formatCurrency(idealValue)}</span>
-              <span className="text-[8px] font-bold text-zinc-600">{idealPct}%</span>
+            {/* Ideal */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-[8px] font-black uppercase tracking-widest text-zinc-400">Ideal</span>
+                  <span className="text-[9px] font-black text-green-400 bg-green-400/10 border border-green-400/25 rounded-full px-1.5 py-0.5 leading-none">{idealPct}%</span>
+                </div>
+                <span className="text-[9px] font-mono font-black text-zinc-400">{formatCurrency(idealValue)}</span>
+              </div>
+              <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+                <div className="h-full rounded-full bg-green-500/60" style={{ width: `${idealPct}%` }} />
+              </div>
             </div>
             {/* Definido */}
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <span className={`text-[8px] font-black uppercase tracking-widest ${detOk ? 'text-green-400' : 'text-red-400'}`}>Definido</span>
-                <span className={`text-[9px] font-mono font-black ${detOk ? 'text-green-400' : 'text-red-400'}`}>{formatCurrency(determinedValue)}</span>
+                <span className={`text-[8px] font-black uppercase tracking-widest ${detOk ? 'text-blue-400' : 'text-red-400'}`}>Definido</span>
+                <span className={`text-[9px] font-mono font-black ${detOk ? 'text-blue-400' : 'text-red-400'}`}>{formatCurrency(determinedValue)}</span>
               </div>
               <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
-                <div className={`h-full rounded-full transition-all duration-500 ${detOk ? 'bg-green-400' : 'bg-red-400'}`} style={{ width: `${toBarPct(determinedValue)}%` }} />
-              </div>
-            </div>
-            {/* Realizado */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <span className={`text-[8px] font-black uppercase tracking-widest ${realOk ? 'text-blue-400' : 'text-red-400'}`}>Realizado</span>
-                <span className={`text-[9px] font-mono font-black ${realOk ? 'text-blue-400' : 'text-red-400'}`}>{formatCurrency(realizedValue)}</span>
-              </div>
-              <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
-                <div className={`h-full rounded-full transition-all duration-500 ${realOk ? 'bg-blue-400' : 'bg-red-500'}`} style={{ width: `${toBarPct(realizedValue)}%` }} />
+                <div className={`h-full rounded-full transition-all duration-500 ${detOk ? 'bg-blue-400' : 'bg-red-400'}`} style={{ width: `${toBarPct(determinedValue)}%` }} />
               </div>
             </div>
           </div>
@@ -546,6 +535,10 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                 else if (item.linkedCardId) {
                   const card = allCards.find(c => c.id === item.linkedCardId);
                   paymentLabel = `${card?.description || 'Cartão'} · ${item.linkType === LinkType.INSTALLMENT ? 'Parcelado' : 'Recorrente'}`;
+                } else if (item.linkType === LinkType.INSTALLMENT) {
+                  paymentLabel = 'Crédito Parcelado';
+                } else if (item.linkType === LinkType.RECURRING) {
+                  paymentLabel = 'Crédito';
                 }
                 return (
                   <div className="mt-2 ml-7">
@@ -749,6 +742,10 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                       else if (item.linkedCardId) {
                         const card = allCards.find(c => c.id === item.linkedCardId);
                         paymentLabel = `${card?.description || 'Cartão'} · ${item.linkType === LinkType.INSTALLMENT ? 'Parcelado' : 'Recorrente'}`;
+                      } else if (item.linkType === LinkType.INSTALLMENT) {
+                        paymentLabel = 'Crédito Parcelado';
+                      } else if (item.linkType === LinkType.RECURRING) {
+                        paymentLabel = 'Crédito';
                       }
                       return (
                       <div className="px-2 pb-1 flex flex-col gap-1">

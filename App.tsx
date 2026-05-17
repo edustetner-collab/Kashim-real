@@ -547,6 +547,10 @@ const App: React.FC = () => {
     const installments = Math.max(1, data.installments ?? 1);
     const fallbackDesc = data.description || matchedItem?.description || '';
 
+    // Convert (year, calendarMonth) → position in the months[] array (0-11)
+    const toArrIdx = (year: number, calMonth: number) =>
+      months.findIndex(m => m.year === year && m.index === calMonth);
+
     if (installments <= 1) {
       const today = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
       handleAddPartial(data.itemId, {
@@ -555,8 +559,10 @@ const App: React.FC = () => {
         description: fallbackDesc,
         value: data.value,
       });
-      // Stamp value so the item appears in BlockSection mobile list
-      if (!matchedItem) handleUpdateValue(data.itemId, currentActualMonth, String(data.value));
+      if (!matchedItem) {
+        const arrIdx = toArrIdx(now.getFullYear(), now.getMonth());
+        if (arrIdx >= 0) handleUpdateValue(data.itemId, arrIdx, String(data.value));
+      }
     } else {
       const card = matchedItem?.linkedCardId ? items.find(i => i.id === matchedItem!.linkedCardId) : null;
       const isAfterClosing = card?.closingDay ? now.getDate() >= card.closingDay : false;
@@ -565,19 +571,29 @@ const App: React.FC = () => {
 
       for (let i = 0; i < installments; i++) {
         const absMonth = startAbsMonth + i;
-        const targetMonthIdx = absMonth % 12;
+        const targetCalMonth = absMonth % 12;
         const targetYear = Math.floor(absMonth / 12);
         const value = i === installments - 1 ? parseFloat((data.value - baseValue * (installments - 1)).toFixed(2)) : baseValue;
         handleAddPartial(data.itemId, {
           id: crypto.randomUUID(),
-          date: `01/${String(targetMonthIdx + 1).padStart(2, '0')}`,
+          date: `01/${String(targetCalMonth + 1).padStart(2, '0')}`,
           description: `${fallbackDesc} ${i + 1}/${installments}`,
           value,
-        }, targetYear, targetMonthIdx);
-        // Stamp value so item appears in BlockSection mobile list
-        if (!matchedItem) handleUpdateValue(data.itemId, targetMonthIdx, String(value));
+        }, targetYear, targetCalMonth);
+        if (!matchedItem) {
+          const arrIdx = toArrIdx(targetYear, targetCalMonth);
+          if (arrIdx >= 0) handleUpdateValue(data.itemId, arrIdx, String(value));
+        }
       }
     }
+
+    // Stamp payment method so "Forma de pagamento pendente" doesn't persist
+    const newLinkType = data.isCredit ? LinkType.INSTALLMENT : LinkType.DEBIT;
+    setItems(prev => prev.map(item =>
+      item.id === data.itemId
+        ? { ...item, linkType: item.linkType ?? newLinkType }
+        : item
+    ));
 
     setPendingExpense(null);
   };
