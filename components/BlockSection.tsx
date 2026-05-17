@@ -378,7 +378,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
         </div>
       </div>
 
-      {/* 3 progress bars: Ideal / Determinado / Realizado */}
+      {/* 3 progress bars: Ideal / Definido / Realizado */}
       {(category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE) && totalIncome > 0 && (() => {
         const idealPct = category === CategoryType.PERSONAL_LEISURE ? 15 : 55;
         const idealValue = Math.round(totalIncome * (idealPct / 100));
@@ -392,22 +392,35 @@ const BlockSection: React.FC<BlockSectionProps> = ({
         const toBarPct = (v: number) => Math.min(100, (v / totalIncome) * 100);
         const detOk = determinedValue <= idealValue * 1.05;
         const realOk = realizedValue <= determinedValue * 1.05;
-        const bars = [
-          { label: 'Ideal', value: idealValue, pct: toBarPct(idealValue), bar: 'bg-zinc-500', text: 'text-zinc-400' },
-          { label: 'Determinado', value: determinedValue, pct: toBarPct(determinedValue), bar: detOk ? 'bg-green-400' : 'bg-red-400', text: detOk ? 'text-green-400' : 'text-red-400' },
-          { label: 'Realizado', value: realizedValue, pct: toBarPct(realizedValue), bar: realOk ? 'bg-blue-400' : 'bg-red-500', text: realOk ? 'text-blue-400' : 'text-red-400' },
-        ];
         return (
-          <div className="bg-zinc-950/60 px-4 py-3 border-b border-zinc-800/50 space-y-1.5">
-            {bars.map(b => (
-              <div key={b.label} className="flex items-center gap-2">
-                <span className="text-[8px] font-black uppercase tracking-wider text-zinc-500 w-[68px] shrink-0">{b.label}</span>
-                <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full transition-all duration-500 ${b.bar}`} style={{ width: `${b.pct}%` }} />
-                </div>
-                <span className={`text-[9px] font-mono font-black w-[68px] text-right shrink-0 ${b.text}`}>{formatCurrency(b.value)}</span>
+          <div className="bg-black px-4 py-3 border-b border-zinc-800/60 space-y-3">
+            {/* Ideal — dashed reference, no bar */}
+            <div className="flex items-center gap-3">
+              <span className="text-[8px] font-black uppercase tracking-widest text-zinc-500 w-[58px] shrink-0">Ideal</span>
+              <div className="flex-1 border-t border-dashed border-zinc-700" />
+              <span className="text-[9px] font-mono font-black text-zinc-500">{formatCurrency(idealValue)}</span>
+              <span className="text-[8px] font-bold text-zinc-600">{idealPct}%</span>
+            </div>
+            {/* Definido */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <span className={`text-[8px] font-black uppercase tracking-widest ${detOk ? 'text-green-400' : 'text-red-400'}`}>Definido</span>
+                <span className={`text-[9px] font-mono font-black ${detOk ? 'text-green-400' : 'text-red-400'}`}>{formatCurrency(determinedValue)}</span>
               </div>
-            ))}
+              <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+                <div className={`h-full rounded-full transition-all duration-500 ${detOk ? 'bg-green-400' : 'bg-red-400'}`} style={{ width: `${toBarPct(determinedValue)}%` }} />
+              </div>
+            </div>
+            {/* Realizado */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <span className={`text-[8px] font-black uppercase tracking-widest ${realOk ? 'text-blue-400' : 'text-red-400'}`}>Realizado</span>
+                <span className={`text-[9px] font-mono font-black ${realOk ? 'text-blue-400' : 'text-red-400'}`}>{formatCurrency(realizedValue)}</span>
+              </div>
+              <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+                <div className={`h-full rounded-full transition-all duration-500 ${realOk ? 'bg-blue-400' : 'bg-red-500'}`} style={{ width: `${toBarPct(realizedValue)}%` }} />
+              </div>
+            </div>
           </div>
         );
       })()}
@@ -416,7 +429,11 @@ const BlockSection: React.FC<BlockSectionProps> = ({
       <div className="block lg:hidden bg-[#111] divide-y divide-zinc-800/60">
         {items.filter(item => {
           if (item.category === CategoryType.VARIABLE_EXPENSE) {
-            return item.values[mobileMonthIdx] > 0;
+            if (item.values[mobileMonthIdx] > 0) return true;
+            const md = months[mobileMonthIdx];
+            const mk = md ? `${md.year}-${md.index}` : '';
+            const pts: any[] = (item.partialExpenses as any)?.[mk] || [];
+            return pts.length > 0;
           }
           return true;
         }).map((item) => {

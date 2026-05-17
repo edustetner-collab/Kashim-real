@@ -539,22 +539,26 @@ const App: React.FC = () => {
   };
 
   const handleConfirmExpense = (data: DetectedExpense) => {
+    if (!data.itemId) return;
     const matchedItem = items.find(i => i.id === data.itemId);
-    if (!matchedItem) return;
+    // matchedItem may be null when item was just created in the same event (stale closure) — proceed anyway
 
     const now = new Date();
     const installments = Math.max(1, data.installments ?? 1);
+    const fallbackDesc = data.description || matchedItem?.description || '';
 
     if (installments <= 1) {
       const today = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
       handleAddPartial(data.itemId, {
         id: crypto.randomUUID(),
         date: today,
-        description: data.description || matchedItem.description,
+        description: fallbackDesc,
         value: data.value,
       });
+      // Stamp value so the item appears in BlockSection mobile list
+      if (!matchedItem) handleUpdateValue(data.itemId, currentActualMonth, String(data.value));
     } else {
-      const card = matchedItem.linkedCardId ? items.find(i => i.id === matchedItem.linkedCardId) : null;
+      const card = matchedItem?.linkedCardId ? items.find(i => i.id === matchedItem!.linkedCardId) : null;
       const isAfterClosing = card?.closingDay ? now.getDate() >= card.closingDay : false;
       const startAbsMonth = (now.getFullYear() * 12 + now.getMonth()) + (isAfterClosing ? 1 : 0);
       const baseValue = parseFloat((data.value / installments).toFixed(2));
@@ -567,9 +571,11 @@ const App: React.FC = () => {
         handleAddPartial(data.itemId, {
           id: crypto.randomUUID(),
           date: `01/${String(targetMonthIdx + 1).padStart(2, '0')}`,
-          description: `${data.description || matchedItem.description} ${i + 1}/${installments}`,
+          description: `${fallbackDesc} ${i + 1}/${installments}`,
           value,
         }, targetYear, targetMonthIdx);
+        // Stamp value so item appears in BlockSection mobile list
+        if (!matchedItem) handleUpdateValue(data.itemId, targetMonthIdx, String(value));
       }
     }
 
