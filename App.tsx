@@ -564,9 +564,9 @@ const App: React.FC = () => {
         if (arrIdx >= 0) handleUpdateValue(data.itemId, arrIdx, String(data.value));
       }
     } else {
-      const card = matchedItem?.linkedCardId ? items.find(i => i.id === matchedItem!.linkedCardId) : null;
-      const isAfterClosing = card?.closingDay ? now.getDate() >= card.closingDay : false;
-      const startAbsMonth = (now.getFullYear() * 12 + now.getMonth()) + (isAfterClosing ? 1 : 0);
+      // Installments always start from purchase month for budget-limit tracking.
+      // Card fatura offset is irrelevant here — if you buy in May, installment 1 counts in May.
+      const startAbsMonth = now.getFullYear() * 12 + now.getMonth();
       const baseValue = parseFloat((data.value / installments).toFixed(2));
 
       for (let i = 0; i < installments; i++) {
