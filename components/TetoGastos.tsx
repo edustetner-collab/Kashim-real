@@ -1,4 +1,4 @@
-﻿
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { FinanceItem, PartialExpense, CategoryType } from '../types';
 import { formatCurrency, MONTHS_BR } from '../constants';
@@ -328,7 +328,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
           <select
             value={selectedMonthKey}
             onChange={e => setSelectedMonthKey(e.target.value)}
-            className="appearance-none bg-zinc-800 text-white font-black text-xs uppercase px-4 py-2.5 pr-8 rounded-xl border border-zinc-700 outline-none cursor-pointer"
+            className="appearance-none bg-white text-[#1d1d1f] font-black text-xs uppercase px-4 py-2.5 pr-8 rounded-xl border border-[#e8e8ed] outline-none cursor-pointer"
           >
             {availableMonths.map(key => (
               <option key={key} value={key}>
@@ -336,12 +336,12 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
               </option>
             ))}
           </select>
-          <i className="fas fa-chevron-down text-zinc-400 text-[9px] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+          <i className="fas fa-chevron-down text-[#aeaeb2] text-[9px] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
         </div>
         {!isHistoricalView && (
           <button
             onClick={addColumn}
-            className="bg-green-500 active:bg-green-400 text-black font-black px-5 py-2.5 rounded-xl text-xs uppercase transition-all shadow-lg flex items-center gap-2 shrink-0"
+            className="k-btn-lime px-5 py-2.5 flex items-center gap-2 shrink-0"
           >
             <i className="fas fa-plus-circle"></i> Adicionar
           </button>
@@ -349,16 +349,16 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       </div>
 
       {isHistoricalView && (
-        <div className="mb-3 flex items-center gap-2 bg-zinc-800/60 border border-zinc-700 rounded-xl px-4 py-2">
-          <i className="fas fa-history text-green-400 text-xs"></i>
-          <span className="text-zinc-400 text-xs font-bold uppercase tracking-widest">
+        <div className="mb-3 flex items-center gap-2 bg-[#f5f5f7] border border-[#e8e8ed] rounded-xl px-4 py-2">
+          <i className="fas fa-history text-[#7ab800] text-xs"></i>
+          <span className="text-[#aeaeb2] text-xs font-bold uppercase tracking-widest">
             Histórico: {labelForKey(selectedMonthKey)} — somente leitura
           </span>
         </div>
       )}
 
       {sortColId && (
-        <p className="text-[9px] font-black uppercase tracking-widest text-green-400 text-center mb-2 animate-pulse">
+        <p className="text-[9px] font-black uppercase tracking-widest text-[#7ab800] text-center mb-2 animate-pulse">
           Use ← → para mover • toque no card para fechar
         </p>
       )}
@@ -369,7 +369,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
           <button
             onClick={() => scrollToCard(visibleColIdx - 1)}
             disabled={visibleColIdx === 0}
-            className={`w-8 h-8 flex items-center justify-center rounded-full transition-all ${visibleColIdx === 0 ? 'text-zinc-700' : 'text-green-400 active:bg-green-400/10'}`}
+            className={`w-8 h-8 flex items-center justify-center rounded-full transition-all ${visibleColIdx === 0 ? 'text-[#d2d2d7]' : 'text-[#7ab800] active:bg-[#f0fad0]'}`}
           >
             <i className="fas fa-chevron-left text-sm"></i>
           </button>
@@ -378,14 +378,14 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
               <button
                 key={i}
                 onClick={() => scrollToCard(i)}
-                className={`rounded-full transition-all ${i === visibleColIdx ? 'w-4 h-1.5 bg-green-400' : 'w-1.5 h-1.5 bg-zinc-600'}`}
+                className={`rounded-full transition-all ${i === visibleColIdx ? 'w-4 h-1.5 bg-[#a8e716]' : 'w-1.5 h-1.5 bg-[#e8e8ed]'}`}
               />
             ))}
           </div>
           <button
             onClick={() => scrollToCard(visibleColIdx + 1)}
             disabled={visibleColIdx === columns.length - 1}
-            className={`w-8 h-8 flex items-center justify-center rounded-full transition-all ${visibleColIdx === columns.length - 1 ? 'text-zinc-700' : 'text-green-400 active:bg-green-400/10'}`}
+            className={`w-8 h-8 flex items-center justify-center rounded-full transition-all ${visibleColIdx === columns.length - 1 ? 'text-[#d2d2d7]' : 'text-[#7ab800] active:bg-[#f0fad0]'}`}
           >
             <i className="fas fa-chevron-right text-sm"></i>
           </button>
@@ -426,24 +426,24 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
               onTouchEnd={handleColTouchEnd}
               onClick={() => { if (isSorting) setSortColId(null); }}
               className={`w-[calc(100vw-48px)] lg:w-64 flex-shrink-0 snap-start flex flex-col rounded-2xl border overflow-hidden transition-all duration-150 ${
-                isSorting ? 'border-green-400 ring-2 ring-green-400/40 scale-[0.98]' :
+                isSorting ? 'border-[#a8e716] ring-2 ring-[rgba(168,231,22,0.3)] scale-[0.98]' :
                 isUnlinked ? 'border-orange-500/40' :
-                'border-zinc-800'
+                'border-[#e8e8ed]'
               }`}
             >
 
               {/* Header */}
-              <div className={isUnlinked ? 'bg-orange-500/10 border-b border-orange-500/20' : 'bg-green-400'}>
+              <div className={isUnlinked ? 'bg-orange-500/10 border-b border-orange-500/20' : 'bg-[#f0fad0]'}>
                 {isSorting && (
                   <div className="flex items-center justify-between px-2 pt-1.5 pb-0">
                     <button
                       onClick={(e) => { e.stopPropagation(); moveSortCol(col.id, -1); }}
-                      className="w-8 h-7 flex items-center justify-center bg-black/20 active:bg-black/40 rounded-lg text-black font-black text-sm"
+                      className="w-8 h-7 flex items-center justify-center bg-black/10 active:bg-black/20 rounded-lg text-[#1d1d1f] font-black text-sm"
                     >‹</button>
-                    <span className="text-[9px] font-black uppercase tracking-widest text-black/70">Mover</span>
+                    <span className="text-[9px] font-black uppercase tracking-widest text-[#6e6e73]">Mover</span>
                     <button
                       onClick={(e) => { e.stopPropagation(); moveSortCol(col.id, 1); }}
-                      className="w-8 h-7 flex items-center justify-center bg-black/20 active:bg-black/40 rounded-lg text-black font-black text-sm"
+                      className="w-8 h-7 flex items-center justify-center bg-black/10 active:bg-black/20 rounded-lg text-[#1d1d1f] font-black text-sm"
                     >›</button>
                   </div>
                 )}
@@ -458,24 +458,24 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                     onClick={() => handleDeletePress(col)}
                     className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-all ${
                       isHistoricalView || columns.length <= 1 ? 'opacity-0 pointer-events-none' :
-                      deleteConfirmId === col.id ? 'bg-red-500 text-white scale-110' :
-                      'bg-red-500/20 text-red-400 active:bg-red-500 active:text-white'
+                      deleteConfirmId === col.id ? 'bg-[#ff3b30] text-white scale-110' :
+                      'bg-[#ff3b30]/15 text-[#ff3b30] active:bg-[#ff3b30] active:text-white'
                     }`}
                   >
                     <i className="fas fa-times text-[9px]"></i>
                   </button>
                   <select
-                    className={`flex-1 bg-transparent border-none text-[10px] font-black uppercase text-center outline-none cursor-pointer ${isUnlinked ? 'text-orange-400' : 'text-black'}`}
+                    className={`flex-1 bg-transparent border-none text-[10px] font-black uppercase text-center outline-none cursor-pointer ${isUnlinked ? 'text-orange-400' : 'text-[#1d1d1f]'}`}
                     value={col.linkedItemId}
                     onChange={(e) => updateColumn(col.id, 'linkedItemId', e.target.value)}
                   >
-                    <option value="" className="bg-zinc-900 text-orange-400">⚠ VINCULAR ITEM</option>
+                    <option value="" className="bg-white text-orange-400">⚠ VINCULAR ITEM</option>
                     {items.filter(i =>
                       i.category === CategoryType.FIXED_EXPENSE ||
                       i.category === CategoryType.VARIABLE_EXPENSE ||
                       i.category === CategoryType.PERSONAL_LEISURE
                     ).map(i => (
-                      <option key={i.id} value={i.id} className="bg-zinc-900 text-white">
+                      <option key={i.id} value={i.id} className="bg-white text-[#1d1d1f]">
                         {i.description || 'Sem nome'}
                       </option>
                     ))}
@@ -485,27 +485,27 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                   type="text"
                   value={col.title}
                   onChange={(e) => updateColumn(col.id, 'title', e.target.value)}
-                  className={`w-full bg-transparent border-none text-center font-black text-xs uppercase px-3 pb-3 pt-0.5 outline-none tracking-widest ${isUnlinked ? 'text-orange-400/80 placeholder:text-orange-400/40' : 'text-black'}`}
+                  className={`w-full bg-transparent border-none text-center font-black text-xs uppercase px-3 pb-3 pt-0.5 outline-none tracking-widest ${isUnlinked ? 'text-orange-400/80 placeholder:text-orange-400/40' : 'text-[#1d1d1f]'}`}
                   placeholder="NOME DA COLUNA"
                 />
               </div>
 
               {/* Delete confirmation banner */}
               {deleteConfirmId === col.id && (
-                <div className="bg-red-950 border-b border-red-800 px-3 py-2 flex items-center justify-between gap-2">
-                  <p className="text-[9px] text-red-300 font-bold leading-tight flex-1">
+                <div className="bg-[#fff0f0] border-b border-[rgba(255,59,48,0.2)] px-3 py-2 flex items-center justify-between gap-2">
+                  <p className="text-[9px] text-[#ff3b30] font-bold leading-tight flex-1">
                     Excluir apagará todos os lançamentos vinculados a esta despesa.
                   </p>
                   <div className="flex gap-1.5 shrink-0">
                     <button
                       onClick={() => setDeleteConfirmId(null)}
-                      className="px-2.5 py-1 rounded-lg bg-zinc-700 text-zinc-300 text-[9px] font-black uppercase active:bg-zinc-600"
+                      className="px-2.5 py-1 rounded-lg bg-[#f5f5f7] border border-[#e8e8ed] text-[#6e6e73] text-[9px] font-black uppercase"
                     >
                       Cancelar
                     </button>
                     <button
                       onClick={() => { removeColumn(col.id); setDeleteConfirmId(null); }}
-                      className="px-2.5 py-1 rounded-lg bg-red-600 text-white text-[9px] font-black uppercase active:bg-red-500"
+                      className="px-2.5 py-1 rounded-lg bg-[#ff3b30] text-white text-[9px] font-black uppercase active:opacity-80"
                     >
                       Excluir
                     </button>
@@ -515,14 +515,14 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
               {/* Budget bar — only when a budget is set */}
               {teto > 0 && (
-                <div className={`px-4 py-3 ${isOverLimit ? 'bg-red-950/40' : 'bg-zinc-900'}`}>
+                <div className={`px-4 py-3 ${isOverLimit ? 'bg-[#fff0f0]' : 'bg-[#fafafa]'}`}>
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Teto</span>
-                    <span className={`text-xs font-black font-mono ${isOverLimit ? 'text-red-400' : 'text-zinc-400'}`}>{formatCurrency(teto)}</span>
+                    <span className="text-[8px] font-black text-[#aeaeb2] uppercase tracking-widest">Teto</span>
+                    <span className={`text-xs font-black k-num ${isOverLimit ? 'text-[#ff3b30]' : 'text-[#6e6e73]'}`}>{formatCurrency(teto)}</span>
                   </div>
-                  <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                  <div className="h-1.5 bg-[#e8e8ed] rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all ${isOverLimit ? 'bg-red-500' : progressPct > 80 ? 'bg-green-400' : 'bg-green-500'}`}
+                      className={`h-full rounded-full transition-all ${isOverLimit ? 'bg-[#ff3b30]' : progressPct > 80 ? 'bg-[#a8e716]' : 'bg-[#7ab800]'}`}
                       style={{ width: `${progressPct}%` }}
                     />
                   </div>
@@ -531,7 +531,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
               {/* Entry form */}
               {!isHistoricalView && (
-                <div className="bg-white border-t border-zinc-100">
+                <div className="bg-white border-t border-[#e8e8ed]">
                   {!inInstallMode ? (
                     <>
                       <input
@@ -544,64 +544,64 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                         }}
                         className={`w-full py-2 px-3 text-[11px] outline-none border-b transition-colors ${
                           entryErrors[col.id]
-                            ? 'bg-red-50 border-red-300 placeholder:text-red-400 placeholder:font-bold'
-                            : 'bg-zinc-50 border-zinc-100 placeholder:text-zinc-400'
-                        } text-zinc-700`}
+                            ? 'bg-[#fff0f0] border-[rgba(255,59,48,0.3)] placeholder:text-[#ff3b30] placeholder:font-bold'
+                            : 'bg-[#f5f5f7] border-[#e8e8ed] placeholder:text-[#aeaeb2]'
+                        } text-[#1d1d1f]`}
                       />
                       <div className="flex items-center">
-                        <div className="pl-3 text-zinc-400 text-[10px] font-bold shrink-0">R$</div>
+                        <div className="pl-3 text-[#aeaeb2] text-[10px] font-bold shrink-0">R$</div>
                         <input
                           ref={el => { valueInputRefs.current[col.id] = el; }}
                           type="number"
                           inputMode="decimal"
                           placeholder="Valor..."
-                          className="flex-1 py-3 pl-2 pr-2 text-sm outline-none bg-transparent focus:bg-yellow-50/50 font-black text-zinc-900 transition-all placeholder:text-zinc-300 placeholder:font-normal placeholder:text-xs"
+                          className="flex-1 py-3 pl-2 pr-2 text-sm outline-none bg-transparent focus:bg-[#f0fad0]/30 font-black text-[#1d1d1f] transition-all placeholder:text-[#d2d2d7] placeholder:font-normal placeholder:text-xs k-num"
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') handleSubmitEntry(col.id, col.linkedItemId, e.currentTarget.value);
                           }}
                         />
                         <button
                           onClick={() => handleSubmitEntry(col.id, col.linkedItemId, valueInputRefs.current[col.id]?.value ?? '')}
-                          className="mr-2 bg-green-400 active:bg-green-300 text-black font-black text-[10px] px-3 py-1.5 rounded-lg uppercase shrink-0"
+                          className="mr-2 k-btn-lime text-[10px] px-3 py-1.5"
                         >
                           OK
                         </button>
                       </div>
                       <button
                         onClick={() => setInstallMode(prev => ({ ...prev, [col.id]: true }))}
-                        className="w-full text-center text-[9px] text-zinc-400 active:text-green-500 py-1.5 font-bold uppercase tracking-widest border-t border-zinc-100 transition-colors"
+                        className="w-full text-center text-[9px] text-[#aeaeb2] active:text-[#7ab800] py-1.5 font-bold uppercase tracking-widest border-t border-[#e8e8ed] transition-colors"
                       >
                         <i className="fas fa-credit-card mr-1"></i>Parcelar
                       </button>
                     </>
                   ) : (
                     <div className="p-3 space-y-2">
-                      <p className="text-[9px] font-black uppercase text-zinc-500 tracking-widest flex items-center gap-1">
-                        <i className="fas fa-credit-card text-green-400"></i> Compra Parcelada
+                      <p className="text-[9px] font-black uppercase text-[#aeaeb2] tracking-widest flex items-center gap-1">
+                        <i className="fas fa-credit-card text-[#7ab800]"></i> Compra Parcelada
                       </p>
                       <input
                         type="text"
                         placeholder="Ex: Tênis Nike"
                         value={iData?.desc ?? ''}
                         onChange={e => updateInstall(col.id, 'desc', e.target.value)}
-                        className="w-full py-2 px-3 text-[11px] outline-none border border-zinc-200 rounded-lg bg-zinc-50 text-zinc-700"
+                        className="w-full py-2 px-3 text-[11px] outline-none border border-[#e8e8ed] rounded-lg bg-[#f5f5f7] text-[#1d1d1f] placeholder:text-[#aeaeb2]"
                       />
                       <div className="flex gap-2">
-                        <div className="flex-1 flex items-center border border-zinc-200 rounded-lg bg-zinc-50 overflow-hidden">
-                          <span className="pl-2 text-zinc-400 text-[10px] font-bold shrink-0">R$</span>
+                        <div className="flex-1 flex items-center border border-[#e8e8ed] rounded-lg bg-[#f5f5f7] overflow-hidden">
+                          <span className="pl-2 text-[#aeaeb2] text-[10px] font-bold shrink-0">R$</span>
                           <input
                             type="number"
                             inputMode="decimal"
                             placeholder="Total"
                             value={iData?.total ?? ''}
                             onChange={e => updateInstall(col.id, 'total', e.target.value)}
-                            className="flex-1 pl-1 pr-2 py-2 text-sm outline-none bg-transparent font-black text-zinc-900"
+                            className="flex-1 pl-1 pr-2 py-2 text-sm outline-none bg-transparent font-black text-[#1d1d1f] k-num"
                           />
                         </div>
                         <select
                           value={iData?.qty ?? '2'}
                           onChange={e => updateInstall(col.id, 'qty', e.target.value)}
-                          className="w-16 py-2 px-2 text-xs outline-none border border-zinc-200 rounded-lg bg-zinc-50 font-black text-zinc-900 appearance-none text-center"
+                          className="w-16 py-2 px-2 text-xs outline-none border border-[#e8e8ed] rounded-lg bg-[#f5f5f7] font-black text-[#1d1d1f] appearance-none text-center"
                         >
                           {[2,3,4,5,6,7,8,9,10,12,18,24].map(n => (
                             <option key={n} value={String(n)}>{n}x</option>
@@ -609,20 +609,20 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                         </select>
                       </div>
                       {installPreview && (
-                        <p className="text-[9px] text-zinc-500 text-center font-bold">
+                        <p className="text-[9px] text-[#6e6e73] text-center font-bold k-num">
                           {installQty}x de {installPreview} / mês
                         </p>
                       )}
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleSubmitInstallment(col.id, col.linkedItemId)}
-                          className="flex-1 bg-green-400 active:bg-green-300 text-black font-black text-[10px] py-2.5 rounded-lg uppercase"
+                          className="flex-1 k-btn-lime py-2.5"
                         >
                           Confirmar
                         </button>
                         <button
                           onClick={() => setInstallMode(prev => ({ ...prev, [col.id]: false }))}
-                          className="px-3 bg-zinc-100 active:bg-zinc-200 text-zinc-500 font-black text-[10px] py-2.5 rounded-lg uppercase"
+                          className="px-3 bg-[#f5f5f7] border border-[#e8e8ed] text-[#6e6e73] font-black text-[10px] py-2.5 rounded-lg uppercase"
                         >
                           Cancelar
                         </button>
@@ -634,15 +634,15 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
               {/* Expense list — only shown when there are expenses */}
               {partials.length > 0 && (
-                <div className="flex flex-col bg-white border-t border-zinc-100">
+                <div className="flex flex-col bg-white border-t border-[#e8e8ed]">
                   {partials.map((p) => (
-                    <div key={p.id} className="border-b border-zinc-50 flex items-center gap-2 px-3 py-2">
-                      <span className="text-[9px] text-zinc-400 font-bold uppercase shrink-0">{p.date}</span>
-                      <span className="flex-1 text-[10px] text-zinc-600 font-medium truncate">{p.description}</span>
-                      <span className="text-xs font-black text-zinc-800 font-mono shrink-0">{formatCurrency(p.value)}</span>
+                    <div key={p.id} className="border-b border-[#f5f5f7] flex items-center gap-2 px-3 py-2">
+                      <span className="text-[9px] text-[#aeaeb2] font-bold uppercase shrink-0">{p.date}</span>
+                      <span className="flex-1 text-[10px] text-[#6e6e73] font-medium truncate">{p.description}</span>
+                      <span className="text-xs font-black text-[#1d1d1f] k-num shrink-0">{formatCurrency(p.value)}</span>
                       <button
                         onClick={() => onRemovePartial(col.linkedItemId, p.id)}
-                        className="text-red-400 active:text-red-600 p-1 shrink-0"
+                        className="text-[#ff3b30]/60 active:text-[#ff3b30] p-1 shrink-0"
                       >
                         <i className="fas fa-times-circle text-xs"></i>
                       </button>
@@ -653,23 +653,23 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
               {/* Total footer — only shown when there are expenses */}
               {totalSpent > 0 && (
-                <div className={`px-4 py-3 text-center mt-auto ${isOverLimit ? 'bg-red-50' : 'bg-zinc-900'} ${card ? '' : 'rounded-b-2xl'}`}>
-                  <p className={`text-[9px] font-black uppercase mb-0.5 ${isOverLimit ? 'text-red-500' : 'text-zinc-500'}`}>Total Lançado</p>
-                  <p className={`text-lg font-black font-mono tracking-tighter ${isOverLimit ? 'text-red-500' : 'text-green-400'}`}>
+                <div className={`px-4 py-3 text-center mt-auto ${isOverLimit ? 'bg-[#fff0f0]' : 'bg-[#fafafa]'} ${card ? '' : 'rounded-b-2xl'}`}>
+                  <p className={`text-[9px] font-black uppercase mb-0.5 ${isOverLimit ? 'text-[#ff3b30]' : 'text-[#aeaeb2]'}`}>Total Lançado</p>
+                  <p className={`text-lg font-black k-num tracking-tighter ${isOverLimit ? 'text-[#ff3b30]' : 'text-[#7ab800]'}`}>
                     {formatCurrency(totalSpent)}
                   </p>
                   {isOverLimit && teto > 0 && (
-                    <p className="text-red-400 text-[9px] font-bold mt-0.5">+{formatCurrency(totalSpent - teto)} acima do teto</p>
+                    <p className="text-[#ff3b30] text-[9px] font-bold mt-0.5 k-num">+{formatCurrency(totalSpent - teto)} acima do teto</p>
                   )}
                 </div>
               )}
 
               {card && (
-                <div className="rounded-b-2xl border-t border-zinc-700 bg-zinc-800 px-3 py-2 text-center">
-                  <p className="text-[9px] text-zinc-400 leading-relaxed">
-                    <i className="fas fa-credit-card mr-1 text-green-400"></i>
-                    Fatura <span className="text-green-300 font-black">{billingMonthName}</span>
-                    {!isAfterClosing && <span className="text-zinc-600"> (aberta)</span>}
+                <div className="rounded-b-2xl border-t border-[#e8e8ed] bg-[#f5f5f7] px-3 py-2 text-center">
+                  <p className="text-[9px] text-[#aeaeb2] leading-relaxed">
+                    <i className="fas fa-credit-card mr-1 text-[#7ab800]"></i>
+                    Fatura <span className="text-[#7ab800] font-black">{billingMonthName}</span>
+                    {!isAfterClosing && <span className="text-[#aeaeb2]"> (aberta)</span>}
                   </p>
                 </div>
               )}

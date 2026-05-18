@@ -740,12 +740,13 @@ const App: React.FC = () => {
   if (!isLoaded) {
     if (clerkTimeout) {
       return (
-        <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center gap-6 p-8">
+        <div className="min-h-screen bg-[#f5f5f7] flex flex-col items-center justify-center gap-6 p-8">
           <img src="/kashim-icon.png" alt="Kashim" className="w-16 h-16 rounded-2xl opacity-60" />
-          <p className="text-zinc-400 text-sm text-center">Falha ao conectar. Verifique sua internet e tente novamente.</p>
+          <p className="text-[#6e6e73] text-sm text-center">Falha ao conectar. Verifique sua internet e tente novamente.</p>
           <button
             onClick={() => window.location.reload()}
-            className="px-6 py-3 bg-green-500 text-black font-bold rounded-xl text-sm"
+            className="px-6 py-3 text-[#182200] font-bold rounded-xl text-sm k-btn-lime"
+            style={{background:'linear-gradient(180deg,#c5f23a 0%,#a2d800 50%,#8cc400 100%)',boxShadow:'0 4px 14px rgba(130,192,0,0.4)'}}
           >
             Tentar novamente
           </button>
@@ -753,8 +754,8 @@ const App: React.FC = () => {
       );
     }
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
-        <div className="w-10 h-10 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen bg-[#f5f5f7] flex items-center justify-center">
+        <div className="w-10 h-10 border-2 border-[#a8e716] border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -804,7 +805,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
+    <div className="min-h-screen bg-[#f5f5f7] text-[#1d1d1f]">
       {showOnboarding && user && (
         <OnboardingWizard
           userName={user.firstName || user.emailAddresses[0]?.emailAddress.split('@')[0] || ''}
@@ -951,35 +952,35 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* ── HEADER DESKTOP ─────────────────────────────────────────────── */}
-      <header id="header" className="bg-[#0f0f0f] text-white safe-top shadow-2xl sticky top-0 z-50 border-b-2 border-green-500/50">
+      {/* ── HEADER ─────────────────────────────────────────────── */}
+      <header id="header" className="bg-white/90 backdrop-blur-xl safe-top sticky top-0 z-50 border-b border-[#e8e8ed]">
 
         {/* Mobile header */}
-        <div className="lg:hidden flex items-center justify-between px-4 py-0.5">
+        <div className="lg:hidden flex items-center justify-between px-4 py-2">
           <div className="flex items-center gap-2">
             <img src="/kashim-icon.png" alt="Kashim" className="h-8 w-8 rounded-xl" />
-            <span className="text-white font-black text-sm uppercase italic tracking-tight">Kashim</span>
-            {dbLoading && <i className="fas fa-circle-notch animate-spin text-green-400 text-xs ml-1"></i>}
+            <span className="text-[#1d1d1f] font-black text-sm uppercase italic tracking-tight">Kashim</span>
+            {dbLoading && <i className="fas fa-circle-notch animate-spin text-[#7ab800] text-xs ml-1"></i>}
           </div>
           {coachViewHouseholdId && (
-            <div className="flex items-center gap-1 bg-green-500/10 border border-green-500/30 px-2 py-1 rounded-lg">
-              <i className="fas fa-eye text-green-400 text-xs"></i>
-              <span className="text-green-400 text-[9px] font-black uppercase truncate max-w-[80px]">{coachViewClientName}</span>
-              <button onClick={() => { setCoachViewHouseholdId(null); setCoachViewClientName(''); }} className="text-zinc-500 ml-1">
+            <div className="flex items-center gap-1 bg-[#f0fad0] border border-[rgba(122,184,0,0.3)] px-2 py-1 rounded-lg">
+              <i className="fas fa-eye text-[#7ab800] text-xs"></i>
+              <span className="text-[#7ab800] text-[9px] font-black uppercase truncate max-w-[80px]">{coachViewClientName}</span>
+              <button onClick={() => { setCoachViewHouseholdId(null); setCoachViewClientName(''); }} className="text-[#aeaeb2] ml-1">
                 <i className="fas fa-times text-xs"></i>
               </button>
             </div>
           )}
           <div className="flex items-center gap-1">
             {!isAdmin && (
-              <button onClick={() => setShowInvitePanel(p => !p)} className="w-10 h-10 flex items-center justify-center text-zinc-400 active:text-green-400">
+              <button onClick={() => setShowInvitePanel(p => !p)} className="w-10 h-10 flex items-center justify-center text-[#aeaeb2] active:text-[#7ab800]">
                 <i className="fas fa-user-plus text-base"></i>
               </button>
             )}
             {user?.imageUrl ? (
-              <img src={user.imageUrl} className="w-8 h-8 rounded-full border border-zinc-700 cursor-pointer" onClick={() => setShowSettings(true)} />
+              <img src={user.imageUrl} className="w-8 h-8 rounded-full border border-[#e8e8ed] cursor-pointer" onClick={() => setShowSettings(true)} />
             ) : (
-              <button onClick={() => setShowSettings(true)} className="w-10 h-10 flex items-center justify-center text-zinc-400 active:text-green-400">
+              <button onClick={() => setShowSettings(true)} className="w-10 h-10 flex items-center justify-center text-[#aeaeb2] active:text-[#7ab800]">
                 <i className="fas fa-user-circle text-xl"></i>
               </button>
             )}
@@ -989,39 +990,39 @@ const App: React.FC = () => {
         {/* Desktop header */}
         <div className="hidden lg:flex max-w-[1600px] mx-auto px-8 py-3 flex-col lg:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <img src="/kashim-icon.png" alt="Kashim" className="h-10 w-10 rounded-xl shadow-lg" />
+            <img src="/kashim-icon.png" alt="Kashim" className="h-10 w-10 rounded-xl shadow-sm" />
             {user && (
-              <div className="flex items-center gap-3 border-l border-zinc-800 pl-4">
-                <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">{user.firstName || user.emailAddresses[0]?.emailAddress.split('@')[0]}</span>
+              <div className="flex items-center gap-3 border-l border-[#e8e8ed] pl-4">
+                <span className="text-[10px] font-black uppercase tracking-widest text-[#6e6e73]">{user.firstName || user.emailAddresses[0]?.emailAddress.split('@')[0]}</span>
               </div>
             )}
           </div>
-          <div className="flex gap-2 bg-zinc-900 p-1 rounded-xl border border-zinc-800">
-            <button onClick={() => setActiveTab('plan')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'plan' ? 'bg-green-500 text-black shadow-lg shadow-green-500/20' : 'text-gray-400 hover:text-white'}`}>Gastos Mensais</button>
-            <button id="tab-gastos-frequentes" onClick={() => setActiveTab('teto')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'teto' ? 'bg-green-500 text-black shadow-lg shadow-green-500/20' : 'text-gray-400 hover:text-white'}`}>Gastos Frequentes</button>
-            <button onClick={() => setActiveTab('metas')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'metas' ? 'bg-green-500 text-black shadow-lg shadow-green-500/20' : 'text-gray-400 hover:text-white'}`}>Metas</button>
-            <button onClick={() => setActiveTab('desempenho')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'desempenho' ? 'bg-green-500 text-black shadow-lg shadow-green-500/20' : 'text-gray-400 hover:text-white'}`}>Desempenho</button>
+          <div className="flex gap-2 bg-[#f5f5f7] p-1 rounded-xl border border-[#e8e8ed]">
+            <button onClick={() => setActiveTab('plan')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'plan' ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#6e6e73] hover:text-[#1d1d1f]'}`}>Gastos Mensais</button>
+            <button id="tab-gastos-frequentes" onClick={() => setActiveTab('teto')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'teto' ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#6e6e73] hover:text-[#1d1d1f]'}`}>Gastos Frequentes</button>
+            <button onClick={() => setActiveTab('metas')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'metas' ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#6e6e73] hover:text-[#1d1d1f]'}`}>Metas</button>
+            <button onClick={() => setActiveTab('desempenho')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'desempenho' ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#6e6e73] hover:text-[#1d1d1f]'}`}>Desempenho</button>
             {coachViewHouseholdId && (
-              <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/30 px-3 py-1.5 rounded-xl">
-                <i className="fas fa-eye text-green-400 text-xs"></i>
-                <span className="text-green-400 text-[10px] font-black uppercase">{coachViewClientName}</span>
-                <button onClick={() => { setCoachViewHouseholdId(null); setCoachViewClientName(''); }} className="text-zinc-500 hover:text-white ml-1 transition-colors">
+              <div className="flex items-center gap-2 bg-[#f0fad0] border border-[rgba(122,184,0,0.3)] px-3 py-1.5 rounded-xl">
+                <i className="fas fa-eye text-[#7ab800] text-xs"></i>
+                <span className="text-[#7ab800] text-[10px] font-black uppercase">{coachViewClientName}</span>
+                <button onClick={() => { setCoachViewHouseholdId(null); setCoachViewClientName(''); }} className="text-[#aeaeb2] hover:text-[#1d1d1f] ml-1 transition-colors">
                   <i className="fas fa-times text-xs"></i>
                 </button>
               </div>
             )}
-            {dbLoading && <div className="px-3 py-2 text-green-400"><i className="fas fa-circle-notch animate-spin text-xs"></i></div>}
+            {dbLoading && <div className="px-3 py-2 text-[#7ab800]"><i className="fas fa-circle-notch animate-spin text-xs"></i></div>}
             {!isAdmin && (
-              <button onClick={() => setShowInvitePanel(p => !p)} className="px-3 py-2 text-zinc-500 hover:text-green-400 transition-colors" title="Convidar parceiro(a)">
+              <button onClick={() => setShowInvitePanel(p => !p)} className="px-3 py-2 text-[#aeaeb2] hover:text-[#7ab800] transition-colors" title="Convidar parceiro(a)">
                 <i className="fas fa-user-plus"></i>
               </button>
             )}
             {!isAdmin && (
-              <button onClick={() => setShowSettings(true)} className="px-3 py-2 text-zinc-500 hover:text-green-400 transition-colors" title="Configurações">
+              <button onClick={() => setShowSettings(true)} className="px-3 py-2 text-[#aeaeb2] hover:text-[#7ab800] transition-colors" title="Configurações">
                 <i className="fas fa-cog"></i>
               </button>
             )}
-            <button onClick={() => signOut()} className="px-3 py-2 text-zinc-600 hover:text-red-500 transition-colors"><i className="fas fa-sign-out-alt"></i></button>
+            <button onClick={() => signOut()} className="px-3 py-2 text-[#aeaeb2] hover:text-red-500 transition-colors"><i className="fas fa-sign-out-alt"></i></button>
           </div>
         </div>
       </header>
@@ -1038,50 +1039,51 @@ const App: React.FC = () => {
             <div id="diagnosis" className="hidden lg:block"><Diagnosis summary={monthlySummaries[0]} monthName={months[0].monthName} /></div>
 
             {/* ── MOBILE SUMMARY CARDS ──────────────────────────────── */}
-            {/* Acumulado Rico — destaque principal */}
-            <div className="lg:hidden px-1 mb-2">
-              <div className="bg-green-400/10 border border-green-500/30 rounded-2xl p-3 flex items-center justify-between">
-                <div>
-                  <div className="text-[8px] font-black uppercase text-green-500 tracking-widest mb-0.5">Acumulado Rico</div>
-                  <div className="text-green-400 font-black font-mono text-xl leading-none">{formatCurrency(monthlySummaries[mobileMonthIdx].accumulated)}</div>
+            {/* Hero dark card — Acumulado Rico */}
+            <div className="lg:hidden px-3 mb-3">
+              <div className="bg-[#1d1d1f] rounded-[24px] p-5 relative overflow-hidden">
+                <div className="absolute top-[-50px] right-[-30px] w-[180px] h-[180px] rounded-full pointer-events-none" style={{background:'radial-gradient(circle,rgba(168,231,22,0.18) 0%,transparent 65%)'}}></div>
+                <div className="text-[10px] font-bold uppercase tracking-[2px] text-white/40 mb-1">Acumulado Rico</div>
+                <div className="text-white font-black k-num" style={{fontSize:'36px',letterSpacing:'-0.04em',lineHeight:1}}>
+                  {formatCurrency(monthlySummaries[mobileMonthIdx].accumulated)}
                 </div>
-                <div className="w-9 h-9 bg-green-400/10 rounded-xl flex items-center justify-center">
-                  <i className="fas fa-vault text-green-400 text-sm"></i>
+                <div className="text-white/30 text-[11px] mt-2">
+                  {months[mobileMonthIdx].monthName} {months[mobileMonthIdx].year}
                 </div>
               </div>
             </div>
-            <div className="lg:hidden grid grid-cols-3 gap-1.5 px-1 mb-2">
-              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 overflow-hidden">
-                <div className="text-[7px] font-black uppercase text-zinc-500 tracking-widest mb-0.5">Entradas</div>
-                <div className="text-green-400 font-black font-mono text-xs leading-tight truncate">{formatCurrency(monthlySummaries[mobileMonthIdx].totalIncome)}</div>
+            <div className="lg:hidden grid grid-cols-3 gap-2 px-3 mb-3">
+              <div className="bg-white border border-[#e8e8ed] rounded-[18px] p-3 overflow-hidden shadow-sm">
+                <div className="text-[7px] font-black uppercase text-[#aeaeb2] tracking-widest mb-1">Entradas</div>
+                <div className="text-[#34c759] font-black k-num text-xs leading-tight truncate">{formatCurrency(monthlySummaries[mobileMonthIdx].totalIncome)}</div>
               </div>
-              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 overflow-hidden">
-                <div className="text-[7px] font-black uppercase text-zinc-500 tracking-widest mb-0.5">Gastos</div>
-                <div className="text-red-400 font-black font-mono text-xs leading-tight truncate">{formatCurrency(monthlySummaries[mobileMonthIdx].totalCost)}</div>
+              <div className="bg-white border border-[#e8e8ed] rounded-[18px] p-3 overflow-hidden shadow-sm">
+                <div className="text-[7px] font-black uppercase text-[#aeaeb2] tracking-widest mb-1">Gastos</div>
+                <div className="text-[#ff3b30] font-black k-num text-xs leading-tight truncate">{formatCurrency(monthlySummaries[mobileMonthIdx].totalCost)}</div>
               </div>
-              <div className={`border rounded-xl p-2.5 overflow-hidden ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'bg-green-950/60 border-green-900/50' : 'bg-red-900/20 border-red-800/40'}`}>
-                <div className={`text-[7px] font-black uppercase tracking-widest mb-0.5 ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'text-white/60' : 'text-zinc-500'}`}>Sobra/Falta</div>
-                <div className={`font-black font-mono text-xs leading-tight truncate ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'text-green-400' : 'text-red-400 animate-pulse'}`}>{formatCurrency(monthlySummaries[mobileMonthIdx].balance)}</div>
+              <div className={`border rounded-[18px] p-3 overflow-hidden shadow-sm ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'bg-[#f0fad0] border-[rgba(122,184,0,0.25)]' : 'bg-[#fff0f0] border-[rgba(255,59,48,0.2)]'}`}>
+                <div className="text-[7px] font-black uppercase tracking-widest mb-1 text-[#aeaeb2]">Sobra/Falta</div>
+                <div className={`font-black k-num text-xs leading-tight truncate ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'text-[#7ab800]' : 'text-[#ff3b30] animate-pulse'}`}>{formatCurrency(monthlySummaries[mobileMonthIdx].balance)}</div>
               </div>
             </div>
 
-            {/* ── MOBILE MONTH NAVIGATOR (between cards and blocks) ── */}
-            <div className="lg:hidden bg-zinc-900/95 border border-zinc-800 rounded-2xl mx-1 mb-2">
-              <div className="flex items-center justify-between px-2 py-2">
-                <button onClick={() => setMobileMonthIdx(i => Math.max(0, i - 1))} disabled={mobileMonthIdx === 0} className="w-11 h-11 flex items-center justify-center text-zinc-400 disabled:opacity-20 active:text-green-400 rounded-xl active:bg-zinc-800">
-                  <i className="fas fa-chevron-left text-base"></i>
+            {/* ── MOBILE MONTH NAVIGATOR ── */}
+            <div className="lg:hidden bg-white border border-[#e8e8ed] rounded-[18px] mx-3 mb-3 shadow-sm">
+              <div className="flex items-center justify-between px-3 py-3">
+                <button onClick={() => setMobileMonthIdx(i => Math.max(0, i - 1))} disabled={mobileMonthIdx === 0} className="w-10 h-10 flex items-center justify-center text-[#aeaeb2] disabled:opacity-20 active:text-[#7ab800] rounded-xl">
+                  <i className="fas fa-chevron-left text-sm"></i>
                 </button>
                 <div className="text-center">
-                  <div className="text-white font-black uppercase italic tracking-tight text-base">{months[mobileMonthIdx].monthName} {months[mobileMonthIdx].year}</div>
-                  {mobileMonthIdx === 0 && <div className="text-green-400 text-[9px] font-black uppercase tracking-widest -mt-0.5">Mês atual</div>}
+                  <div className="text-[#1d1d1f] font-black uppercase tracking-tight text-base">{months[mobileMonthIdx].monthName} {months[mobileMonthIdx].year}</div>
+                  {mobileMonthIdx === 0 && <div className="text-[#7ab800] text-[9px] font-black uppercase tracking-widest mt-0.5">Mês atual</div>}
                 </div>
-                <button onClick={() => setMobileMonthIdx(i => Math.min(11, i + 1))} disabled={mobileMonthIdx === 11} className="w-11 h-11 flex items-center justify-center text-zinc-400 disabled:opacity-20 active:text-green-400 rounded-xl active:bg-zinc-800">
-                  <i className="fas fa-chevron-right text-base"></i>
+                <button onClick={() => setMobileMonthIdx(i => Math.min(11, i + 1))} disabled={mobileMonthIdx === 11} className="w-10 h-10 flex items-center justify-center text-[#aeaeb2] disabled:opacity-20 active:text-[#7ab800] rounded-xl">
+                  <i className="fas fa-chevron-right text-sm"></i>
                 </button>
               </div>
-              <div className="flex justify-center gap-1 pb-2">
+              <div className="flex justify-center gap-1.5 pb-3">
                 {months.map((_, i) => (
-                  <button key={i} onClick={() => setMobileMonthIdx(i)} className={`rounded-full transition-all ${i === mobileMonthIdx ? 'w-4 h-1.5 bg-green-400' : 'w-1.5 h-1.5 bg-zinc-700'}`} />
+                  <button key={i} onClick={() => setMobileMonthIdx(i)} className={`rounded-full transition-all ${i === mobileMonthIdx ? 'w-4 h-1.5 bg-[#a8e716]' : 'w-1.5 h-1.5 bg-[#e8e8ed]'}`} />
                 ))}
               </div>
             </div>
@@ -1204,59 +1206,66 @@ const App: React.FC = () => {
       </main>
 
       {/* ── MOBILE BOTTOM TAB BAR ──────────────────────────────────────── */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0f0f0f] border-t border-zinc-800 safe-bottom">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 safe-bottom" style={{background:'rgba(245,245,247,0.92)',backdropFilter:'blur(28px) saturate(1.8)',borderTop:'0.5px solid rgba(0,0,0,0.1)'}}>
         <div className="overflow-x-auto scrollbar-none">
           <div className="flex min-w-max">
             <button
               onClick={() => setActiveTab('plan')}
-              className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-0 gap-0.5 transition-colors active:scale-95 ${activeTab === 'plan' ? 'text-green-400' : 'text-zinc-500'}`}
+              className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'plan' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
             >
-              <i className={`fas fa-chart-bar text-xl ${activeTab === 'plan' ? 'text-green-400' : ''}`}></i>
+              <div className={`w-7 h-7 flex items-center justify-center rounded-[9px] transition-all ${activeTab === 'plan' ? 'bg-[#f0fad0]' : ''}`}>
+                <i className={`fas fa-chart-bar text-lg`}></i>
+              </div>
               <span className="text-[9px] font-black uppercase tracking-wide">Plano</span>
-              {activeTab === 'plan' && <span className="absolute bottom-0 w-8 h-0.5 bg-green-400 rounded-full mb-1"></span>}
             </button>
 
             <button
               onClick={() => setActiveTab('teto')}
-              className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-0 gap-0.5 transition-colors active:scale-95 ${activeTab === 'teto' ? 'text-green-400' : 'text-zinc-500'}`}
+              className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'teto' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
             >
-              <i className={`fas fa-wallet text-xl ${activeTab === 'teto' ? 'text-green-400' : ''}`}></i>
+              <div className={`w-7 h-7 flex items-center justify-center rounded-[9px] transition-all ${activeTab === 'teto' ? 'bg-[#f0fad0]' : ''}`}>
+                <i className={`fas fa-wallet text-lg`}></i>
+              </div>
               <span className="text-[9px] font-black uppercase tracking-wide">Gastos</span>
-              {activeTab === 'teto' && <span className="absolute bottom-0 w-8 h-0.5 bg-green-400 rounded-full mb-1"></span>}
             </button>
 
             {/* Central launch button */}
             <button
               onClick={() => setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1, isCredit: false })}
-              className="min-w-[72px] flex flex-col items-center justify-center py-1.5 gap-0.5 bg-green-400 mx-1 rounded-xl active:scale-95 transition-all shadow-lg shadow-green-400/20"
+              className="min-w-[72px] flex flex-col items-center justify-center py-1.5 gap-0.5 mx-1 rounded-xl active:scale-95 transition-all k-btn-lime"
+              style={{background:'linear-gradient(180deg,#c5f23a 0%,#a2d800 50%,#8cc400 100%)',boxShadow:'0 4px 14px rgba(130,192,0,0.4),inset 0 1px 0 rgba(255,255,255,0.45)',borderRadius:'14px'}}
             >
-              <i className="fas fa-plus text-black text-xl font-black"></i>
-              <span className="text-[9px] font-black uppercase tracking-wide text-black">Lançar</span>
+              <i className="fas fa-plus text-[#182200] text-lg font-black"></i>
+              <span className="text-[9px] font-black uppercase tracking-wide text-[#182200]">Lançar</span>
             </button>
 
             <button
               onClick={() => setActiveTab('metas')}
-              className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-0 gap-0.5 transition-colors active:scale-95 ${activeTab === 'metas' ? 'text-green-400' : 'text-zinc-500'}`}
+              className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'metas' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
             >
-              <i className={`fas fa-bullseye text-xl ${activeTab === 'metas' ? 'text-green-400' : ''}`}></i>
+              <div className={`w-7 h-7 flex items-center justify-center rounded-[9px] transition-all ${activeTab === 'metas' ? 'bg-[#f0fad0]' : ''}`}>
+                <i className={`fas fa-bullseye text-lg`}></i>
+              </div>
               <span className="text-[9px] font-black uppercase tracking-wide">Metas</span>
-              {activeTab === 'metas' && <span className="absolute bottom-0 w-8 h-0.5 bg-green-400 rounded-full mb-1"></span>}
             </button>
 
             <button
               onClick={() => setActiveTab('desempenho')}
-              className={`min-w-[80px] flex flex-col items-center justify-center pt-2 pb-0 gap-0.5 transition-colors active:scale-95 ${activeTab === 'desempenho' ? 'text-green-400' : 'text-zinc-500'}`}
+              className={`min-w-[80px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'desempenho' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
             >
-              <i className={`fas fa-chart-pie text-xl ${activeTab === 'desempenho' ? 'text-green-400' : ''}`}></i>
+              <div className={`w-7 h-7 flex items-center justify-center rounded-[9px] transition-all ${activeTab === 'desempenho' ? 'bg-[#f0fad0]' : ''}`}>
+                <i className={`fas fa-chart-pie text-lg`}></i>
+              </div>
               <span className="text-[9px] font-black uppercase tracking-wide">Desempenho</span>
-              {activeTab === 'desempenho' && <span className="absolute bottom-0 w-8 h-0.5 bg-green-400 rounded-full mb-1"></span>}
             </button>
 
             <button
               onClick={() => setShowSettings(true)}
-              className="min-w-[72px] flex flex-col items-center justify-center pt-2 pb-0 gap-0.5 text-zinc-500 transition-colors active:scale-95"
+              className="min-w-[72px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 text-[#aeaeb2] transition-colors active:scale-95"
             >
-              <i className="fas fa-user-circle text-xl"></i>
+              <div className="w-7 h-7 flex items-center justify-center rounded-[9px]">
+                <i className="fas fa-user-circle text-lg"></i>
+              </div>
               <span className="text-[9px] font-black uppercase tracking-wide">Perfil</span>
             </button>
           </div>

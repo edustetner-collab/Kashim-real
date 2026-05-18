@@ -10,30 +10,101 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Kashim">
-    <meta name="theme-color" content="#0f0f0f">
+    <meta name="theme-color" content="#f5f5f7">
     <link rel="apple-touch-icon" href="/kashim-icon.png">
+    <!-- Inter font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- Phosphor Icons thin -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/thin/style.css"/>
     <style>
       :root {
         --sat: env(safe-area-inset-top);
         --sar: env(safe-area-inset-right);
         --sab: env(safe-area-inset-bottom);
         --sal: env(safe-area-inset-left);
+        /* Premium design tokens */
+        --k-bg: #f5f5f7;
+        --k-card: #ffffff;
+        --k-text: #1d1d1f;
+        --k-text2: #6e6e73;
+        --k-text3: #aeaeb2;
+        --k-border: #e8e8ed;
+        --k-border2: #d2d2d7;
+        --k-lime: #a8e716;
+        --k-lime-dark: #7ab800;
+        --k-lime-bg: #f0fad0;
+        --k-red: #ff3b30;
+        --k-blue: #007aff;
       }
       body {
         overscroll-behavior: none;
         -webkit-tap-highlight-color: transparent;
         -webkit-touch-callout: none;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+        -webkit-font-smoothing: antialiased;
+        background-color: var(--k-bg);
+        color: var(--k-text);
       }
       .safe-top    { padding-top: env(safe-area-inset-top); }
       .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
-      /* Prevent iOS elastic scroll on root */
       html, body { height: 100%; overflow-x: hidden; }
+      /* Tabular numbers for all monetary values */
+      .k-num {
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: "tnum" 1, "lnum" 1;
+        letter-spacing: -0.02em;
+      }
+      /* 3D lime pill button */
+      .k-btn-lime {
+        background: linear-gradient(180deg, #c5f23a 0%, #a2d800 50%, #8cc400 100%);
+        box-shadow: 0 4px 14px rgba(130,192,0,0.4), 0 1px 3px rgba(0,0,0,0.12),
+          inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -2px 0 rgba(0,0,0,0.08);
+        border-radius: 999px;
+        color: #182200;
+        border: none;
+        font-weight: 800;
+        letter-spacing: 0.3px;
+        text-transform: uppercase;
+        font-size: 11px;
+        transition: transform 0.12s, box-shadow 0.12s;
+      }
+      .k-btn-lime:active {
+        transform: scale(0.97);
+        box-shadow: 0 2px 6px rgba(130,192,0,0.3), inset 0 1px 0 rgba(255,255,255,0.35);
+      }
+      /* Card base */
+      .k-card {
+        background: var(--k-card);
+        border: 1px solid var(--k-border);
+        border-radius: 22px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+      }
+      /* Icon wrapper — thin line only */
+      .k-icon-wrap {
+        width: 34px; height: 34px;
+        border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+        background: var(--k-bg);
+        border: 1px solid var(--k-border);
+      }
+      .k-icon-wrap i { font-size: 16px; color: var(--k-text2); }
+      .k-icon-wrap.lime { background: var(--k-lime-bg); border-color: rgba(122,184,0,0.25); }
+      .k-icon-wrap.lime i { color: var(--k-lime-dark); }
+      .k-icon-wrap.red { background: #fff0f0; border-color: rgba(255,59,48,0.15); }
+      .k-icon-wrap.red i { color: var(--k-red); }
+      .k-icon-wrap.blue { background: #f0f4ff; border-color: rgba(0,122,255,0.15); }
+      .k-icon-wrap.blue i { color: var(--k-blue); }
+      .k-icon-wrap.purple { background: #f4f0ff; border-color: rgba(139,92,246,0.15); }
+      .k-icon-wrap.purple i { color: #7c3aed; }
     </style>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link rel="stylesheet" href="/index.css">
 </head>
-<body class="bg-gray-50 text-gray-900 font-sans">
+<body class="font-sans">
     <div id="root"></div>
 <script type="module" src="/index.tsx"></script>
 </body>

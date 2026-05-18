@@ -1,4 +1,4 @@
-﻿
+
 import React, { useState } from 'react';
 import { Goal } from '../types';
 import { formatCurrency } from '../constants';
@@ -30,10 +30,10 @@ function ProgressRing({ pct, size = 80 }: { pct: number; size?: number }) {
   const isComplete = pct >= 100;
   return (
     <svg width={size} height={size} className="rotate-[-90deg]">
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#27272a" strokeWidth="6" />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e8e8ed" strokeWidth="6" />
       <circle
         cx={size / 2} cy={size / 2} r={r} fill="none"
-        stroke={isComplete ? '#22c55e' : '#eab308'}
+        stroke={isComplete ? '#7ab800' : '#a8e716'}
         strokeWidth="6"
         strokeLinecap="round"
         strokeDasharray={circ}
@@ -129,14 +129,14 @@ const Metas: React.FC<MetasProps> = ({ goals, onGoalsChange, db, householdId }) 
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h2 className="text-white text-xl font-black italic uppercase tracking-tighter">
-            <i className="fas fa-bullseye text-green-400 mr-2"></i>Metas
+          <h2 className="text-[#1d1d1f] text-xl font-black italic uppercase tracking-tighter">
+            <i className="fas fa-bullseye text-[#7ab800] mr-2"></i>Metas
           </h2>
-          <p className="text-zinc-500 text-xs mt-0.5">{doneGoals.length} de {goals.length} conquistadas</p>
+          <p className="text-[#aeaeb2] text-xs mt-0.5">{doneGoals.length} de {goals.length} conquistadas</p>
         </div>
         <button
           onClick={openCreate}
-          className="bg-green-500 active:bg-green-400 text-black font-black px-5 py-2.5 rounded-xl text-xs uppercase tracking-widest flex items-center gap-2 shadow-lg shadow-green-500/20 transition-all active:scale-95"
+          className="k-btn-lime px-5 py-2.5 flex items-center gap-2"
         >
           <i className="fas fa-plus"></i> Nova Meta
         </button>
@@ -144,12 +144,12 @@ const Metas: React.FC<MetasProps> = ({ goals, onGoalsChange, db, householdId }) 
 
       {/* Filter tabs */}
       {goals.length > 0 && (
-        <div className="flex gap-1 mb-5 bg-zinc-900 p-1 rounded-xl border border-zinc-800">
+        <div className="flex gap-1 mb-5 bg-[#f5f5f7] p-1 rounded-xl border border-[#e8e8ed]">
           {([['all','Todas'],['active','Ativas'],['done','Conquistadas']] as const).map(([key, label]) => (
             <button
               key={key}
               onClick={() => setFilter(key)}
-              className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${filter === key ? 'bg-green-500 text-black shadow' : 'text-zinc-500 hover:text-white'}`}
+              className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${filter === key ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#aeaeb2]'}`}
             >
               {label}
             </button>
@@ -161,11 +161,11 @@ const Metas: React.FC<MetasProps> = ({ goals, onGoalsChange, db, householdId }) 
       {goals.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <div className="text-6xl mb-4">🎯</div>
-          <p className="text-white font-black uppercase italic text-lg tracking-tighter">Nenhuma meta ainda</p>
-          <p className="text-zinc-500 text-sm mt-1 mb-6">Defina objetivos e acompanhe o progresso rumo à riqueza.</p>
+          <p className="text-[#1d1d1f] font-black uppercase italic text-lg tracking-tighter">Nenhuma meta ainda</p>
+          <p className="text-[#6e6e73] text-sm mt-1 mb-6">Defina objetivos e acompanhe o progresso rumo à riqueza.</p>
           <button
             onClick={openCreate}
-            className="bg-green-500 text-black font-black px-8 py-3 rounded-2xl text-sm uppercase tracking-widest"
+            className="k-btn-lime px-8 py-3"
           >
             Criar primeira meta
           </button>
@@ -183,12 +183,12 @@ const Metas: React.FC<MetasProps> = ({ goals, onGoalsChange, db, householdId }) 
                 key={goal.id}
                 className={`relative rounded-2xl border overflow-hidden transition-all ${
                   isComplete
-                    ? 'bg-green-950/30 border-green-900/60 shadow-lg shadow-green-500/10'
-                    : 'bg-zinc-900 border-zinc-800'
+                    ? 'bg-[#f0fad0] border-[rgba(122,184,0,0.25)] shadow-sm'
+                    : 'bg-white border-[#e8e8ed]'
                 }`}
               >
                 {isComplete && (
-                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-green-500 via-green-300 to-green-500"></div>
+                  <div className="absolute top-0 left-0 right-0 h-0.5" style={{background:'linear-gradient(90deg,#a8e716,#7ab800,#a8e716)'}}></div>
                 )}
 
                 <div className="p-4 flex gap-4 items-start">
@@ -204,20 +204,20 @@ const Metas: React.FC<MetasProps> = ({ goals, onGoalsChange, db, householdId }) 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <h3 className={`font-black text-sm uppercase tracking-tight leading-tight ${isComplete ? 'text-green-300' : 'text-white'}`}>
+                        <h3 className={`font-black text-sm uppercase tracking-tight leading-tight ${isComplete ? 'text-[#7ab800]' : 'text-[#1d1d1f]'}`}>
                           {goal.title}
                         </h3>
                         {isComplete && (
-                          <span className="inline-flex items-center gap-1 mt-0.5 bg-green-500/20 border border-green-500/30 text-green-400 text-[9px] font-black uppercase px-2 py-0.5 rounded-full">
+                          <span className="inline-flex items-center gap-1 mt-0.5 bg-[#f0fad0] border border-[rgba(122,184,0,0.3)] text-[#7ab800] text-[9px] font-black uppercase px-2 py-0.5 rounded-full">
                             <i className="fas fa-trophy text-[8px]"></i> Conquistada!
                           </span>
                         )}
                       </div>
                       <div className="flex gap-1 shrink-0">
-                        <button onClick={() => openEdit(goal)} className="w-7 h-7 rounded-lg bg-zinc-800 text-zinc-500 active:text-green-400 flex items-center justify-center text-xs transition-colors">
+                        <button onClick={() => openEdit(goal)} className="w-7 h-7 rounded-lg bg-[#f5f5f7] border border-[#e8e8ed] text-[#aeaeb2] active:text-[#7ab800] flex items-center justify-center text-xs transition-colors">
                           <i className="fas fa-pen"></i>
                         </button>
-                        <button onClick={() => handleDelete(goal.id)} className="w-7 h-7 rounded-lg bg-zinc-800 text-zinc-500 active:text-red-500 flex items-center justify-center text-xs transition-colors">
+                        <button onClick={() => handleDelete(goal.id)} className="w-7 h-7 rounded-lg bg-[#f5f5f7] border border-[#e8e8ed] text-[#aeaeb2] active:text-[#ff3b30] flex items-center justify-center text-xs transition-colors">
                           <i className="fas fa-trash-alt"></i>
                         </button>
                       </div>
@@ -225,17 +225,17 @@ const Metas: React.FC<MetasProps> = ({ goals, onGoalsChange, db, householdId }) 
 
                     <div className="mt-2 flex items-end justify-between">
                       <div>
-                        <div className={`font-black font-mono text-base leading-none ${isComplete ? 'text-green-400' : 'text-green-400'}`}>
+                        <div className="font-black k-num text-base leading-none text-[#7ab800]">
                           {formatCurrency(goal.currentAmount)}
                         </div>
-                        <div className="text-zinc-600 text-[10px] font-mono mt-0.5">
+                        <div className="text-[#aeaeb2] text-[10px] k-num mt-0.5">
                           de {formatCurrency(goal.targetAmount)} • {pct.toFixed(0)}%
                         </div>
                       </div>
                       {!isComplete && (
                         <button
                           onClick={() => { setShowContribModal(goal); setContribValue(''); }}
-                          className="bg-green-500/90 active:bg-green-400 text-black font-black px-3 py-1.5 rounded-xl text-[10px] uppercase tracking-widest transition-all active:scale-95"
+                          className="k-btn-lime px-3 py-1.5"
                         >
                           + Contribuir
                         </button>
@@ -243,20 +243,20 @@ const Metas: React.FC<MetasProps> = ({ goals, onGoalsChange, db, householdId }) 
                     </div>
 
                     {/* Progress bar */}
-                    <div className="mt-3 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                    <div className="mt-3 h-1.5 bg-[#e8e8ed] rounded-full overflow-hidden">
                       <div
-                        className={`h-full rounded-full transition-all duration-700 ${isComplete ? 'bg-green-500' : pct > 80 ? 'bg-green-300' : 'bg-green-500'}`}
-                        style={{ width: `${Math.min(pct, 100)}%` }}
+                        className="h-full rounded-full transition-all duration-700"
+                        style={{ width: `${Math.min(pct, 100)}%`, background: isComplete ? '#7ab800' : 'linear-gradient(90deg,#a8e716,#7ab800)' }}
                       />
                     </div>
 
                     {/* Deadline + remaining */}
                     <div className="mt-1.5 flex items-center gap-3 text-[9px]">
                       {!isComplete && remaining > 0 && (
-                        <span className="text-zinc-600 font-mono">faltam {formatCurrency(remaining)}</span>
+                        <span className="text-[#aeaeb2] k-num">faltam {formatCurrency(remaining)}</span>
                       )}
                       {days !== null && !isComplete && (
-                        <span className={`font-black ${days < 0 ? 'text-red-400' : days < 30 ? 'text-orange-400' : 'text-zinc-500'}`}>
+                        <span className={`font-black ${days < 0 ? 'text-[#ff3b30]' : days < 30 ? 'text-orange-500' : 'text-[#aeaeb2]'}`}>
                           {days < 0 ? `${Math.abs(days)}d atrasada` : days === 0 ? 'Vence hoje!' : `${days}d restantes`}
                         </span>
                       )}
@@ -271,26 +271,26 @@ const Metas: React.FC<MetasProps> = ({ goals, onGoalsChange, db, householdId }) 
 
       {/* Create/Edit modal */}
       {showModal && (
-        <div className="fixed inset-0 z-[300] flex items-end justify-center bg-black/75 backdrop-blur-sm" onClick={() => setShowModal(false)}>
-          <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-t-3xl p-6 pb-10 animate-in slide-in-from-bottom-4" onClick={e => e.stopPropagation()}>
-            <div className="w-10 h-1 bg-zinc-700 rounded-full mx-auto mb-5"></div>
-            <h3 className="text-white font-black uppercase italic tracking-tighter text-lg mb-5">
+        <div className="fixed inset-0 z-[300] flex items-end justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowModal(false)}>
+          <div className="w-full max-w-md bg-white border border-[#e8e8ed] rounded-t-3xl p-6 pb-10 animate-in slide-in-from-bottom-4" onClick={e => e.stopPropagation()}>
+            <div className="w-10 h-1 bg-[#e8e8ed] rounded-full mx-auto mb-5"></div>
+            <h3 className="text-[#1d1d1f] font-black uppercase italic tracking-tighter text-lg mb-5">
               {editingGoal ? 'Editar Meta' : 'Nova Meta'}
             </h3>
 
             {/* Emoji picker */}
             <div className="mb-4">
-              <label className="text-zinc-500 text-[10px] font-black uppercase tracking-widest block mb-2">Ícone</label>
+              <label className="text-[#aeaeb2] text-[10px] font-black uppercase tracking-widest block mb-2">Ícone</label>
               <button
                 onClick={() => setEmojiOpen(v => !v)}
-                className="w-14 h-14 bg-zinc-800 border border-zinc-700 rounded-2xl text-3xl flex items-center justify-center hover:border-green-500 transition-colors"
+                className="w-14 h-14 bg-[#f5f5f7] border border-[#e8e8ed] rounded-2xl text-3xl flex items-center justify-center hover:border-[#a8e716] transition-colors"
               >
                 {form.emoji}
               </button>
               {emojiOpen && (
-                <div className="mt-2 grid grid-cols-10 gap-1 bg-zinc-800 border border-zinc-700 rounded-2xl p-3">
+                <div className="mt-2 grid grid-cols-10 gap-1 bg-[#f5f5f7] border border-[#e8e8ed] rounded-2xl p-3">
                   {EMOJI_OPTIONS.map(e => (
-                    <button key={e} onClick={() => { setForm(f => ({...f, emoji: e})); setEmojiOpen(false); }} className="text-2xl p-1 rounded-lg hover:bg-zinc-700 transition-colors">{e}</button>
+                    <button key={e} onClick={() => { setForm(f => ({...f, emoji: e})); setEmojiOpen(false); }} className="text-2xl p-1 rounded-lg hover:bg-[#e8e8ed] transition-colors">{e}</button>
                   ))}
                 </div>
               )}
@@ -298,33 +298,33 @@ const Metas: React.FC<MetasProps> = ({ goals, onGoalsChange, db, householdId }) 
 
             <div className="flex flex-col gap-3 mb-5">
               <div>
-                <label className="text-zinc-500 text-[10px] font-black uppercase tracking-widest block mb-1">Nome da meta</label>
+                <label className="text-[#aeaeb2] text-[10px] font-black uppercase tracking-widest block mb-1">Nome da meta</label>
                 <input
                   type="text"
                   value={form.title}
                   onChange={e => setForm(f => ({...f, title: e.target.value}))}
                   placeholder="Ex: Viagem para o Japão"
-                  className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-xl px-4 py-3 text-sm outline-none focus:border-green-500"
+                  className="w-full bg-[#f5f5f7] border border-[#e8e8ed] text-[#1d1d1f] placeholder:text-[#aeaeb2] rounded-xl px-4 py-3 text-sm outline-none focus:border-[#a8e716]"
                 />
               </div>
               <div>
-                <label className="text-zinc-500 text-[10px] font-black uppercase tracking-widest block mb-1">Valor alvo (R$)</label>
+                <label className="text-[#aeaeb2] text-[10px] font-black uppercase tracking-widest block mb-1">Valor alvo (R$)</label>
                 <input
                   type="number"
                   inputMode="decimal"
                   value={form.targetAmount}
                   onChange={e => setForm(f => ({...f, targetAmount: e.target.value}))}
                   placeholder="0,00"
-                  className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-xl px-4 py-3 text-sm outline-none focus:border-green-500 font-mono"
+                  className="w-full bg-[#f5f5f7] border border-[#e8e8ed] text-[#1d1d1f] placeholder:text-[#aeaeb2] rounded-xl px-4 py-3 text-sm outline-none focus:border-[#a8e716] k-num"
                 />
               </div>
               <div>
-                <label className="text-zinc-500 text-[10px] font-black uppercase tracking-widest block mb-1">Prazo (opcional)</label>
+                <label className="text-[#aeaeb2] text-[10px] font-black uppercase tracking-widest block mb-1">Prazo (opcional)</label>
                 <input
                   type="date"
                   value={form.deadline}
                   onChange={e => setForm(f => ({...f, deadline: e.target.value}))}
-                  className="w-full bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-xl px-4 py-3 text-sm outline-none focus:border-green-500"
+                  className="w-full bg-[#f5f5f7] border border-[#e8e8ed] text-[#1d1d1f] rounded-xl px-4 py-3 text-sm outline-none focus:border-[#a8e716]"
                 />
               </div>
             </div>
@@ -333,11 +333,11 @@ const Metas: React.FC<MetasProps> = ({ goals, onGoalsChange, db, householdId }) 
               <button
                 onClick={handleSave}
                 disabled={!form.title.trim() || !form.targetAmount}
-                className="flex-1 bg-green-500 disabled:opacity-40 active:bg-green-400 text-black font-black py-3.5 rounded-2xl text-sm uppercase tracking-widest transition-all"
+                className="flex-1 k-btn-lime py-3.5 disabled:opacity-40"
               >
                 {editingGoal ? 'Salvar' : 'Criar Meta'}
               </button>
-              <button onClick={() => setShowModal(false)} className="flex-1 bg-zinc-800 text-zinc-400 font-black py-3.5 rounded-2xl text-sm uppercase">
+              <button onClick={() => setShowModal(false)} className="flex-1 bg-[#f5f5f7] border border-[#e8e8ed] text-[#6e6e73] font-black py-3.5 rounded-2xl text-sm uppercase">
                 Cancelar
               </button>
             </div>
@@ -347,17 +347,17 @@ const Metas: React.FC<MetasProps> = ({ goals, onGoalsChange, db, householdId }) 
 
       {/* Contribution modal */}
       {showContribModal && (
-        <div className="fixed inset-0 z-[300] flex items-end justify-center bg-black/75 backdrop-blur-sm" onClick={() => setShowContribModal(null)}>
-          <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-t-3xl p-6 pb-10 animate-in slide-in-from-bottom-4" onClick={e => e.stopPropagation()}>
-            <div className="w-10 h-1 bg-zinc-700 rounded-full mx-auto mb-5"></div>
+        <div className="fixed inset-0 z-[300] flex items-end justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowContribModal(null)}>
+          <div className="w-full max-w-md bg-white border border-[#e8e8ed] rounded-t-3xl p-6 pb-10 animate-in slide-in-from-bottom-4" onClick={e => e.stopPropagation()}>
+            <div className="w-10 h-1 bg-[#e8e8ed] rounded-full mx-auto mb-5"></div>
             <div className="flex items-center gap-3 mb-5">
               <span className="text-3xl">{showContribModal.emoji}</span>
               <div>
-                <h3 className="text-white font-black uppercase italic tracking-tighter text-base leading-none">{showContribModal.title}</h3>
-                <p className="text-zinc-500 text-xs mt-0.5">Saldo atual: {formatCurrency(showContribModal.currentAmount)} / {formatCurrency(showContribModal.targetAmount)}</p>
+                <h3 className="text-[#1d1d1f] font-black uppercase italic tracking-tighter text-base leading-none">{showContribModal.title}</h3>
+                <p className="text-[#aeaeb2] text-xs mt-0.5 k-num">Saldo atual: {formatCurrency(showContribModal.currentAmount)} / {formatCurrency(showContribModal.targetAmount)}</p>
               </div>
             </div>
-            <label className="text-zinc-500 text-[10px] font-black uppercase tracking-widest block mb-2">Quanto você vai adicionar?</label>
+            <label className="text-[#aeaeb2] text-[10px] font-black uppercase tracking-widest block mb-2">Quanto você vai adicionar?</label>
             <input
               type="number"
               inputMode="decimal"
@@ -365,14 +365,14 @@ const Metas: React.FC<MetasProps> = ({ goals, onGoalsChange, db, householdId }) 
               onChange={e => setContribValue(e.target.value)}
               placeholder="R$ 0,00"
               autoFocus
-              className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-xl px-4 py-3.5 text-xl outline-none focus:border-green-500 font-mono font-black mb-5"
+              className="w-full bg-[#f5f5f7] border border-[#e8e8ed] text-[#1d1d1f] placeholder:text-[#aeaeb2] rounded-xl px-4 py-3.5 text-xl outline-none focus:border-[#a8e716] k-num font-black mb-5"
               onKeyDown={e => e.key === 'Enter' && handleContrib()}
             />
             <div className="flex gap-3">
-              <button onClick={handleContrib} disabled={!contribValue} className="flex-1 bg-green-500 disabled:opacity-40 active:bg-green-400 text-black font-black py-3.5 rounded-2xl text-sm uppercase tracking-widest">
+              <button onClick={handleContrib} disabled={!contribValue} className="flex-1 k-btn-lime py-3.5 disabled:opacity-40">
                 Registrar
               </button>
-              <button onClick={() => setShowContribModal(null)} className="flex-1 bg-zinc-800 text-zinc-400 font-black py-3.5 rounded-2xl text-sm uppercase">
+              <button onClick={() => setShowContribModal(null)} className="flex-1 bg-[#f5f5f7] border border-[#e8e8ed] text-[#6e6e73] font-black py-3.5 rounded-2xl text-sm uppercase">
                 Cancelar
               </button>
             </div>

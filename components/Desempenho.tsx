@@ -30,9 +30,9 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
   if (!totalIncome || totalIncome <= 0) {
     return (
       <div className="max-w-2xl mx-auto px-4 pt-6 pb-20">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 text-center">
-          <i className="fas fa-chart-pie text-4xl text-green-400/30 mb-4 block"></i>
-          <p className="text-zinc-500 text-sm font-bold uppercase tracking-widest">Cadastre suas entradas para ver seu desempenho</p>
+        <div className="bg-white border border-[#e8e8ed] rounded-[22px] p-8 text-center shadow-sm">
+          <i className="fas fa-chart-pie text-4xl text-[#aeaeb2] mb-4 block"></i>
+          <p className="text-[#6e6e73] text-sm font-bold uppercase tracking-widest">Cadastre suas entradas para ver seu desempenho</p>
         </div>
       </div>
     );
@@ -77,30 +77,31 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 pt-4 pb-28">
+    <div className="max-w-2xl mx-auto px-3 pt-4 pb-28">
 
-      {/* ── SCORE CARD ───────────────────────────────────────────────── */}
-      <div className={`relative rounded-3xl border p-5 mb-5 overflow-hidden ${level.bgClass} ${level.borderClass} shadow-lg ${level.glowClass}`}>
+      {/* ── SCORE CARD (dark hero) ────────────────────────────────────── */}
+      <div className="relative rounded-[28px] p-5 mb-5 overflow-hidden bg-[#1d1d1f]" style={{boxShadow:'0 8px 30px rgba(0,0,0,0.18)'}}>
+        <div className="absolute top-[-60px] left-[-40px] w-[200px] h-[200px] rounded-full pointer-events-none" style={{background:'radial-gradient(circle,rgba(168,231,22,0.15) 0%,transparent 65%)'}}></div>
         <div className="absolute top-0 right-0 bottom-0 w-1/2 flex items-center justify-end pr-4 pointer-events-none">
           <span className="text-[80px] opacity-10 select-none">{level.emoji}</span>
         </div>
 
         <div className="relative z-10 flex items-start justify-between gap-4">
           <div>
-            <div className="text-zinc-500 text-[10px] font-black uppercase tracking-widest mb-1">Score Financeiro</div>
-            <div className={`text-5xl font-black font-mono leading-none ${level.textClass}`}>{score}</div>
-            <div className="text-zinc-400 text-[10px] font-mono mt-0.5">/1000</div>
+            <div className="text-white/35 text-[10px] font-black uppercase tracking-[2px] mb-1">Score Financeiro</div>
+            <div className="text-5xl font-black k-num leading-none text-white">{score}</div>
+            <div className="text-white/30 text-[10px] k-num mt-0.5">/1000</div>
           </div>
 
           <div className="text-right">
-            <div className={`text-lg font-black uppercase italic tracking-tighter ${level.textClass}`}>
+            <div className="text-lg font-black uppercase italic tracking-tighter text-[#a8e716]">
               {level.emoji} {level.name}
             </div>
             {nextLevel && (
-              <div className="text-zinc-600 text-[10px] mt-0.5">próximo: {nextLevel.name} ({nextLevel.minScore} pts)</div>
+              <div className="text-white/30 text-[10px] mt-0.5">próximo: {nextLevel.name} ({nextLevel.minScore} pts)</div>
             )}
             {!nextLevel && (
-              <div className="text-green-400 text-[10px] font-black mt-0.5">Nível máximo atingido!</div>
+              <div className="text-[#a8e716] text-[10px] font-black mt-0.5">Nível máximo atingido!</div>
             )}
           </div>
         </div>
@@ -108,16 +109,16 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
         {/* Level progress bar */}
         {nextLevel && (
           <div className="relative z-10 mt-4">
-            <div className="h-2 bg-black/30 rounded-full overflow-hidden">
+            <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all duration-700 ${score >= 900 ? 'bg-green-300' : score >= 700 ? 'bg-orange-400' : score >= 500 ? 'bg-cyan-400' : score >= 300 ? 'bg-purple-400' : score >= 150 ? 'bg-blue-400' : 'bg-zinc-500'}`}
-                style={{ width: `${levelProgress}%` }}
+                className="h-full rounded-full transition-all duration-700"
+                style={{ width: `${levelProgress}%`, background:'linear-gradient(90deg,#a8e716,#7ab800)' }}
               />
             </div>
             <div className="flex justify-between mt-1">
-              <span className="text-[9px] text-zinc-600 font-mono">{level.minScore}</span>
-              <span className="text-[9px] text-zinc-500 font-mono">{levelProgress}% para {nextLevel.name}</span>
-              <span className="text-[9px] text-zinc-600 font-mono">{nextLevel.minScore}</span>
+              <span className="text-[9px] text-white/25 k-num">{level.minScore}</span>
+              <span className="text-[9px] text-white/35 k-num">{levelProgress}% para {nextLevel.name}</span>
+              <span className="text-[9px] text-white/25 k-num">{nextLevel.minScore}</span>
             </div>
           </div>
         )}
@@ -125,7 +126,7 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
         {/* Streak */}
         {streak > 0 && (
           <div className="relative z-10 mt-3 flex items-center gap-2">
-            <div className="flex items-center gap-1.5 bg-orange-500/10 border border-orange-500/20 rounded-xl px-3 py-1.5">
+            <div className="flex items-center gap-1.5 bg-orange-500/15 border border-orange-500/25 rounded-xl px-3 py-1.5">
               <span className="text-base">🔥</span>
               <span className="text-orange-400 font-black text-xs uppercase">{streak} {streak === 1 ? 'mês' : 'meses'} no verde</span>
             </div>
@@ -136,8 +137,9 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
         <div className="relative z-10 mt-4 flex gap-1">
           {LEVELS.map((l, i) => (
             <div key={i} className="flex-1 flex flex-col items-center gap-1">
-              <div className={`h-1 rounded-full w-full transition-all ${score >= l.minScore ? (score >= 900 ? 'bg-green-300' : score >= 700 ? 'bg-orange-400' : score >= 500 ? 'bg-cyan-400' : score >= 300 ? 'bg-purple-400' : score >= 150 ? 'bg-blue-400' : 'bg-zinc-500') : 'bg-zinc-800'}`} />
-              <span className={`text-[7px] font-black uppercase hidden sm:block ${score >= l.minScore ? l.textClass : 'text-zinc-700'}`}>{l.emoji}</span>
+              <div className={`h-1 rounded-full w-full transition-all ${score >= l.minScore ? '' : 'bg-white/10'}`}
+                style={score >= l.minScore ? {background:'linear-gradient(90deg,#a8e716,#7ab800)'} : {}} />
+              <span className={`text-[7px] font-black uppercase hidden sm:block ${score >= l.minScore ? 'text-[#a8e716]' : 'text-white/20'}`}>{l.emoji}</span>
             </div>
           ))}
         </div>
@@ -145,7 +147,7 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
 
       {/* ── BADGES ───────────────────────────────────────────────────── */}
       <div className="mb-5">
-        <h3 className="text-zinc-500 text-[10px] font-black uppercase tracking-widest mb-3">
+        <h3 className="text-[#aeaeb2] text-[10px] font-black uppercase tracking-widest mb-3">
           Conquistas — {unlockedBadges.size}/{BADGE_DEFS.length}
         </h3>
         <div className="grid grid-cols-4 gap-2">
@@ -156,13 +158,13 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
                 key={badge.id}
                 className={`flex flex-col items-center gap-1.5 p-3 rounded-2xl border text-center transition-all ${
                   unlocked
-                    ? 'bg-green-400/10 border-green-500/30 shadow-sm shadow-green-400/10'
-                    : 'bg-zinc-900 border-zinc-800 opacity-40 grayscale'
+                    ? 'bg-[#f0fad0] border-[rgba(122,184,0,0.25)] shadow-sm'
+                    : 'bg-[#f5f5f7] border-[#e8e8ed] opacity-40 grayscale'
                 }`}
                 title={badge.description}
               >
                 <span className="text-2xl leading-none">{badge.emoji}</span>
-                <span className={`text-[8px] font-black uppercase leading-tight ${unlocked ? 'text-green-300' : 'text-zinc-600'}`}>{badge.name}</span>
+                <span className={`text-[8px] font-black uppercase leading-tight ${unlocked ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}>{badge.name}</span>
               </div>
             );
           })}
@@ -170,14 +172,14 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
       </div>
 
       {/* ── INCOME REFERENCE ─────────────────────────────────────────── */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 mb-4 flex items-center justify-between">
+      <div className="bg-white border border-[#e8e8ed] rounded-[20px] p-4 mb-4 flex items-center justify-between shadow-sm">
         <div>
-          <div className="text-zinc-500 text-[10px] font-black uppercase tracking-widest">Renda do mês</div>
-          <div className="text-green-400 font-black font-mono text-lg">{formatCurrency(totalIncome)}</div>
+          <div className="text-[#aeaeb2] text-[10px] font-black uppercase tracking-widest">Renda do mês</div>
+          <div className="text-[#34c759] font-black k-num text-lg">{formatCurrency(totalIncome)}</div>
         </div>
         <div className="text-right">
-          <div className="text-zinc-500 text-[10px] font-black uppercase tracking-widest">Comprometido</div>
-          <div className="text-red-400 font-black font-mono text-lg">{formatCurrency(summary.totalCost)}</div>
+          <div className="text-[#aeaeb2] text-[10px] font-black uppercase tracking-widest">Comprometido</div>
+          <div className="text-[#ff3b30] font-black k-num text-lg">{formatCurrency(summary.totalCost)}</div>
         </div>
       </div>
 
@@ -188,40 +190,43 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
           const idealCapped = Math.min(cat.ideal, 100);
           const isOver = cat.actual > cat.ideal + 2;
           const isUnder = cat.actual < cat.ideal - 2 && cat.label === 'Poupança';
-          const statusColor = isOver ? 'text-red-400' : isUnder ? 'text-orange-400' : 'text-green-400';
+          const statusColor = isOver ? 'text-[#ff3b30]' : isUnder ? 'text-orange-500' : 'text-[#7ab800]';
           const statusIcon = isOver ? 'fa-arrow-up' : isUnder ? 'fa-arrow-down' : 'fa-check';
 
           return (
-            <div key={cat.label} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
+            <div key={cat.label} className="bg-white border border-[#e8e8ed] rounded-[20px] p-4 shadow-sm">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${cat.color}/10`}>
-                    <i className={`fas ${cat.icon} text-sm ${cat.idealColor}`}></i>
+                  <div className="k-icon-wrap">
+                    <i className={`fas ${cat.icon} text-sm`}></i>
                   </div>
                   <div>
-                    <div className="text-white font-black text-sm">{cat.label}</div>
-                    <div className="text-zinc-600 text-[10px]">{cat.description}</div>
+                    <div className="text-[#1d1d1f] font-black text-sm">{cat.label}</div>
+                    <div className="text-[#aeaeb2] text-[10px]">{cat.description}</div>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className={`font-black text-sm font-mono ${statusColor}`}>
+                  <div className={`font-black text-sm k-num ${statusColor}`}>
                     <i className={`fas ${statusIcon} mr-1 text-[10px]`}></i>
                     {cat.actual.toFixed(0)}%
                   </div>
-                  <div className="text-zinc-600 text-[10px]">ideal: {cat.ideal}%</div>
+                  <div className="text-[#aeaeb2] text-[10px]">ideal: {cat.ideal}%</div>
                 </div>
               </div>
-              <div className="relative h-5 bg-zinc-800 rounded-full overflow-hidden">
-                <div className="absolute top-0 bottom-0 w-0.5 bg-white/30 z-10" style={{ left: `${idealCapped}%` }} />
+              <div className="relative h-4 bg-[#f5f5f7] rounded-full overflow-hidden">
+                <div className="absolute top-0 bottom-0 w-0.5 bg-[#d2d2d7] z-10" style={{ left: `${idealCapped}%` }} />
                 <div
-                  className={`h-full rounded-full transition-all duration-700 ${isOver ? 'bg-red-500' : isUnder ? 'bg-orange-500' : cat.color}`}
-                  style={{ width: `${Math.max(actualCapped, 0.5)}%` }}
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{
+                    width: `${Math.max(actualCapped, 0.5)}%`,
+                    background: isOver ? '#ff3b30' : isUnder ? '#ff9500' : 'linear-gradient(90deg,#a8e716,#7ab800)'
+                  }}
                 />
               </div>
               <div className="flex justify-between mt-1">
-                <span className="text-zinc-600 text-[9px] font-mono">0%</span>
-                <span className="text-zinc-500 text-[9px] font-mono">Ideal: {cat.ideal}% ({formatCurrency(totalIncome * cat.ideal / 100)})</span>
-                <span className="text-zinc-600 text-[9px] font-mono">100%</span>
+                <span className="text-[#aeaeb2] text-[9px] k-num">0%</span>
+                <span className="text-[#aeaeb2] text-[9px] k-num">Ideal: {cat.ideal}% ({formatCurrency(totalIncome * cat.ideal / 100)})</span>
+                <span className="text-[#aeaeb2] text-[9px] k-num">100%</span>
               </div>
             </div>
           );
@@ -229,15 +234,15 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
       </div>
 
       {/* ── SUGGESTIONS ──────────────────────────────────────────────── */}
-      <div className="bg-zinc-900 border border-green-500/20 rounded-2xl p-4">
-        <h3 className="text-green-400 font-black text-xs uppercase tracking-widest mb-3 flex items-center gap-2">
+      <div className="bg-white border border-[#e8e8ed] rounded-[20px] p-4 shadow-sm">
+        <h3 className="text-[#7ab800] font-black text-xs uppercase tracking-widest mb-3 flex items-center gap-2">
           <i className="fas fa-lightbulb"></i> Diagnóstico
         </h3>
         <div className="flex flex-col gap-2">
           {suggestions.map((s, i) => (
-            <div key={i} className="flex items-start gap-2 bg-zinc-800/50 rounded-xl p-3">
-              <i className={`fas ${suggestions.length === 1 && i === 0 ? 'fa-trophy text-green-400' : 'fa-exclamation-circle text-orange-400'} text-xs mt-0.5 shrink-0`}></i>
-              <p className="text-zinc-300 text-xs leading-relaxed">{s}</p>
+            <div key={i} className="flex items-start gap-2 bg-[#f5f5f7] rounded-xl p-3">
+              <i className={`fas ${suggestions.length === 1 && i === 0 ? 'fa-trophy text-[#7ab800]' : 'fa-exclamation-circle text-orange-500'} text-xs mt-0.5 shrink-0`}></i>
+              <p className="text-[#6e6e73] text-xs leading-relaxed">{s}</p>
             </div>
           ))}
         </div>
@@ -246,16 +251,16 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
       {/* Legend */}
       <div className="mt-4 flex items-center gap-4 justify-center">
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-0.5 bg-white/30"></div>
-          <span className="text-zinc-600 text-[9px] uppercase tracking-widest">Meta ideal</span>
+          <div className="w-3 h-0.5 bg-[#d2d2d7]"></div>
+          <span className="text-[#aeaeb2] text-[9px] uppercase tracking-widest">Meta ideal</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-sm bg-green-500/50"></div>
-          <span className="text-zinc-600 text-[9px] uppercase tracking-widest">Dentro do ideal</span>
+          <div className="w-3 h-3 rounded-sm bg-[#f0fad0]"></div>
+          <span className="text-[#aeaeb2] text-[9px] uppercase tracking-widest">Dentro do ideal</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-sm bg-red-500/50"></div>
-          <span className="text-zinc-600 text-[9px] uppercase tracking-widest">Acima do ideal</span>
+          <div className="w-3 h-3 rounded-sm bg-[#fff0f0]"></div>
+          <span className="text-[#aeaeb2] text-[9px] uppercase tracking-widest">Acima do ideal</span>
         </div>
       </div>
     </div>

@@ -155,7 +155,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                         category === CategoryType.PERSONAL_LEISURE;
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-2 transition-all hover:shadow-md">
+    <div className="bg-white rounded-[22px] shadow-sm border border-[#e8e8ed] overflow-hidden mb-3 mx-3">
 
       {/* Paid celebration toast */}
       {paidToast && (
@@ -361,20 +361,20 @@ const BlockSection: React.FC<BlockSectionProps> = ({
         </div>
       )}
 
-      <div className="bg-zinc-900 px-4 py-3 flex items-center gap-3 border-b border-green-500/20">
-        <div className="flex flex-col min-w-0">
+      <div className="bg-white px-4 py-3 flex items-center gap-3 border-b border-[#e8e8ed]">
+        <div className="flex flex-col min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="text-green-400 font-black text-base uppercase tracking-widest italic leading-tight">{title}</h3>
+            <h3 className="text-[#1d1d1f] font-black text-[11px] uppercase tracking-[1.3px] leading-tight">{title}</h3>
             {tooltip && (
               <button
                 onClick={() => setShowInstructionModal(true)}
-                className="text-green-400/40 hover:text-green-400 active:text-green-400 transition-colors shrink-0"
+                className="text-[#aeaeb2] hover:text-[#7ab800] active:text-[#7ab800] transition-colors shrink-0"
               >
                 <i className="fas fa-question-circle text-sm"></i>
               </button>
             )}
           </div>
-          {subtitle && <p className="text-green-400/50 text-[9px] uppercase font-bold tracking-wider mt-0.5">{subtitle}</p>}
+          {subtitle && <p className="text-[#aeaeb2] text-[9px] uppercase font-bold tracking-wider mt-0.5">{subtitle}</p>}
         </div>
       </div>
 
@@ -386,28 +386,28 @@ const BlockSection: React.FC<BlockSectionProps> = ({
         const toBarPct = (v: number) => Math.min(100, (v / totalIncome) * 100);
         const detOk = determinedValue <= idealValue * 1.05;
         return (
-          <div className="bg-black px-4 py-3 border-b border-zinc-800/60 space-y-3">
+          <div className="bg-[#fafafa] px-4 py-3 border-b border-[#e8e8ed] space-y-3">
             {/* Ideal */}
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-[8px] font-black uppercase tracking-widest text-zinc-400">Ideal</span>
-                  <span className="text-[9px] font-black text-green-400 bg-green-400/10 border border-green-400/25 rounded-full px-1.5 py-0.5 leading-none">{idealPct}%</span>
+                  <span className="text-[9px] font-black uppercase tracking-[1px] text-[#6e6e73]">Ideal</span>
+                  <span className="text-[9px] font-black text-[#7ab800] bg-[#f0fad0] border border-[rgba(122,184,0,0.25)] rounded-full px-2 py-0.5 leading-none">{idealPct}%</span>
                 </div>
-                <span className="text-[9px] font-mono font-black text-zinc-400">{formatCurrency(idealValue)}</span>
+                <span className="text-[10px] font-black k-num text-[#7ab800]">{formatCurrency(idealValue)}</span>
               </div>
-              <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-green-500/60" style={{ width: `${idealPct}%` }} />
+              <div className="h-1.5 bg-[#e8e8ed] rounded-full overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${idealPct}%`, background:'linear-gradient(90deg,#a8e716,#7ab800)' }} />
               </div>
             </div>
             {/* Definido */}
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className={`text-[8px] font-black uppercase tracking-widest ${detOk ? 'text-blue-400' : 'text-red-400'}`}>Definido</span>
-                <span className={`text-[9px] font-mono font-black ${detOk ? 'text-blue-400' : 'text-red-400'}`}>{formatCurrency(determinedValue)}</span>
+                <span className={`text-[9px] font-black uppercase tracking-[1px] ${detOk ? 'text-[#007aff]' : 'text-[#ff3b30]'}`}>Definido</span>
+                <span className={`text-[10px] font-black k-num ${detOk ? 'text-[#007aff]' : 'text-[#ff3b30]'}`}>{formatCurrency(determinedValue)}</span>
               </div>
-              <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
-                <div className={`h-full rounded-full transition-all duration-500 ${detOk ? 'bg-blue-400' : 'bg-red-400'}`} style={{ width: `${toBarPct(determinedValue)}%` }} />
+              <div className="h-1.5 bg-[#e8e8ed] rounded-full overflow-hidden">
+                <div className={`h-full rounded-full transition-all duration-500 ${detOk ? 'bg-[#007aff]' : 'bg-[#ff3b30]'}`} style={{ width: `${toBarPct(determinedValue)}%` }} />
               </div>
             </div>
           </div>
@@ -415,7 +415,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
       })()}
 
       {/* ── MOBILE LAYOUT ─────────────────────────────────────────── */}
-      <div className="block lg:hidden bg-[#111] divide-y divide-zinc-800/60">
+      <div className="block lg:hidden bg-white divide-y divide-[#e8e8ed]">
         {items.filter(item => {
           if (item.category === CategoryType.VARIABLE_EXPENSE) {
             if (item.values[mobileMonthIdx] > 0) return true;
@@ -435,9 +435,9 @@ const BlockSection: React.FC<BlockSectionProps> = ({
           const isIncome = category === CategoryType.INCOME;
 
           return (
-            <div key={item.id} className={`px-3 py-2.5 ${isPaid ? 'bg-green-900/10' : ''}`}>
+            <div key={item.id} className={`px-3 py-3 ${isPaid ? 'bg-[#f8fdf0]' : ''}`}>
               <div className="flex items-center gap-2">
-                <button onClick={() => onRemoveItem(item.id)} className="text-red-400/40 active:text-red-500 shrink-0 p-1">
+                <button onClick={() => onRemoveItem(item.id)} className="text-[#ff3b30]/30 active:text-[#ff3b30] shrink-0 p-1">
                   <i className="fas fa-trash-alt text-[11px]"></i>
                 </button>
                 <input
@@ -445,7 +445,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   defaultValue={item.description}
                   onBlur={(e) => onUpdateDescription(item.id, e.target.value)}
                   onChange={(e) => onUpdateDescription(item.id, e.target.value)}
-                  className="flex-1 bg-transparent text-zinc-300 text-sm outline-none min-w-0 placeholder:text-zinc-600"
+                  className="flex-1 bg-transparent text-[#1d1d1f] text-sm outline-none min-w-0 placeholder:text-[#aeaeb2]"
                   placeholder="Nome do item..."
                 />
                 <div className="flex items-center gap-1.5 shrink-0">
@@ -457,23 +457,24 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                       onUpdateValue(item.id, mobileMonthIdx, e.target.value);
                       checkInstallments(item.id);
                     }}
-                    className={`w-24 text-right rounded-lg px-2.5 py-1.5 text-sm font-mono outline-none border ${isPaid ? 'bg-green-900/20 text-green-400 border-green-800/60' : 'bg-zinc-800 text-white border-zinc-700'}`}
+                    className={`w-24 text-right rounded-xl px-2.5 py-1.5 text-sm font-black k-num outline-none border ${isPaid ? 'bg-[#f0fad0] text-[#7ab800] border-[rgba(122,184,0,0.3)]' : 'bg-[#f5f5f7] text-[#1d1d1f] border-[#e8e8ed]'}`}
                     placeholder="0,00"
                   />
                   {/* Replicate button — only for categories that repeat every month */}
                   {(category === CategoryType.INCOME || category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE) && (
                     <button
                       onClick={() => handleReplicateWithToast(item.id, mobileMonthIdx)}
-                      className="w-5 h-5 rounded-full bg-green-400 flex items-center justify-center shrink-0 active:scale-90 shadow-sm"
+                      className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 active:scale-90 shadow-sm"
+                      style={{background:'linear-gradient(180deg,#c5f23a,#8cc400)',boxShadow:'0 2px 6px rgba(130,192,0,0.4)'}}
                       title="Replicar para todos os meses"
                     >
-                      <i className="fas fa-copy text-[7px] text-black"></i>
+                      <i className="fas fa-copy text-[7px] text-[#182200]"></i>
                     </button>
                   )}
                   {!isIncome && (
                     <button
                       onClick={() => handleTogglePaid(item.id, mobileMonthIdx, isPaid)}
-                      className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase transition-all shrink-0 border ${isPaid ? 'bg-green-500/20 text-green-400 border-green-500/40' : 'border-zinc-700 text-zinc-600 active:text-green-400 active:border-green-500/40'}`}
+                      className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase transition-all shrink-0 border ${isPaid ? 'bg-[#f0fad0] text-[#7ab800] border-[rgba(122,184,0,0.3)]' : 'border-[#e8e8ed] text-[#aeaeb2] active:text-[#7ab800]'}`}
                     >
                       PG
                     </button>
@@ -483,12 +484,12 @@ const BlockSection: React.FC<BlockSectionProps> = ({
               {category === CategoryType.CREDIT_CARD && onUpdateCardConfig && (
                 <div className="mt-2 ml-7 flex gap-4">
                   <div className="flex items-center gap-2">
-                    <label className="text-[9px] font-black text-zinc-500 uppercase">Fecha</label>
-                    <input type="number" min="1" max="31" value={item.closingDay || ''} onChange={(e) => onUpdateCardConfig(item.id, 'closingDay', parseInt(e.target.value))} className="bg-zinc-800 rounded-lg px-2 py-1 text-[11px] w-12 outline-none border border-zinc-700 text-center text-zinc-300" placeholder="Dia" />
+                    <label className="text-[9px] font-black text-[#aeaeb2] uppercase">Fecha</label>
+                    <input type="number" min="1" max="31" value={item.closingDay || ''} onChange={(e) => onUpdateCardConfig(item.id, 'closingDay', parseInt(e.target.value))} className="bg-[#f5f5f7] rounded-lg px-2 py-1 text-[11px] w-12 outline-none border border-[#e8e8ed] text-center text-[#1d1d1f]" placeholder="Dia" />
                   </div>
                   <div className="flex items-center gap-2">
-                    <label className="text-[9px] font-black text-zinc-500 uppercase">Vence</label>
-                    <input type="number" min="1" max="31" value={item.dueDay || ''} onChange={(e) => onUpdateCardConfig(item.id, 'dueDay', parseInt(e.target.value))} className="bg-zinc-800 rounded-lg px-2 py-1 text-[11px] w-12 outline-none border border-zinc-700 text-center text-zinc-300" placeholder="Dia" />
+                    <label className="text-[9px] font-black text-[#aeaeb2] uppercase">Vence</label>
+                    <input type="number" min="1" max="31" value={item.dueDay || ''} onChange={(e) => onUpdateCardConfig(item.id, 'dueDay', parseInt(e.target.value))} className="bg-[#f5f5f7] rounded-lg px-2 py-1 text-[11px] w-12 outline-none border border-[#e8e8ed] text-center text-[#1d1d1f]" placeholder="Dia" />
                   </div>
                 </div>
               )}
@@ -499,26 +500,26 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                 if (!tracked || !fatura || !prevMonthName) return null;
                 const naoIdentificado = Math.max(0, fatura - tracked);
                 return (
-                  <div className="mt-2 ml-7 px-2.5 py-2 bg-green-500/5 border border-green-500/20 rounded-xl space-y-1 text-[10px] font-mono">
+                  <div className="mt-2 ml-7 px-2.5 py-2 bg-[#f0fad0] border border-[rgba(122,184,0,0.2)] rounded-xl space-y-1 text-[10px]">
                     <div className="flex justify-between items-center">
-                      <span className="text-zinc-400">Rastreado ({prevMonthName})</span>
-                      <span className="text-green-400 font-black">− {formatCurrency(tracked)}</span>
+                      <span className="text-[#6e6e73]">Rastreado ({prevMonthName})</span>
+                      <span className="text-[#7ab800] font-black k-num">− {formatCurrency(tracked)}</span>
                     </div>
-                    <div className="flex justify-between items-center border-t border-zinc-700/50 pt-1">
-                      <span className="text-zinc-500 font-black uppercase text-[9px] tracking-wider">Não identificado</span>
-                      <span className={`font-black ${naoIdentificado === 0 ? 'text-green-400' : 'text-orange-300'}`}>{formatCurrency(naoIdentificado)}</span>
+                    <div className="flex justify-between items-center border-t border-[rgba(122,184,0,0.15)] pt-1">
+                      <span className="text-[#aeaeb2] font-black uppercase text-[9px] tracking-wider">Não identificado</span>
+                      <span className={`font-black k-num ${naoIdentificado === 0 ? 'text-[#7ab800]' : 'text-orange-500'}`}>{formatCurrency(naoIdentificado)}</span>
                     </div>
                   </div>
                 );
               })()}
               {category === CategoryType.FIXED_EXPENSE && onUpdateCardConfig && (
                 <div className="mt-2 ml-7 flex items-center gap-2">
-                  <i className="fas fa-calendar-day text-zinc-600 text-[9px]"></i>
-                  <label className="text-[9px] font-black text-zinc-500 uppercase">Pagar dia</label>
+                  <i className="fas fa-calendar-day text-[#aeaeb2] text-[9px]"></i>
+                  <label className="text-[9px] font-black text-[#aeaeb2] uppercase">Pagar dia</label>
                   <select
                     value={item.dueDay || ''}
                     onChange={(e) => onUpdateCardConfig(item.id, 'dueDay', parseInt(e.target.value))}
-                    className="bg-zinc-800 rounded-lg px-2 py-1 text-[11px] outline-none border border-zinc-700 text-zinc-300 text-center"
+                    className="bg-[#f5f5f7] rounded-lg px-2 py-1 text-[11px] outline-none border border-[#e8e8ed] text-[#1d1d1f] text-center"
                   >
                     <option value="">--</option>
                     {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
@@ -548,8 +549,8 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           onClick={() => setOpenPaymentItemId(item.id)}
                           className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[9px] font-black uppercase transition-all active:scale-95 ${
                             hasPayment
-                              ? 'bg-green-500/15 border border-green-500/30 text-green-400'
-                              : 'bg-red-500/15 border border-red-500/40 text-red-400'
+                              ? 'bg-[#f0fad0] border border-[rgba(122,184,0,0.25)] text-[#7ab800]'
+                              : 'bg-[#fff0f0] border border-[rgba(255,59,48,0.2)] text-[#ff3b30]'
                           }`}
                         >
                           <i className={`fas ${hasPayment ? 'fa-check-circle' : 'fa-exclamation-circle'} text-[10px]`}></i>
@@ -557,26 +558,26 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           <i className="fas fa-chevron-down text-[8px] opacity-50 ml-0.5"></i>
                         </button>
                         {realSpent > 0 && (
-                          <span className={`text-[10px] font-black px-2 py-1 rounded-xl uppercase ${isOver ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                          <span className={`text-[10px] font-black px-2 py-1 rounded-xl uppercase k-num ${isOver ? 'bg-[#fff0f0] text-[#ff3b30]' : 'bg-[#f0f4ff] text-[#007aff]'}`}>
                             Realizado: {formatCurrency(realSpent)}
                           </span>
                         )}
                       </div>
                     ) : (
-                      <div className="flex flex-col gap-1.5 bg-zinc-800/60 border border-zinc-700 rounded-xl p-2.5">
-                        <div className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Forma de pagamento</div>
+                      <div className="flex flex-col gap-1.5 bg-[#f5f5f7] border border-[#e8e8ed] rounded-xl p-2.5">
+                        <div className="text-[8px] font-black text-[#aeaeb2] uppercase tracking-widest">Forma de pagamento</div>
                         {/* Row 1: Débito | Cartão | ✕ */}
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => { onLinkCard!(item.id, '', LinkType.DEBIT); setOpenPaymentItemId(null); }}
                             className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase active:scale-95 transition-all shrink-0 ${
-                              item.linkType === LinkType.DEBIT ? 'bg-green-500 text-black' : 'bg-zinc-700 border border-zinc-600 text-zinc-300'
+                              item.linkType === LinkType.DEBIT ? 'bg-[#7ab800] text-white' : 'bg-white border border-[#e8e8ed] text-[#6e6e73]'
                             }`}
                           >
                             <i className="fas fa-wallet mr-1"></i>Débito
                           </button>
                           <select
-                            className="flex-1 text-[10px] bg-zinc-700 border border-zinc-600 text-zinc-300 rounded-lg px-2 py-1.5 outline-none focus:border-green-400"
+                            className="flex-1 text-[10px] bg-white border border-[#e8e8ed] text-[#1d1d1f] rounded-lg px-2 py-1.5 outline-none focus:border-[#7ab800]"
                             value={item.linkedCardId || ''}
                             onChange={(e) => {
                               if (e.target.value) onLinkCard!(item.id, e.target.value, item.linkType === LinkType.INSTALLMENT ? LinkType.INSTALLMENT : LinkType.RECURRING);
@@ -585,7 +586,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                             <option value="">Crédito: selecionar cartão...</option>
                             {allCards.map(card => <option key={card.id} value={card.id}>{card.description || 'Cartão S/N'}</option>)}
                           </select>
-                          <button onClick={() => setOpenPaymentItemId(null)} className="text-zinc-500 active:text-white p-0.5 shrink-0">
+                          <button onClick={() => setOpenPaymentItemId(null)} className="text-[#aeaeb2] active:text-[#1d1d1f] p-0.5 shrink-0">
                             <i className="fas fa-times text-[10px]"></i>
                           </button>
                         </div>
@@ -593,7 +594,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                         {item.linkedCardId && item.linkType !== LinkType.DEBIT && (
                           <div className="flex items-center gap-2 pl-[72px]">
                             <select
-                              className="flex-1 text-[10px] bg-zinc-700 border border-zinc-600 text-zinc-300 rounded-lg px-2 py-1.5 outline-none focus:border-green-400"
+                              className="flex-1 text-[10px] bg-white border border-[#e8e8ed] text-[#1d1d1f] rounded-lg px-2 py-1.5 outline-none focus:border-[#7ab800]"
                               value={item.linkType || LinkType.RECURRING}
                               onChange={(e) => {
                                 const newType = e.target.value as LinkType;
@@ -610,7 +611,8 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                             </select>
                             <button
                               onClick={() => setOpenPaymentItemId(null)}
-                              className="px-3 py-1.5 bg-green-400 active:bg-green-300 text-black font-black rounded-lg text-[10px] uppercase active:scale-95 transition-all shrink-0"
+                              className="px-3 py-1.5 text-[#182200] font-black rounded-lg text-[10px] uppercase active:scale-95 transition-all shrink-0"
+                              style={{background:'linear-gradient(180deg,#c5f23a,#8cc400)'}}
                             >
                               OK
                             </button>
@@ -624,24 +626,25 @@ const BlockSection: React.FC<BlockSectionProps> = ({
             </div>
           );
         })}
-        <div className="px-3 py-2.5 flex justify-center">
+        <div className="px-3 py-3 flex justify-center">
           <button
             onClick={handleAddWithInstruction}
-            className="w-7 h-7 rounded-full bg-green-400 flex items-center justify-center active:scale-90 shadow-sm"
+            className="w-8 h-8 rounded-full flex items-center justify-center active:scale-90"
+            style={{background:'linear-gradient(180deg,#c5f23a,#8cc400)',boxShadow:'0 3px 10px rgba(130,192,0,0.4)'}}
             title="Adicionar linha"
           >
-            <i className="fas fa-plus text-[10px] text-black"></i>
+            <i className="fas fa-plus text-[10px] text-[#182200]"></i>
           </button>
         </div>
         {items.length === 0 && (
-          <div className="px-4 py-4 text-center text-zinc-600 text-sm">Nenhum item adicionado</div>
+          <div className="px-4 py-4 text-center text-[#aeaeb2] text-sm">Nenhum item adicionado</div>
         )}
         {items.length > 0 && (
-          <div className={`px-4 py-3 flex justify-between items-center ${category === CategoryType.CREDIT_CARD ? 'bg-orange-500/10 border-t border-orange-500/30' : 'bg-zinc-900/60'}`}>
-            <span className={`text-[10px] font-black uppercase tracking-widest ${category === CategoryType.CREDIT_CARD ? 'text-orange-400' : 'text-zinc-500'}`}>
+          <div className={`px-4 py-3 flex justify-between items-center ${category === CategoryType.CREDIT_CARD ? 'bg-[#fff8f0] border-t border-[rgba(255,149,0,0.2)]' : 'bg-[#f5f5f7] border-t border-[#e8e8ed]'}`}>
+            <span className={`text-[10px] font-black uppercase tracking-widest ${category === CategoryType.CREDIT_CARD ? 'text-orange-500' : 'text-[#6e6e73]'}`}>
               {category === CategoryType.CREDIT_CARD ? 'Total Faturas do Mês' : 'Total'}
             </span>
-            <span className={`font-black font-mono ${category === CategoryType.CREDIT_CARD ? 'text-orange-400 text-base' : 'text-green-400'}`}>
+            <span className={`font-black k-num text-sm ${category === CategoryType.CREDIT_CARD ? 'text-orange-500' : 'text-[#7ab800]'}`}>
               {formatCurrency(items.reduce((sum, i) => sum + (i.values[mobileMonthIdx] || 0), 0))}
             </span>
           </div>
