@@ -40,6 +40,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
   } | null>(null);
   const [openPaymentItemId, setOpenPaymentItemId] = useState<string | null>(null);
   const [leisureModal, setLeisureModal] = useState<{ suggested: number; input: string } | null>(null);
+  const [trackedInfoCardId, setTrackedInfoCardId] = useState<string | null>(null);
   const timersRef = useRef<Record<string, number>>({});
   const itemsRef = useRef<FinanceItem[]>(items);
   useEffect(() => { itemsRef.current = items; }, [items]);
@@ -176,6 +177,42 @@ const BlockSection: React.FC<BlockSectionProps> = ({
           </div>
         </div>
       )}
+
+      {/* Popup: explicação do rastreado do cartão */}
+      {trackedInfoCardId && (() => {
+        const tracked = trackedByCardId?.[trackedInfoCardId] ?? 0;
+        const prevMonthName = mobileMonthIdx > 0 ? months[mobileMonthIdx - 1]?.monthName : '?';
+        return (
+          <div className="fixed inset-0 z-[300] flex items-end justify-center bg-black/40 backdrop-blur-sm" onClick={() => setTrackedInfoCardId(null)}>
+            <div className="w-full max-w-md bg-white border border-[#e8e8ed] rounded-t-3xl p-6 pb-10 animate-in slide-in-from-bottom-4" onClick={e => e.stopPropagation()}>
+              <div className="w-10 h-1 bg-[#e8e8ed] rounded-full mx-auto mb-5"></div>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 bg-[#f0fad0] rounded-2xl flex items-center justify-center shrink-0">
+                  <i className="fas fa-credit-card text-[#7ab800] text-xl"></i>
+                </div>
+                <div>
+                  <h3 className="text-[#1d1d1f] font-black uppercase tracking-tight text-base">Gastos já rastreados</h3>
+                  <p className="text-[#aeaeb2] text-xs mt-0.5">{prevMonthName} → esta fatura</p>
+                </div>
+              </div>
+              <div className="bg-[#f0fad0] border border-[rgba(122,184,0,0.2)] rounded-2xl p-4 mb-5 space-y-2">
+                <p className="text-[#6e6e73] text-sm leading-relaxed">
+                  Em <span className="font-black text-[#1d1d1f]">{prevMonthName}</span> você rastreou{' '}
+                  <span className="font-black text-[#7ab800] k-num">{formatCurrency(tracked)}</span>{' '}
+                  neste cartão. Esse valor <span className="font-black text-[#1d1d1f]">já foi contabilizado</span> no orçamento de {prevMonthName}.
+                </p>
+                <p className="text-[#6e6e73] text-sm leading-relaxed">
+                  Lance o <span className="font-black text-[#1d1d1f]">valor total da fatura</span>. O sistema vai abater{' '}
+                  <span className="font-black text-[#7ab800] k-num">{formatCurrency(tracked)}</span> automaticamente para não duplicar.
+                </p>
+              </div>
+              <button onClick={() => setTrackedInfoCardId(null)} className="w-full k-btn-lime py-3.5">
+                Entendi
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Credit card installment modal */}
       {cardInstallModal && (
@@ -400,10 +437,13 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                 <div className="h-full rounded-full" style={{ width: `${idealPct}%`, background:'linear-gradient(90deg,#a8e716,#7ab800)' }} />
               </div>
             </div>
-            {/* Definido */}
+            {/* Realizado */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className={`text-[9px] font-black uppercase tracking-[1px] ${detOk ? 'text-[#007aff]' : 'text-[#ff3b30]'}`}>Definido</span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[9px] font-black uppercase tracking-[1px] ${detOk ? 'text-[#007aff]' : 'text-[#ff3b30]'}`}>Realizado</span>
+                  <span className={`text-[9px] font-black rounded-full px-2 py-0.5 leading-none ${detOk ? 'bg-[#f0f4ff] border border-[rgba(0,122,255,0.25)] text-[#007aff]' : 'bg-[#fff0f0] border border-[rgba(255,59,48,0.2)] text-[#ff3b30]'}`}>{toBarPct(determinedValue).toFixed(0)}%</span>
+                </div>
                 <span className={`text-[10px] font-black k-num ${detOk ? 'text-[#007aff]' : 'text-[#ff3b30]'}`}>{formatCurrency(determinedValue)}</span>
               </div>
               <div className="h-1.5 bg-[#e8e8ed] rounded-full overflow-hidden">
@@ -497,7 +537,23 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                 const tracked = trackedByCardId?.[item.id] ?? 0;
                 const fatura = item.values[mobileMonthIdx] || 0;
                 const prevMonthName = mobileMonthIdx > 0 ? months[mobileMonthIdx - 1]?.monthName : null;
-                if (!tracked || !fatura || !prevMonthName) return null;
+                if (!tracked || !prevMonthName) return null;
+
+                if (!fatura) {
+                  return (
+                    <div className="mt-2 ml-7 px-2.5 py-2 bg-[#f0fad0] border border-[rgba(122,184,0,0.2)] rounded-xl text-[10px]">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-[#6e6e73] leading-relaxed flex-1">
+                          <span className="font-black text-[#7ab800] k-num">{formatCurrency(tracked)}</span> rastreado de {prevMonthName} já vai nesta fatura. Lance o valor total acima.
+                        </p>
+                        <button onClick={() => setTrackedInfoCardId(item.id)} className="text-[#7ab800] shrink-0 mt-0.5">
+                          <i className="fas fa-question-circle text-sm"></i>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
                 const naoIdentificado = Math.max(0, fatura - tracked);
                 return (
                   <div className="mt-2 ml-7 px-2.5 py-2 bg-[#f0fad0] border border-[rgba(122,184,0,0.2)] rounded-xl space-y-1 text-[10px]">
