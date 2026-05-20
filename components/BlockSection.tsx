@@ -563,7 +563,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                       <span className="text-[#7ab800] font-black k-num">− {formatCurrency(tracked)}</span>
                     </div>
                     <div className="flex justify-between items-center border-t border-[rgba(122,184,0,0.15)] pt-1">
-                      <span className="text-[#aeaeb2] font-black uppercase text-[9px] tracking-wider">Não identificado</span>
+                      <span className="text-[#aeaeb2] font-black uppercase text-[9px] tracking-wider">A categorizar</span>
                       <span className={`font-black k-num ${naoIdentificado === 0 ? 'text-[#7ab800]' : 'text-orange-500'}`}>{formatCurrency(naoIdentificado)}</span>
                     </div>
                   </div>
@@ -614,11 +614,27 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           {hasPayment ? paymentLabel : 'Forma de pagamento pendente'}
                           <i className="fas fa-chevron-down text-[8px] opacity-50 ml-0.5"></i>
                         </button>
-                        {realSpent > 0 && (
-                          <span className={`text-[10px] font-black px-2 py-1 rounded-xl uppercase k-num ${isOver ? 'bg-[#fff0f0] text-[#ff3b30]' : 'bg-[#f0f4ff] text-[#007aff]'}`}>
-                            Realizado: {formatCurrency(realSpent)}
-                          </span>
-                        )}
+                        {realSpent > 0 && (() => {
+                          const linkedCard = item.linkedCardId ? allCards.find(c => c.id === item.linkedCardId) : null;
+                          const isCardLinked = !!(linkedCard && item.linkType !== LinkType.DEBIT);
+                          let faturaLabel = '';
+                          if (isCardLinked) {
+                            if (linkedCard!.closingDay) {
+                              const todayDay = new Date().getDate();
+                              const faturaMonthIdx = todayDay >= linkedCard!.closingDay ? mobileMonthIdx + 1 : mobileMonthIdx;
+                              const faturaMonthData = months[Math.min(faturaMonthIdx, months.length - 1)];
+                              faturaLabel = faturaMonthData ? `→ Fatura ${faturaMonthData.monthName}` : linkedCard!.description?.split(' ')[0] || 'Cartão';
+                            } else {
+                              faturaLabel = `↗ ${linkedCard!.description?.split(' ')[0] || 'Cartão'}`;
+                            }
+                          }
+                          return (
+                            <span className={`text-[10px] font-black px-2 py-1 rounded-xl k-num flex items-center gap-1 flex-wrap ${isOver ? 'bg-[#fff0f0] text-[#ff3b30]' : 'bg-[#f0f4ff] text-[#007aff]'}`}>
+                              {faturaLabel && <span className="text-[8px] font-bold opacity-60 normal-case">{faturaLabel} ·</span>}
+                              {formatCurrency(realSpent)}
+                            </span>
+                          );
+                        })()}
                       </div>
                     ) : (
                       <div className="flex flex-col gap-1.5 bg-[#f5f5f7] border border-[#e8e8ed] rounded-xl p-2.5">
@@ -898,7 +914,17 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                             <i className="fas fa-copy"></i>
                           </button>
                         </div>
-                        {realSpent > 0 && <div className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase flex items-center gap-1 ${isOver ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>{formatCurrency(realSpent)}</div>}
+                        {realSpent > 0 && (() => {
+                          const linkedCard = item.linkedCardId ? allCards.find(c => c.id === item.linkedCardId) : null;
+                          const isCardLinked = !!(linkedCard && item.linkType !== LinkType.DEBIT);
+                          const cardShortName = isCardLinked ? (linkedCard!.description?.split(' ')[0] || 'Cartão') : '';
+                          return (
+                            <div className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase flex items-center gap-1 ${isOver ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
+                              {isCardLinked && <span className="text-[8px] opacity-60 normal-case font-bold">↗ {cardShortName} ·</span>}
+                              {formatCurrency(realSpent)}
+                            </div>
+                          );
+                        })()}
                         {category === CategoryType.CREDIT_CARD && mIdx > 0 && (() => {
                           const tracked = trackedByCardAllMonths?.[item.id]?.[mIdx] ?? 0;
                           if (!tracked) return null;
@@ -906,16 +932,24 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           if (!prevMonthName) return null;
                           if (!val) {
                             return (
-                              <div className="text-[8px] font-black text-[#7ab800] bg-[#f0fad0] border border-[rgba(122,184,0,0.2)] rounded px-1.5 py-0.5 text-center leading-tight k-num" title={`${formatCurrency(tracked)} rastreado de ${prevMonthName}`}>
-                                {formatCurrency(tracked)} rastreado
+                              <div className="mt-1 rounded-lg border border-dashed border-[rgba(122,184,0,0.5)] bg-[#f0fad0]/70 px-1.5 py-1 text-center">
+                                <div className="text-[7px] text-[#aeaeb2] font-bold uppercase tracking-wide">≈ estimado</div>
+                                <div className="text-[9px] text-[#7ab800] font-black k-num">{formatCurrency(tracked)}</div>
+                                <div className="text-[7px] text-[#aeaeb2]">de {prevMonthName}</div>
                               </div>
                             );
                           }
-                          const naoIdentificado = Math.max(0, val - tracked);
+                          const aCategorizar = Math.max(0, val - tracked);
                           return (
-                            <div className="text-[8px] text-center space-y-0.5" title={`Rastreado de ${prevMonthName}: ${formatCurrency(tracked)}`}>
-                              <div className="text-[#7ab800] font-black k-num">−{formatCurrency(tracked)}</div>
-                              <div className={`font-black k-num ${naoIdentificado === 0 ? 'text-[#7ab800]' : 'text-orange-500'}`}>{formatCurrency(naoIdentificado)}</div>
+                            <div className="mt-1 border border-[#e8e8ed] rounded-lg px-1.5 py-1 space-y-0.5">
+                              <div className="flex justify-between items-center gap-1">
+                                <span className="text-[7px] text-[#aeaeb2] font-bold uppercase">Identif.</span>
+                                <span className="text-[8px] text-[#7ab800] font-black k-num">{formatCurrency(tracked)}</span>
+                              </div>
+                              <div className="flex justify-between items-center gap-1 border-t border-[#f0f0f0] pt-0.5">
+                                <span className="text-[7px] text-[#aeaeb2] font-bold uppercase">A categ.</span>
+                                <span className={`text-[8px] font-black k-num ${aCategorizar === 0 ? 'text-[#7ab800]' : 'text-orange-500'}`}>{formatCurrency(aCategorizar)}</span>
+                              </div>
                             </div>
                           );
                         })()}
