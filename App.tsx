@@ -749,6 +749,28 @@ const App: React.FC = () => {
     return result;
   }, [items, allCards, mobileMonthIdx, months]);
 
+  const trackedByCardAllMonths = useMemo((): Record<string, Record<number, number>> => {
+    const result: Record<string, Record<number, number>> = {};
+    allCards.forEach(card => {
+      months.forEach((_, mIdx) => {
+        if (mIdx === 0) return;
+        const prevMonthData = months[mIdx - 1];
+        const prevMonthKey = `${prevMonthData.year}-${prevMonthData.index}`;
+        const tracked = items
+          .filter(i => i.linkedCardId === card.id)
+          .reduce((sum, i) => {
+            const partials = i.partialExpenses?.[prevMonthKey] || [];
+            return sum + partials.reduce((s, p) => s + p.value, 0);
+          }, 0);
+        if (tracked > 0) {
+          if (!result[card.id]) result[card.id] = {};
+          result[card.id][mIdx] = tracked;
+        }
+      });
+    });
+    return result;
+  }, [items, allCards, months]);
+
   const projectionOptions = useMemo(() => {
     const options = [];
     const now = new Date();
@@ -1141,6 +1163,7 @@ const App: React.FC = () => {
                   onReplicateValue={handleReplicateValue} onLinkCard={handleLinkCard}
                   onUpdateCardConfig={handleUpdateCardConfig} onMoveItem={handleMoveItem}
                   trackedByCardId={block.type === CategoryType.CREDIT_CARD ? trackedByCardPrevMonth : undefined}
+                  trackedByCardAllMonths={block.type === CategoryType.CREDIT_CARD ? trackedByCardAllMonths : undefined}
                   onRequestExpenseSheet={block.type === CategoryType.VARIABLE_EXPENSE
                     ? () => setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1, isCredit: false })
                     : undefined}

@@ -24,12 +24,13 @@ interface BlockSectionProps {
   onUpdateCardConfig?: (id: string, field: 'closingDay' | 'dueDay', value: number) => void;
   onMoveItem?: (id: string, direction: 'up' | 'down') => void;
   trackedByCardId?: Record<string, number>;
+  trackedByCardAllMonths?: Record<string, Record<number, number>>;
 }
 
 const BlockSection: React.FC<BlockSectionProps> = ({
   title, subtitle, category, items, allCards = [], months, totalIncome, mobileMonthIdx = 0,
   onAddItem, onUpdateValue, onTogglePaid, onRemoveItem, onUpdateDescription, onReplicateValue, onLinkCard,
-  onUpdateCardConfig, onMoveItem, trackedByCardId, onRequestExpenseSheet, onAddLeisureItem
+  onUpdateCardConfig, onMoveItem, trackedByCardId, trackedByCardAllMonths, onRequestExpenseSheet, onAddLeisureItem
 }) => {
   const [showInstructionModal, setShowInstructionModal] = useState(false);
   const [installmentWarning, setInstallmentWarning] = useState<string | null>(null);
@@ -898,6 +899,26 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           </button>
                         </div>
                         {realSpent > 0 && <div className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase flex items-center gap-1 ${isOver ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>{formatCurrency(realSpent)}</div>}
+                        {category === CategoryType.CREDIT_CARD && mIdx > 0 && (() => {
+                          const tracked = trackedByCardAllMonths?.[item.id]?.[mIdx] ?? 0;
+                          if (!tracked) return null;
+                          const prevMonthName = months[mIdx - 1]?.monthName;
+                          if (!prevMonthName) return null;
+                          if (!val) {
+                            return (
+                              <div className="text-[8px] font-black text-[#7ab800] bg-[#f0fad0] border border-[rgba(122,184,0,0.2)] rounded px-1.5 py-0.5 text-center leading-tight k-num" title={`${formatCurrency(tracked)} rastreado de ${prevMonthName}`}>
+                                {formatCurrency(tracked)} rastreado
+                              </div>
+                            );
+                          }
+                          const naoIdentificado = Math.max(0, val - tracked);
+                          return (
+                            <div className="text-[8px] text-center space-y-0.5" title={`Rastreado de ${prevMonthName}: ${formatCurrency(tracked)}`}>
+                              <div className="text-[#7ab800] font-black k-num">−{formatCurrency(tracked)}</div>
+                              <div className={`font-black k-num ${naoIdentificado === 0 ? 'text-[#7ab800]' : 'text-orange-500'}`}>{formatCurrency(naoIdentificado)}</div>
+                            </div>
+                          );
+                        })()}
                         {!isIncome && (
                           <button
                             onClick={() => onTogglePaid(item.id, mIdx)}
