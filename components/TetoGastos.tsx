@@ -103,8 +103,12 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       saveTetoColumns(db, householdId, columns).catch(() => {});
     }
   }, [columns, columnsLoaded]);
+  // Only run with real Supabase items (UUID IDs). Default placeholder items load before
+  // Supabase completes and would cause incorrect auto-link and cleanedFixed behaviour.
+  const hasRealItems = items.some(i => /^[0-9a-f]{8}-[0-9a-f]{4}/.test(i.id));
+
   useEffect(() => {
-    if (!columnsLoaded || autoLinkedRef.current || items.length === 0) return;
+    if (!columnsLoaded || autoLinkedRef.current || !hasRealItems) return;
     autoLinkedRef.current = true;
 
     setColumns(prev => {
@@ -148,12 +152,13 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
         return true;
       });
     });
-  }, [columnsLoaded, items]);
+  }, [columnsLoaded, items, hasRealItems]);
 
   // Remove columns linked to FIXED_EXPENSE items that have no recorded expenses.
   // Fixed items (internet, celular) don't need transaction tracking — only variable/leisure do.
+  // Must wait for real Supabase items so partialExpenses are populated.
   useEffect(() => {
-    if (!columnsLoaded || cleanedFixedRef.current || items.length === 0) return;
+    if (!columnsLoaded || cleanedFixedRef.current || !hasRealItems) return;
     cleanedFixedRef.current = true;
     setColumns(prev => {
       const cleaned = prev.filter(col => {
@@ -164,7 +169,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       });
       return cleaned.length !== prev.length ? cleaned : prev;
     });
-  }, [columnsLoaded, items]);
+  }, [columnsLoaded, items, hasRealItems]);
 
   const addColumn = () => {
     setColumns(prev => [...prev, { id: crypto.randomUUID(), title: 'NOVA DESPESA', linkedItemId: '' }]);
