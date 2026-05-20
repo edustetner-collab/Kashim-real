@@ -1,4 +1,4 @@
-﻿
+
 import React, { useState, useRef } from 'react';
 import { SpeechRecognition as NativeSpeech } from '@capacitor-community/speech-recognition';
 import { SummaryData, FinanceItem, CategoryType } from '../types';
@@ -13,6 +13,13 @@ interface AICoachProps {
   monthName: string;
   onExpenseDetected: (data: DetectedExpense) => void;
   tetoColumns?: { id: string; title: string; linkedItemId: string }[];
+}
+
+interface RawExpense {
+  itemId: string;
+  value: number;
+  description: string;
+  installments: number;
 }
 
 const compressImage = (base64: string, mime: string): Promise<{ data: string; mime: string }> =>
@@ -40,6 +47,7 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onExpenseD
   const [loading, setLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(() => localStorage.getItem('stets_tts') !== 'false');
+  const [pendingExpenses, setPendingExpenses] = useState<RawExpense[]>([]);
   const recognitionRef = useRef<any>(null);
   const nativeTranscriptRef = useRef('');
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -57,9 +65,6 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onExpenseD
   };
 
   const availableItems = () => {
-    // Use TetoGastos column TITLES (user-defined, e.g. "MERCADO", "GASOLINA") as descriptions
-    // so the AI matches by what the user named the column, not by the finance item description.
-    // Falls back to localStorage if tetoColumns prop not loaded yet.
     const cols: { title: string; linkedItemId: string }[] =
       tetoColumns && tetoColumns.length > 0
         ? tetoColumns
@@ -75,7 +80,6 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onExpenseD
       return linked.map(c => ({ id: c.linkedItemId, description: c.title }));
     }
 
-    // Last resort fallback — no configured columns
     return items
       .filter(i =>
         i.category === CategoryType.VARIABLE_EXPENSE ||
@@ -114,38 +118,24 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
       const err = await res.json().catch(() => ({ error: `Erro ${res.status}` }));
       throw new Error(err.error || `Erro ${res.status}`);
     }
-    return res.json() as Promise<{ text: string; expense?: { itemId: string; value: number; description: string; installments: number } }>;
+    return res.json() as Promise<{ text: string; expenses?: RawExpense[] }>;
   };
 
-  const handleResponse = (text: string, expense?: { itemId: string; value: number; description: string; installments: number } | null) => {
+  const handleResponse = (text: string, expenses?: RawExpense[] | null) => {
     setResponse(text);
     speak(text);
-    if (!expense?.value) return;
-
-    if (!expense.itemId) {
-      onExpenseDetected({
-        itemId: '',
-        value: expense.value,
-        description: expense.description || '',
-        installments: Math.max(1, expense.installments ?? 1),
-        isCredit: false,
-      });
-      return;
+    const valid = (expenses ?? []).filter(e => e.value > 0);
+    if (valid.length > 0) {
+      setPendingExpenses(valid);
     }
+  };
 
-    const matchedItem = items.find(i => i.id === expense.itemId);
-    if (!matchedItem) {
-      setResponse(prev => `${prev}\n\n⚠️ Gasto detectado (${formatCurrency(expense.value)}) mas nenhuma coluna vinculada encontrada. Vá em Gastos e vincule um item.`);
-      return;
-    }
+  const dismissExpense = (idx: number) =>
+    setPendingExpenses(prev => prev.filter((_, i) => i !== idx));
 
-    onExpenseDetected({
-      itemId: expense.itemId,
-      value: expense.value,
-      description: expense.description || matchedItem.description,
-      installments: Math.max(1, expense.installments ?? 1),
-      isCredit: false,
-    });
+  const launchExpense = (exp: RawExpense, idx: number) => {
+    onExpenseDetected({ ...exp, isCredit: false });
+    dismissExpense(idx);
   };
 
   const analyzeText = async (text?: string) => {
@@ -153,9 +143,10 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
     if (!finalPrompt.trim()) return;
     setLoading(true);
     setResponse(null);
+    setPendingExpenses([]);
     try {
-      const { text: txt, expense } = await callStets(finalPrompt);
-      handleResponse(txt, expense);
+      const { text: txt, expenses } = await callStets(finalPrompt);
+      handleResponse(txt, expenses);
       setPrompt('');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro ao processar.';
@@ -168,14 +159,15 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
   const analyzePhoto = async (base64: string, mime: string) => {
     setLoading(true);
     setResponse(null);
+    setPendingExpenses([]);
     try {
       const compressed = await compressImage(base64, mime);
-      const { text: txt, expense } = await callStets(
-        'Analise este comprovante. Identifique o estabelecimento, valor total e categoria do gasto.',
+      const { text: txt, expenses } = await callStets(
+        'Analise este comprovante ou extrato. Identifique todas as despesas, estabelecimentos e valores.',
         compressed.data,
         compressed.mime,
       );
-      handleResponse(txt, expense);
+      handleResponse(txt, expenses);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro ao processar foto.';
       setResponse(`⚠️ ${msg}`);
@@ -206,7 +198,6 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
         return;
       }
     } catch {
-      // Plugin not compiled for this Capacitor version — fall back to Web Speech API
       startRecordingWeb();
       return;
     }
@@ -282,93 +273,145 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
   };
 
   return (
-    <div className="bg-[#0a0a0a] border border-zinc-800 rounded-3xl p-6 mb-8 shadow-2xl relative overflow-hidden group">
-      <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
-        <i className="fas fa-user-tie text-8xl text-green-400"></i>
-      </div>
-      <div className="relative z-10">
-        <div className="flex items-center justify-between mb-5">
+    <div className="bg-white border border-[#e8e8ed] rounded-3xl p-5 mb-8 shadow-sm relative overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-[#f0fad0] rounded-2xl flex items-center justify-center shrink-0">
+            <i className="fas fa-user-tie text-[#7ab800] text-base"></i>
+          </div>
           <div>
-            <h3 className="text-white font-black text-xl uppercase italic tracking-tighter leading-none">Stets — Seu Mentor</h3>
-            <p className={`text-[10px] font-bold uppercase tracking-widest mt-1 ${isRecording ? 'text-red-400 animate-pulse' : 'text-green-400/50'}`}>
-              {isRecording ? '● Ouvindo... toque em Parar' : 'Fale, escreva ou envie um comprovante'}
+            <h3 className="text-[#1d1d1f] font-black text-base uppercase italic tracking-tight leading-none">Stets</h3>
+            <p className={`text-[10px] font-bold uppercase tracking-widest mt-0.5 ${isRecording ? 'text-[#ff3b30] animate-pulse' : 'text-[#aeaeb2]'}`}>
+              {isRecording ? '● Ouvindo...' : 'Fale, escreva ou envie um comprovante'}
             </p>
           </div>
-          {'speechSynthesis' in window && (
-            <button
-              onClick={() => {
-                const v = !ttsEnabled;
-                setTtsEnabled(v);
-                localStorage.setItem('stets_tts', String(v));
-                if (!v) window.speechSynthesis.cancel();
-              }}
-              className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black uppercase transition-colors border ${
-                ttsEnabled ? 'bg-green-400/10 text-green-400 border-green-400/20' : 'bg-zinc-800 text-zinc-500 border-zinc-700'
-              }`}
-            >
-              <i className={`fas ${ttsEnabled ? 'fa-volume-up' : 'fa-volume-mute'} text-xs`}></i>
-              <span>Voz</span>
-            </button>
-          )}
         </div>
+        {'speechSynthesis' in window && (
+          <button
+            onClick={() => {
+              const v = !ttsEnabled;
+              setTtsEnabled(v);
+              localStorage.setItem('stets_tts', String(v));
+              if (!v) window.speechSynthesis.cancel();
+            }}
+            className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black uppercase transition-colors border ${
+              ttsEnabled
+                ? 'bg-[#f0fad0] text-[#7ab800] border-[rgba(122,184,0,0.25)]'
+                : 'bg-[#f5f5f7] text-[#aeaeb2] border-[#e8e8ed]'
+            }`}
+          >
+            <i className={`fas ${ttsEnabled ? 'fa-volume-up' : 'fa-volume-mute'} text-xs`}></i>
+            <span>Voz</span>
+          </button>
+        )}
+      </div>
 
-        <div className="flex flex-col gap-3">
-          <input
-            type="text"
-            value={prompt}
-            onChange={e => setPrompt(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && analyzeText()}
-            placeholder={isRecording ? 'Ouvindo... fale agora' : 'Ex: "gastei 45 reais no mercado" ou "como estou indo?"'}
+      {/* Input row */}
+      <div className="flex flex-col gap-2.5">
+        <input
+          type="text"
+          value={prompt}
+          onChange={e => setPrompt(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && analyzeText()}
+          placeholder={isRecording ? 'Ouvindo... fale agora' : 'Ex: "gastei 45 reais no mercado"'}
+          disabled={loading}
+          className={`w-full bg-[#f5f5f7] border ${isRecording ? 'border-[#ff3b30]/40' : 'border-[#e8e8ed]'} rounded-2xl px-4 py-3.5 text-[#1d1d1f] text-sm outline-none focus:border-[rgba(122,184,0,0.5)] transition-all disabled:opacity-60 placeholder:text-[#aeaeb2]`}
+        />
+
+        <div className="flex gap-2">
+          {/* Camera */}
+          <button
+            onClick={() => photoInputRef.current?.click()}
+            disabled={loading || isRecording}
+            className="flex items-center gap-2 bg-[#f5f5f7] active:bg-[#e8e8ed] text-[#6e6e73] font-black px-4 py-3 rounded-2xl text-xs uppercase transition-all disabled:opacity-40 border border-[#e8e8ed]"
+          >
+            <i className="fas fa-camera text-sm"></i>
+            <span className="hidden sm:inline">Foto</span>
+          </button>
+          <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoCapture} />
+
+          {/* Mic */}
+          <button
+            onClick={toggleRecording}
             disabled={loading}
-            className={`w-full bg-zinc-900 border ${isRecording ? 'border-red-500/40' : 'border-zinc-800'} rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-green-400 transition-all shadow-inner disabled:opacity-60`}
-          />
+            className={`flex items-center gap-2 font-black px-4 py-3 rounded-2xl text-xs uppercase transition-all disabled:opacity-40 border ${
+              isRecording
+                ? 'bg-[#ff3b30] text-white border-[#ff3b30] shadow-lg shadow-[#ff3b30]/20'
+                : 'bg-[#f5f5f7] active:bg-[#e8e8ed] text-[#6e6e73] border-[#e8e8ed]'
+            }`}
+          >
+            <i className={`fas ${isRecording ? 'fa-stop-circle' : 'fa-microphone'} text-sm`}></i>
+            <span>{isRecording ? 'Parar' : 'Falar'}</span>
+          </button>
 
-          <div className="flex gap-2 flex-wrap">
-            <button
-              onClick={() => photoInputRef.current?.click()}
-              disabled={loading || isRecording}
-              className="flex items-center gap-2 bg-zinc-800 active:bg-zinc-700 text-zinc-300 font-black px-4 py-3 rounded-2xl text-xs uppercase transition-all disabled:opacity-40 border border-zinc-700"
-            >
-              <i className="fas fa-camera text-sm"></i>
-              <span className="hidden sm:inline">Comprovante</span>
-            </button>
-            <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoCapture} />
-
-            <button
-              onClick={toggleRecording}
-              disabled={loading}
-              className={`flex items-center gap-2 font-black px-4 py-3 rounded-2xl text-xs uppercase transition-all disabled:opacity-40 border ${
-                isRecording
-                  ? 'bg-red-500 text-white border-red-400 shadow-lg shadow-red-500/30'
-                  : 'bg-zinc-800 active:bg-zinc-700 text-zinc-300 border-zinc-700'
-              }`}
-            >
-              <i className={`fas ${isRecording ? 'fa-stop-circle' : 'fa-microphone'} text-sm`}></i>
-              <span>{isRecording ? 'Parar' : 'Falar'}</span>
-            </button>
-
-            <button
-              onClick={() => analyzeText()}
-              disabled={loading || !prompt.trim()}
-              className="ml-auto flex items-center gap-2 bg-gradient-to-br from-green-300 to-green-500 active:from-green-200 active:to-green-400 text-black font-black px-6 py-3 rounded-2xl text-xs uppercase transition-all disabled:opacity-40 shadow-lg active:scale-95"
-            >
-              {loading
-                ? <><i className="fas fa-circle-notch animate-spin"></i><span>Processando</span></>
-                : <><i className="fas fa-paper-plane text-sm"></i><span>Enviar</span></>
-              }
-            </button>
-          </div>
-
-          {response && (
-            <div className="mt-1 bg-zinc-900/80 border border-zinc-800 p-5 rounded-2xl text-zinc-300 text-sm leading-relaxed animate-in zoom-in-95 duration-300">
-              {response.split('\n').map((line, i) => (
-                <p key={i} className={line.startsWith('✅') ? 'text-green-400 font-bold' : line.startsWith('⚠️') ? 'text-green-300' : ''}>
-                  {line.replace(/\*\*(.*?)\*\*/g, '$1')}
-                </p>
-              ))}
-            </div>
-          )}
+          {/* Send */}
+          <button
+            onClick={() => analyzeText()}
+            disabled={loading || !prompt.trim()}
+            className="ml-auto flex items-center gap-2 k-btn-lime font-black px-6 py-3 rounded-2xl text-xs uppercase transition-all disabled:opacity-40"
+          >
+            {loading
+              ? <><i className="fas fa-circle-notch animate-spin"></i><span>Pensando</span></>
+              : <><i className="fas fa-paper-plane text-sm"></i><span>Enviar</span></>
+            }
+          </button>
         </div>
+
+        {/* Response text */}
+        {response && (
+          <div className="mt-1 bg-[#fafafa] border border-[#e8e8ed] p-4 rounded-2xl text-[#1d1d1f] text-sm leading-relaxed animate-in zoom-in-95 duration-300">
+            {response.split('\n').map((line, i) => (
+              <p key={i} className={line.startsWith('⚠️') ? 'text-[#ff3b30]' : ''}>
+                {line.replace(/\*\*(.*?)\*\*/g, '$1')}
+              </p>
+            ))}
+          </div>
+        )}
+
+        {/* Detected expense cards */}
+        {pendingExpenses.length > 0 && (
+          <div className="mt-1 space-y-2 animate-in slide-in-from-bottom-2 duration-300">
+            <p className="text-[10px] font-black uppercase tracking-widest text-[#aeaeb2]">
+              {pendingExpenses.length} despesa{pendingExpenses.length > 1 ? 's' : ''} detectada{pendingExpenses.length > 1 ? 's' : ''}
+            </p>
+            {pendingExpenses.map((exp, idx) => {
+              const matchedItem = items.find(i => i.id === exp.itemId);
+              const label = matchedItem?.description || exp.description || 'Despesa';
+              return (
+                <div
+                  key={idx}
+                  className="flex items-center gap-3 bg-[#f0fad0] border border-[rgba(122,184,0,0.25)] rounded-2xl px-4 py-3"
+                >
+                  <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center shrink-0 border border-[rgba(122,184,0,0.2)]">
+                    <i className="fas fa-receipt text-[#7ab800] text-xs"></i>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[#1d1d1f] font-black text-sm truncate leading-tight">{label}</p>
+                    <p className="text-[#7ab800] font-black text-xs k-num leading-tight">
+                      {formatCurrency(exp.value)}
+                      {exp.installments > 1 && <span className="text-[#aeaeb2] font-semibold"> · {exp.installments}x</span>}
+                    </p>
+                  </div>
+                  <div className="flex gap-1.5 shrink-0">
+                    <button
+                      onClick={() => dismissExpense(idx)}
+                      className="w-8 h-8 rounded-xl bg-white border border-[#e8e8ed] flex items-center justify-center active:scale-95"
+                    >
+                      <i className="fas fa-times text-[#aeaeb2] text-xs"></i>
+                    </button>
+                    <button
+                      onClick={() => launchExpense(exp, idx)}
+                      className="k-btn-lime px-4 py-2 rounded-xl text-xs font-black active:scale-95"
+                    >
+                      Lançar
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
