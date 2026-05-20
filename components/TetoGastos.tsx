@@ -75,27 +75,23 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
     if (!db || !householdId) { setColumnsLoaded(true); return; }
     loadTetoColumns(db, householdId).then((rows) => {
       if (rows.length > 0) {
-        setColumns(rows.map((r: any) => ({
+        const loaded = rows.map((r: any) => ({
           id: r.id,
           title: r.title,
           linkedItemId: r.linked_item_id ?? '',
-        })));
-      } else {
-        // Migração: importa colunas do localStorage se Supabase estiver vazio
-        try {
-          const saved = localStorage.getItem('teto_columns_v3');
-          if (saved) {
-            const local = JSON.parse(saved) as { id?: string; title?: string; linkedItemId?: string }[];
-            if (Array.isArray(local) && local.length > 0) {
-              setColumns(local.map(c => ({
-                id: c.id || crypto.randomUUID(),
-                title: c.title || '',
-                linkedItemId: c.linkedItemId || '',
-              })));
-            }
-          }
-        } catch {}
+        }));
+        // Dedup: keep only the first column per linkedItemId to fix accumulated duplicates
+        const seen = new Set<string>();
+        const deduped = loaded.filter(col => {
+          if (!col.linkedItemId) return true;
+          if (seen.has(col.linkedItemId)) return false;
+          seen.add(col.linkedItemId);
+          return true;
+        });
+        setColumns(deduped);
       }
+      // When Supabase has no columns, start empty — do NOT fall back to localStorage.
+      // localStorage is not isolated per profile and causes cross-profile contamination.
       setColumnsLoaded(true);
     }).catch(() => setColumnsLoaded(true));
   }, [db, householdId]);
@@ -142,7 +138,15 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
         title: item.description.toUpperCase().slice(0, 24).trim(),
         linkedItemId: item.id,
       }));
-      return [...updatedPrev, ...newCols];
+      const merged = [...updatedPrev, ...newCols];
+      // Final dedup: prevent accumulation of duplicate columns across sessions
+      const seenIds = new Set<string>();
+      return merged.filter(col => {
+        if (!col.linkedItemId) return true;
+        if (seenIds.has(col.linkedItemId)) return false;
+        seenIds.add(col.linkedItemId);
+        return true;
+      });
     });
   }, [columnsLoaded, items]);
 

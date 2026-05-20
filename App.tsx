@@ -59,6 +59,13 @@ const App: React.FC = () => {
   const pendingDeletesRef = useRef<Set<string>>(new Set());
   const userDataLoadedRef = useRef<string | null>(null); // tracks userId to prevent token-refresh reloads
   const coachViewLoadedRef = useRef<string | null>(null);
+  // Snapshot of coach's own data — restored when exiting a client view
+  const ownDataSnapshotRef = useRef<{ householdId: string; items: FinanceItem[]; startMonth: number; startYear: number } | null>(null);
+  // Mirrors of current state for capturing snapshots before async overwrites
+  const currentHouseholdIdRef = useRef<string | null>(null);
+  const currentItemsRef = useRef<FinanceItem[]>([]);
+  const currentStartMonthRef = useRef<number>(new Date().getMonth());
+  const currentStartYearRef = useRef<number>(new Date().getFullYear());
   const [tetoColumns, setTetoColumns] = useState<{ id: string; title: string; linkedItemId: string }[]>([]);
   const [pendingExpense, setPendingExpense] = useState<(DetectedExpense & { source: 'ai' | 'manual' }) | null>(null);
   // Guard: true only after items have been loaded from DB (prevents saving default items on load failure)
@@ -230,6 +237,12 @@ const App: React.FC = () => {
     loadData();
   }, [db, user]);
 
+  // Keep refs in sync with state so we can capture snapshots synchronously
+  useEffect(() => { currentHouseholdIdRef.current = householdId; }, [householdId]);
+  useEffect(() => { currentItemsRef.current = items; }, [items]);
+  useEffect(() => { currentStartMonthRef.current = startMonth; }, [startMonth]);
+  useEffect(() => { currentStartYearRef.current = startYear; }, [startYear]);
+
   // Quando coach entra no painel de um cliente, carrega os dados daquele household
   useEffect(() => {
     if (!db || !coachViewHouseholdId) return;
@@ -239,6 +252,15 @@ const App: React.FC = () => {
     async function loadClientData() {
       setDbLoading(true);
       try {
+        // Save coach's own state before overwriting (refs have current values synchronously)
+        if (currentHouseholdIdRef.current && currentHouseholdIdRef.current !== coachViewHouseholdId) {
+          ownDataSnapshotRef.current = {
+            householdId: currentHouseholdIdRef.current,
+            items: currentItemsRef.current,
+            startMonth: currentStartMonthRef.current,
+            startYear: currentStartYearRef.current,
+          };
+        }
         setHouseholdId(coachViewHouseholdId!);
         const [household, dbItems] = await Promise.all([
           getHousehold(db!, coachViewHouseholdId!),
@@ -256,6 +278,19 @@ const App: React.FC = () => {
 
     loadClientData();
   }, [db, coachViewHouseholdId]);
+
+  // Quando coach sai da visão de cliente, restaura os próprios dados
+  useEffect(() => {
+    if (coachViewHouseholdId) return; // só roda ao sair
+    const snap = ownDataSnapshotRef.current;
+    if (!snap) return;
+    ownDataSnapshotRef.current = null;
+    coachViewLoadedRef.current = null;
+    setHouseholdId(snap.householdId);
+    setItems(snap.items);
+    setStartMonth(snap.startMonth);
+    setStartYear(snap.startYear);
+  }, [coachViewHouseholdId]);
 
   // Salva item no Supabase sempre que items mudar (debounced)
   const saveTimeoutRef = useRef<any>(null);
