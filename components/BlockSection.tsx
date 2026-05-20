@@ -620,22 +620,25 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                         {(() => {
                           const linkedCard = item.linkedCardId ? allCards.find(c => c.id === item.linkedCardId) : null;
                           const isCardLinked = !!(linkedCard && item.linkType !== LinkType.DEBIT);
-                          if (!isCardLinked) return realSpent > 0 ? (
+                          const isCommitted = item.linkType === LinkType.INSTALLMENT || item.linkType === LinkType.ONCE;
+                          const mobileVal = item.values[mobileMonthIdx];
+                          const displayValue = realSpent > 0 ? realSpent : (isCardLinked && isCommitted && mobileVal > 0 ? mobileVal : 0);
+                          if (!displayValue) return realSpent > 0 ? (
                             <span className={`text-[10px] font-black px-2 py-1 rounded-xl k-num ${isOver ? 'bg-[#fff0f0] text-[#ff3b30]' : 'bg-[#f0f4ff] text-[#007aff]'}`}>
                               {formatCurrency(realSpent)}
                             </span>
                           ) : null;
                           let faturaLabel = '';
-                          if (linkedCard!.closingDay) {
-                            const todayDay = new Date().getDate();
-                            const faturaMonthIdx = todayDay >= linkedCard!.closingDay ? mobileMonthIdx + 1 : mobileMonthIdx;
-                            const faturaMonthData = months[Math.min(faturaMonthIdx, months.length - 1)];
-                            faturaLabel = faturaMonthData ? `→ Fatura ${faturaMonthData.monthName}` : linkedCard!.description?.split(' ')[0] || 'Cartão';
-                          } else {
-                            faturaLabel = `↗ ${linkedCard!.description?.split(' ')[0] || 'Cartão'}`;
+                          if (isCardLinked) {
+                            if (linkedCard!.closingDay) {
+                              const todayDay = new Date().getDate();
+                              const faturaMonthIdx = todayDay >= linkedCard!.closingDay ? mobileMonthIdx + 1 : mobileMonthIdx;
+                              const faturaMonthData = months[Math.min(faturaMonthIdx, months.length - 1)];
+                              faturaLabel = faturaMonthData ? `→ Fatura ${faturaMonthData.monthName}` : linkedCard!.description?.split(' ')[0] || 'Cartão';
+                            } else {
+                              faturaLabel = `↗ ${linkedCard!.description?.split(' ')[0] || 'Cartão'}`;
+                            }
                           }
-                          const displayValue = realSpent > 0 ? realSpent : item.values[mobileMonthIdx];
-                          if (!displayValue) return null;
                           return (
                             <span className={`text-[10px] font-black px-2 py-1 rounded-xl k-num flex items-center gap-1 flex-wrap ${realSpent > 0 && isOver ? 'bg-[#fff0f0] text-[#ff3b30]' : 'bg-[#f0f4ff] text-[#007aff]'}`}>
                               {faturaLabel && <span className="text-[8px] font-bold opacity-60 normal-case">{faturaLabel} ·</span>}
@@ -930,7 +933,8 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                         {(() => {
                           const linkedCard = item.linkedCardId ? allCards.find(c => c.id === item.linkedCardId) : null;
                           const isCardLinked = !!(linkedCard && item.linkType !== LinkType.DEBIT);
-                          const displayValue = realSpent > 0 ? realSpent : (isCardLinked && val > 0 ? val : 0);
+                          const isCommitted = item.linkType === LinkType.INSTALLMENT || item.linkType === LinkType.ONCE;
+                          const displayValue = realSpent > 0 ? realSpent : (isCardLinked && isCommitted && val > 0 ? val : 0);
                           if (!displayValue) return null;
                           let faturaLabel = '';
                           if (isCardLinked) {
