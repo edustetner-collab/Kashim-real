@@ -114,11 +114,10 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
     setColumns(prev => {
       const alreadyLinked = new Set(prev.map(c => c.linkedItemId).filter(Boolean));
       const isExpenseCategory = (item: FinanceItem) =>
-        item.category === CategoryType.FIXED_EXPENSE ||
         item.category === CategoryType.VARIABLE_EXPENSE ||
         item.category === CategoryType.PERSONAL_LEISURE;
       const hasActivity = (item: FinanceItem) =>
-        item.values.some(v => v > 0) ||
+        item.category === CategoryType.PERSONAL_LEISURE ||
         Object.values(item.partialExpenses ?? {}).some(arr => (arr as PartialExpense[]).length > 0);
       const toAdd = items.filter(item =>
         isExpenseCategory(item) &&
@@ -165,8 +164,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
         if (!col.linkedItemId) return true;
         const linked = items.find(i => i.id === col.linkedItemId);
         if (!linked || linked.category !== CategoryType.FIXED_EXPENSE) return true;
-        // Keep if item has a budget value set OR individual transactions tracked
-        if (linked.values.some(v => v > 0)) return true;
+        // FIXED_EXPENSE cards only stay if user actually tracked transactions there
         return Object.values(linked.partialExpenses ?? {}).some(arr => (arr as PartialExpense[]).length > 0);
       });
       return cleaned.length !== prev.length ? cleaned : prev;
@@ -573,7 +571,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                         />
                         <button
                           onClick={() => handleSubmitEntry(col.id, col.linkedItemId, valueInputRefs.current[col.id]?.value ?? '')}
-                          className="mr-2 k-btn-lime text-[10px] px-3 py-1.5"
+                          className="mr-3 shrink-0 k-btn-lime text-[10px] px-3 py-1.5"
                         >
                           OK
                         </button>

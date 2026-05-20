@@ -620,7 +620,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                         {(() => {
                           const linkedCard = item.linkedCardId ? allCards.find(c => c.id === item.linkedCardId) : null;
                           const isCardLinked = !!(linkedCard && item.linkType !== LinkType.DEBIT);
-                          const isCommitted = item.linkType === LinkType.INSTALLMENT || item.linkType === LinkType.ONCE;
+                          const isCommitted = item.linkType === LinkType.INSTALLMENT;
                           const mobileVal = item.values[mobileMonthIdx];
                           const displayValue = realSpent > 0 ? realSpent : (isCardLinked && isCommitted && mobileVal > 0 ? mobileVal : 0);
                           if (!displayValue) return realSpent > 0 ? (
@@ -933,7 +933,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                         {(() => {
                           const linkedCard = item.linkedCardId ? allCards.find(c => c.id === item.linkedCardId) : null;
                           const isCardLinked = !!(linkedCard && item.linkType !== LinkType.DEBIT);
-                          const isCommitted = item.linkType === LinkType.INSTALLMENT || item.linkType === LinkType.ONCE;
+                          const isCommitted = item.linkType === LinkType.INSTALLMENT;
                           const displayValue = realSpent > 0 ? realSpent : (isCardLinked && isCommitted && val > 0 ? val : 0);
                           if (!displayValue) return null;
                           let faturaLabel = '';
