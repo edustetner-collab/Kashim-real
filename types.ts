@@ -10,7 +10,8 @@ export enum CategoryType {
 export enum LinkType {
   RECURRING = 'Recorrente',
   INSTALLMENT = 'Parcelado',
-  DEBIT = 'Débito'
+  DEBIT = 'Débito',
+  ONCE = 'À Vista'
 }
 
 export interface MonthData {

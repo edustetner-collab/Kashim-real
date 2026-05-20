@@ -592,11 +592,14 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                 if (item.linkType === LinkType.DEBIT) paymentLabel = 'Débito / Dinheiro';
                 else if (item.linkedCardId) {
                   const card = allCards.find(c => c.id === item.linkedCardId);
-                  paymentLabel = `${card?.description || 'Cartão'} · ${item.linkType === LinkType.INSTALLMENT ? 'Parcelado' : 'Recorrente'}`;
+                  const typeLabel = item.linkType === LinkType.INSTALLMENT ? 'Parcelado' : item.linkType === LinkType.ONCE ? 'À Vista' : 'Recorrente';
+                  paymentLabel = `${card?.description || 'Cartão'} · ${typeLabel}`;
                 } else if (item.linkType === LinkType.INSTALLMENT) {
                   paymentLabel = 'Crédito Parcelado';
+                } else if (item.linkType === LinkType.ONCE) {
+                  paymentLabel = 'Crédito à Vista';
                 } else if (item.linkType === LinkType.RECURRING) {
-                  paymentLabel = 'Crédito';
+                  paymentLabel = 'Crédito Recorrente';
                 }
                 return (
                   <div className="mt-2 ml-7">
@@ -614,24 +617,29 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           {hasPayment ? paymentLabel : 'Forma de pagamento pendente'}
                           <i className="fas fa-chevron-down text-[8px] opacity-50 ml-0.5"></i>
                         </button>
-                        {realSpent > 0 && (() => {
+                        {(() => {
                           const linkedCard = item.linkedCardId ? allCards.find(c => c.id === item.linkedCardId) : null;
                           const isCardLinked = !!(linkedCard && item.linkType !== LinkType.DEBIT);
-                          let faturaLabel = '';
-                          if (isCardLinked) {
-                            if (linkedCard!.closingDay) {
-                              const todayDay = new Date().getDate();
-                              const faturaMonthIdx = todayDay >= linkedCard!.closingDay ? mobileMonthIdx + 1 : mobileMonthIdx;
-                              const faturaMonthData = months[Math.min(faturaMonthIdx, months.length - 1)];
-                              faturaLabel = faturaMonthData ? `→ Fatura ${faturaMonthData.monthName}` : linkedCard!.description?.split(' ')[0] || 'Cartão';
-                            } else {
-                              faturaLabel = `↗ ${linkedCard!.description?.split(' ')[0] || 'Cartão'}`;
-                            }
-                          }
-                          return (
-                            <span className={`text-[10px] font-black px-2 py-1 rounded-xl k-num flex items-center gap-1 flex-wrap ${isOver ? 'bg-[#fff0f0] text-[#ff3b30]' : 'bg-[#f0f4ff] text-[#007aff]'}`}>
-                              {faturaLabel && <span className="text-[8px] font-bold opacity-60 normal-case">{faturaLabel} ·</span>}
+                          if (!isCardLinked) return realSpent > 0 ? (
+                            <span className={`text-[10px] font-black px-2 py-1 rounded-xl k-num ${isOver ? 'bg-[#fff0f0] text-[#ff3b30]' : 'bg-[#f0f4ff] text-[#007aff]'}`}>
                               {formatCurrency(realSpent)}
+                            </span>
+                          ) : null;
+                          let faturaLabel = '';
+                          if (linkedCard!.closingDay) {
+                            const todayDay = new Date().getDate();
+                            const faturaMonthIdx = todayDay >= linkedCard!.closingDay ? mobileMonthIdx + 1 : mobileMonthIdx;
+                            const faturaMonthData = months[Math.min(faturaMonthIdx, months.length - 1)];
+                            faturaLabel = faturaMonthData ? `→ Fatura ${faturaMonthData.monthName}` : linkedCard!.description?.split(' ')[0] || 'Cartão';
+                          } else {
+                            faturaLabel = `↗ ${linkedCard!.description?.split(' ')[0] || 'Cartão'}`;
+                          }
+                          const displayValue = realSpent > 0 ? realSpent : item.values[mobileMonthIdx];
+                          if (!displayValue) return null;
+                          return (
+                            <span className={`text-[10px] font-black px-2 py-1 rounded-xl k-num flex items-center gap-1 flex-wrap ${realSpent > 0 && isOver ? 'bg-[#fff0f0] text-[#ff3b30]' : 'bg-[#f0f4ff] text-[#007aff]'}`}>
+                              {faturaLabel && <span className="text-[8px] font-bold opacity-60 normal-case">{faturaLabel} ·</span>}
+                              {formatCurrency(displayValue)}
                             </span>
                           );
                         })()}
@@ -679,6 +687,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                                 }
                               }}
                             >
+                              <option value={LinkType.ONCE}>À Vista</option>
                               <option value={LinkType.RECURRING}>Recorrente</option>
                               <option value={LinkType.INSTALLMENT}>Parcelado</option>
                             </select>
@@ -817,11 +826,14 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                       if (item.linkType === LinkType.DEBIT) paymentLabel = 'Débito';
                       else if (item.linkedCardId) {
                         const card = allCards.find(c => c.id === item.linkedCardId);
-                        paymentLabel = `${card?.description || 'Cartão'} · ${item.linkType === LinkType.INSTALLMENT ? 'Parcelado' : 'Recorrente'}`;
+                        const typeLabel = item.linkType === LinkType.INSTALLMENT ? 'Parcelado' : item.linkType === LinkType.ONCE ? 'À Vista' : 'Recorrente';
+                        paymentLabel = `${card?.description || 'Cartão'} · ${typeLabel}`;
                       } else if (item.linkType === LinkType.INSTALLMENT) {
                         paymentLabel = 'Crédito Parcelado';
+                      } else if (item.linkType === LinkType.ONCE) {
+                        paymentLabel = 'Crédito à Vista';
                       } else if (item.linkType === LinkType.RECURRING) {
-                        paymentLabel = 'Crédito';
+                        paymentLabel = 'Crédito Recorrente';
                       }
                       return (
                       <div className="px-2 pb-1 flex flex-col gap-1">
@@ -869,6 +881,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                                 setOpenPaymentItemId(null);
                               }}
                             >
+                              <option value={LinkType.ONCE}>À Vista</option>
                               <option value={LinkType.RECURRING}>Recorrente</option>
                               <option value={LinkType.INSTALLMENT}>Parcelado</option>
                             </select>
@@ -914,9 +927,11 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                             <i className="fas fa-copy"></i>
                           </button>
                         </div>
-                        {realSpent > 0 && (() => {
+                        {(() => {
                           const linkedCard = item.linkedCardId ? allCards.find(c => c.id === item.linkedCardId) : null;
                           const isCardLinked = !!(linkedCard && item.linkType !== LinkType.DEBIT);
+                          const displayValue = realSpent > 0 ? realSpent : (isCardLinked && val > 0 ? val : 0);
+                          if (!displayValue) return null;
                           let faturaLabel = '';
                           if (isCardLinked) {
                             if (linkedCard!.closingDay) {
@@ -929,9 +944,9 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                             }
                           }
                           return (
-                            <div className={`text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-1 flex-wrap ${isOver ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
+                            <div className={`text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-1 flex-wrap ${realSpent > 0 && isOver ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
                               {faturaLabel && <span className="text-[8px] opacity-60 normal-case font-bold">{faturaLabel} ·</span>}
-                              {formatCurrency(realSpent)}
+                              {formatCurrency(displayValue)}
                             </div>
                           );
                         })()}
