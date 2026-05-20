@@ -165,6 +165,8 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
         if (!col.linkedItemId) return true;
         const linked = items.find(i => i.id === col.linkedItemId);
         if (!linked || linked.category !== CategoryType.FIXED_EXPENSE) return true;
+        // Keep if item has a budget value set OR individual transactions tracked
+        if (linked.values.some(v => v > 0)) return true;
         return Object.values(linked.partialExpenses ?? {}).some(arr => (arr as PartialExpense[]).length > 0);
       });
       return cleaned.length !== prev.length ? cleaned : prev;
