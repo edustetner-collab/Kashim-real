@@ -917,10 +917,20 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                         {realSpent > 0 && (() => {
                           const linkedCard = item.linkedCardId ? allCards.find(c => c.id === item.linkedCardId) : null;
                           const isCardLinked = !!(linkedCard && item.linkType !== LinkType.DEBIT);
-                          const cardShortName = isCardLinked ? (linkedCard!.description?.split(' ')[0] || 'Cartão') : '';
+                          let faturaLabel = '';
+                          if (isCardLinked) {
+                            if (linkedCard!.closingDay) {
+                              const todayDay = new Date().getDate();
+                              const faturaMonthIdx = todayDay >= linkedCard!.closingDay ? mIdx + 1 : mIdx;
+                              const faturaMonthData = months[Math.min(faturaMonthIdx, months.length - 1)];
+                              faturaLabel = faturaMonthData ? `→ Fatura ${faturaMonthData.monthName}` : linkedCard!.description?.split(' ')[0] || 'Cartão';
+                            } else {
+                              faturaLabel = `↗ ${linkedCard!.description?.split(' ')[0] || 'Cartão'}`;
+                            }
+                          }
                           return (
-                            <div className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase flex items-center gap-1 ${isOver ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
-                              {isCardLinked && <span className="text-[8px] opacity-60 normal-case font-bold">↗ {cardShortName} ·</span>}
+                            <div className={`text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-1 flex-wrap ${isOver ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
+                              {faturaLabel && <span className="text-[8px] opacity-60 normal-case font-bold">{faturaLabel} ·</span>}
                               {formatCurrency(realSpent)}
                             </div>
                           );
