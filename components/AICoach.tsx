@@ -1,5 +1,6 @@
 
 import React, { useState, useRef } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 import { SpeechRecognition as NativeSpeech } from '@capacitor-community/speech-recognition';
 import { SummaryData, FinanceItem, CategoryType } from '../types';
 import { formatCurrency } from '../constants';
@@ -42,6 +43,7 @@ const compressImage = (base64: string, mime: string): Promise<{ data: string; mi
   });
 
 const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onExpenseDetected, tetoColumns }) => {
+  const { getToken } = useAuth();
   const [prompt, setPrompt] = useState('');
   const [response, setResponse] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -103,9 +105,10 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
   };
 
   const callStets = async (userMessage: string, imageData?: string, imageMimeType?: string) => {
+    const token = await getToken();
     const res = await fetch('/api/stets', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: JSON.stringify({
         userMessage,
         imageData,

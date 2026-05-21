@@ -22,13 +22,32 @@ function buildUserParts(userMessage?: string, imageData?: string, imageMimeType?
   return parts;
 }
 
+function verifyClerkToken(authHeader: string): boolean {
+  const token = (authHeader ?? '').replace('Bearer ', '').trim();
+  if (!token) return false;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return false;
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    if (!payload.sub) return false;
+    if (payload.exp && payload.exp < Date.now() / 1000) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin', 'https://kashim.com.br');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).end();
+
+  if (!verifyClerkToken(req.headers.authorization ?? '')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
 
   try {
     const { userMessage, imageData, imageMimeType, systemPrompt, availableItems } = req.body as {
