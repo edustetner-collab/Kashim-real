@@ -414,7 +414,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
                   <div className="flex gap-2">
                     <button
                       onClick={() => redirectToManual(exp, idx)}
-                      className="flex-1 py-2 rounded-xl bg-white border border-[rgba(122,184,0,0.3)] text-[#6e6e73] text-[10px] font-black uppercase tracking-wide active:scale-95 transition-all"
+                      className="flex-1 py-2 rounded-xl bg-[#e8f7c0] border border-[rgba(122,184,0,0.4)] text-[#5a8a00] text-[10px] font-black uppercase tracking-wide active:scale-95 active:bg-[#d4ef9e] transition-all"
                     >
                       É outro gasto
                     </button>

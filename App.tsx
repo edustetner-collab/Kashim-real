@@ -623,12 +623,18 @@ const App: React.FC = () => {
     }
 
     // Stamp payment method so "Forma de pagamento pendente" doesn't persist
-    const newLinkType = data.isCredit ? LinkType.INSTALLMENT : LinkType.DEBIT;
-    setItems(prev => prev.map(item =>
-      item.id === data.itemId
-        ? { ...item, linkType: item.linkType ?? newLinkType }
-        : item
-    ));
+    const newLinkType = !data.isCredit
+      ? LinkType.DEBIT
+      : (data.installments ?? 1) > 1 ? LinkType.INSTALLMENT : LinkType.ONCE;
+    const linkedCardId = (data as DetectedExpense & { linkedCardId?: string }).linkedCardId;
+    setItems(prev => prev.map(item => {
+      if (item.id !== data.itemId) return item;
+      return {
+        ...item,
+        linkType: item.linkType ?? newLinkType,
+        ...(data.isCredit && linkedCardId ? { linkedCardId } : {}),
+      };
+    }));
 
     setPendingExpense(null);
   };

@@ -10,6 +10,7 @@ export interface DetectedExpense {
   installments: number;
   isCredit: boolean;
   category?: CategoryType;
+  linkedCardId?: string;
 }
 
 interface ExpenseSheetProps {
@@ -77,6 +78,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
   const [creditType, setCreditType] = useState<CreditType>('');
   const [installCount, setInstallCount] = useState('');
   const [showItemPicker, setShowItemPicker] = useState(false);
+  const [selectedCardId, setSelectedCardId] = useState('');
 
   const valueRef = useRef<HTMLInputElement>(null);
 
@@ -93,6 +95,9 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
       const init = Math.max(1, initialInstallments ?? 1);
       if (init > 1) { setPayMethod('credit'); setCreditType('parcelado'); setInstallCount(String(init)); }
       else { setPayMethod(''); setCreditType(''); setInstallCount(''); }
+      // Pre-select card if item already has one linked
+      const matchedItem = items.find(i => i.id === (initialItemId ?? ''));
+      setSelectedCardId(matchedItem?.linkedCardId ?? '');
     } else {
       setStep('category');
       setCategory(null);
@@ -101,6 +106,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
       setValue(initialValue ? String(initialValue) : '');
       setPayMethod('');
       setCreditType('');
+      setSelectedCardId('');
       const initManual = Math.max(1, initialInstallments ?? 1);
       setInstallCount(initManual > 1 ? String(initManual) : '');
     }
@@ -154,12 +160,15 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
       installments: isParcelado ? installments : 1,
       isCredit,
       category: category ?? selectedItem?.category,
+      linkedCardId: isCredit && selectedCardId ? selectedCardId : undefined,
     });
   };
 
   if (!open) return null;
 
   const isPickerVisible = showItemPicker || (source === 'manual' && step === 'item-picker');
+
+  const creditCards = items.filter(i => i.category === CategoryType.CREDIT_CARD);
 
   const renderValuePayment = () => (
     <div className="space-y-4">
@@ -218,6 +227,28 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Card picker — shown when credit is selected */}
+      {isCredit && creditCards.length > 0 && (
+        <div>
+          <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-2">Em qual cartão?</p>
+          <div className="flex flex-wrap gap-2">
+            {creditCards.map(card => (
+              <button
+                key={card.id}
+                onClick={() => setSelectedCardId(prev => prev === card.id ? '' : card.id)}
+                className={`px-3 py-2 rounded-xl text-xs font-black transition-all active:scale-95 border ${
+                  selectedCardId === card.id
+                    ? 'bg-green-400/20 text-green-300 border-green-400/40'
+                    : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                }`}
+              >
+                {card.description}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Credit sub-options */}
       {isCredit && (
