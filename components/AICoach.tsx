@@ -141,6 +141,11 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
     dismissExpense(idx);
   };
 
+  const redirectToManual = (exp: RawExpense, idx: number) => {
+    onExpenseDetected({ itemId: '', value: exp.value, description: exp.description, installments: exp.installments, isCredit: false });
+    dismissExpense(idx);
+  };
+
   const analyzeText = async (text?: string) => {
     const finalPrompt = text ?? prompt;
     if (!finalPrompt.trim()) return;
@@ -384,28 +389,38 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
               return (
                 <div
                   key={idx}
-                  className="flex items-center gap-3 bg-[#f0fad0] border border-[rgba(122,184,0,0.25)] rounded-2xl px-4 py-3"
+                  className="flex flex-col gap-2.5 bg-[#f0fad0] border border-[rgba(122,184,0,0.25)] rounded-2xl px-4 py-3"
                 >
-                  <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center shrink-0 border border-[rgba(122,184,0,0.2)]">
-                    <i className="fas fa-receipt text-[#7ab800] text-xs"></i>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[#1d1d1f] font-black text-sm truncate leading-tight">{label}</p>
-                    <p className="text-[#7ab800] font-black text-xs k-num leading-tight">
-                      {formatCurrency(exp.value)}
-                      {exp.installments > 1 && <span className="text-[#aeaeb2] font-semibold"> · {exp.installments}x</span>}
-                    </p>
-                  </div>
-                  <div className="flex gap-1.5 shrink-0">
+                  {/* Info row */}
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center shrink-0 border border-[rgba(122,184,0,0.2)]">
+                      <i className="fas fa-receipt text-[#7ab800] text-xs"></i>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[#1d1d1f] font-black text-sm truncate leading-tight">{label}</p>
+                      <p className="text-[#7ab800] font-black text-xs k-num leading-tight">
+                        {formatCurrency(exp.value)}
+                        {exp.installments > 1 && <span className="text-[#aeaeb2] font-semibold"> · {exp.installments}x</span>}
+                      </p>
+                    </div>
                     <button
                       onClick={() => dismissExpense(idx)}
-                      className="w-8 h-8 rounded-xl bg-white border border-[#e8e8ed] flex items-center justify-center active:scale-95"
+                      className="w-7 h-7 rounded-lg bg-white/70 border border-[rgba(122,184,0,0.2)] flex items-center justify-center active:scale-95 shrink-0"
                     >
                       <i className="fas fa-times text-[#aeaeb2] text-xs"></i>
                     </button>
+                  </div>
+                  {/* Action row */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => redirectToManual(exp, idx)}
+                      className="flex-1 py-2 rounded-xl bg-white border border-[rgba(122,184,0,0.3)] text-[#6e6e73] text-[10px] font-black uppercase tracking-wide active:scale-95 transition-all"
+                    >
+                      É outro gasto
+                    </button>
                     <button
                       onClick={() => launchExpense(exp, idx)}
-                      className="k-btn-lime px-4 py-2 rounded-xl text-xs font-black active:scale-95"
+                      className="flex-[2] k-btn-lime py-2 rounded-xl text-xs font-black active:scale-95"
                     >
                       Lançar
                     </button>
