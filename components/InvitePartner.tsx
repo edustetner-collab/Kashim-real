@@ -27,6 +27,8 @@ const InvitePartner: React.FC<InvitePartnerProps> = ({ db, householdId, currentU
   const [invites, setInvites] = useState<Invite[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [pendingLink, setPendingLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     loadMembers();
@@ -76,13 +78,15 @@ const InvitePartner: React.FC<InvitePartnerProps> = ({ db, householdId, currentU
 
       if (error) throw error;
 
-      // Link de convite
       const inviteLink = `${window.location.origin}?invite=${token}`;
+      const subject = encodeURIComponent('Convite para o Kashim — Finanças do Casal');
+      const body = encodeURIComponent(
+        `Olá!\n\nVocê foi convidado(a) para acessar o Kashim comigo — nosso app de controle financeiro do casal.\n\nClique no link abaixo para aceitar:\n${inviteLink}\n\n— Kashim`
+      );
+      window.open(`mailto:${email.trim()}?subject=${subject}&body=${body}`);
 
-      setMessage({
-        type: 'success',
-        text: `Convite criado! Envie este link para ${email}: ${inviteLink}`,
-      });
+      setPendingLink(inviteLink);
+      setMessage({ type: 'success', text: `Convite criado para ${email.trim()}. Seu app de e-mail foi aberto para envio.` });
       setEmail('');
       loadInvites();
     } catch (err: any) {
@@ -183,6 +187,30 @@ const InvitePartner: React.FC<InvitePartnerProps> = ({ db, householdId, currentU
               {message.type === 'success' && <i className="fas fa-check-circle mr-2"></i>}
               {message.type === 'error' && <i className="fas fa-exclamation-circle mr-2"></i>}
               {message.text}
+            </div>
+          )}
+          {pendingLink && (
+            <div className="flex flex-col gap-2">
+              <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest">Link do convite (caso o e-mail não abra)</p>
+              <div className="flex gap-2">
+                <input
+                  readOnly
+                  value={pendingLink}
+                  className="flex-1 bg-zinc-800 border border-zinc-700 rounded-2xl px-3 py-2 text-zinc-400 text-xs outline-none truncate"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(pendingLink).then(() => {
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    });
+                  }}
+                  className="bg-zinc-700 hover:bg-zinc-600 text-white font-black px-4 py-2 rounded-2xl text-xs uppercase transition-all shrink-0"
+                >
+                  {copied ? <i className="fas fa-check text-green-400"></i> : <i className="fas fa-copy"></i>}
+                </button>
+              </div>
             </div>
           )}
         </form>

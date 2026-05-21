@@ -226,19 +226,8 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
   }
 
   function handleExportPDF() {
-    const style = document.createElement('style');
-    style.id = 'kashim-print-style';
-    style.textContent = `
-      @media print {
-        body * { visibility: hidden !important; }
-        #kashim-print-target, #kashim-print-target * { visibility: visible !important; }
-        #kashim-print-target { position: fixed; left: 0; top: 0; width: 100%; }
-        .no-print { display: none !important; }
-      }
-    `;
-    document.head.appendChild(style);
-    window.print();
-    setTimeout(() => { const el = document.getElementById('kashim-print-style'); el?.remove(); }, 1000);
+    onClose();
+    setTimeout(() => window.print(), 350);
   }
 
   const hasActiveCoach = coachAccess.length > 0;
