@@ -1,9 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import jwt from 'jsonwebtoken';
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2026-03-25.dahlia' });
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL!,
@@ -28,7 +25,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const clerkUserId = payload.sub;
 
-  // Busca o household do usuário
   const { data: membership } = await supabase
     .from('household_members')
     .select('household_id')
@@ -39,17 +35,72 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const householdId = membership.household_id;
   const { origin } = req.body as { origin?: string };
-  const baseUrl = origin || 'https://kashim-gilt.vercel.app';
+  const baseUrl = (origin ?? 'https://kashim.com.br').replace(/\/$/, '');
 
-  const session = await stripe.checkout.sessions.create({
-    mode: 'subscription',
-    payment_method_types: ['card'],
-    line_items: [{ price: process.env.STRIPE_PRICE_ID!, quantity: 1 }],
-    success_url: `${baseUrl}/?payment=success`,
-    cancel_url: `${baseUrl}/?payment=cancelled`,
+  const pagarmeKey = process.env.PAGARME_SECRET_KEY!;
+  const authHeader = `Basic ${Buffer.from(`${pagarmeKey}:`).toString('base64')}`;
+
+  const orderBody = {
+    items: [
+      {
+        amount: 999,
+        description: 'Kashim Premium — Mensal',
+        quantity: 1,
+        code: 'kashim_monthly',
+      },
+    ],
+    customer: {
+      type: 'individual',
+    },
+    payments: [
+      {
+        payment_method: 'checkout',
+        checkout: {
+          expires_in: 120,
+          billing_address_editable: false,
+          customer_editable: true,
+          accepted_payment_methods: ['credit_card', 'pix', 'boleto'],
+          success_url: `${baseUrl}/?payment=success`,
+          default_payment_method: 'pix',
+          credit_card: {
+            statement_descriptor: 'KASHIM',
+            installments: [{ number: 1, total: 999 }],
+          },
+        },
+      },
+    ],
     metadata: { householdId, clerkUserId },
-    locale: 'pt-BR',
-  });
+  };
 
-  return res.status(200).json({ url: session.url });
+  try {
+    const pmRes = await fetch('https://api.pagar.me/core/v5/orders', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: authHeader,
+      },
+      body: JSON.stringify(orderBody),
+    });
+
+    if (!pmRes.ok) {
+      const errText = await pmRes.text();
+      console.error('Pagar.me error:', errText);
+      return res.status(502).json({ error: 'Erro ao criar sessão de pagamento' });
+    }
+
+    const order = (await pmRes.json()) as {
+      id: string;
+      checkouts?: { payment_url?: string }[];
+    };
+
+    const checkoutUrl = order.checkouts?.[0]?.payment_url;
+    if (!checkoutUrl) {
+      return res.status(502).json({ error: 'URL de pagamento não disponível' });
+    }
+
+    return res.status(200).json({ url: checkoutUrl });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Erro interno';
+    return res.status(500).json({ error: message });
+  }
 }
