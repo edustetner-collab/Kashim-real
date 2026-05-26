@@ -1,5 +1,4 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -7,24 +6,17 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!
 );
 
-export const config = { api: { bodyParser: false } };
+export const config = { api: { bodyParser: true } };
 
-async function getRawBody(req: VercelRequest): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => chunks.push(chunk));
-    req.on('end', () => resolve(Buffer.concat(chunks)));
-    req.on('error', reject);
-  });
-}
-
-function verifySignature(rawBody: Buffer, signature: string, secret: string): boolean {
-  const expected = `sha256=${crypto.createHmac('sha256', secret).update(rawBody).digest('hex')}`;
-  try {
-    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
-  } catch {
-    return false;
-  }
+function verifyBasicAuth(authHeader: string | undefined): boolean {
+  if (!authHeader?.startsWith('Basic ')) return false;
+  const encoded = authHeader.slice(6);
+  const decoded = Buffer.from(encoded, 'base64').toString('utf8');
+  const [user, pass] = decoded.split(':');
+  const expectedUser = process.env.PAGARME_WEBHOOK_USER ?? '';
+  const expectedPass = process.env.PAGARME_WEBHOOK_PASS ?? '';
+  if (!expectedUser || !expectedPass) return true; // not configured yet — allow
+  return user === expectedUser && pass === expectedPass;
 }
 
 interface PagarmeEvent {
@@ -42,21 +34,11 @@ interface PagarmeEvent {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).end();
 
-  const rawBody = await getRawBody(req);
-  const sig = (req.headers['x-hub-signature'] ?? '') as string;
-  const secret = process.env.PAGARME_WEBHOOK_SECRET ?? '';
-
-  if (secret && sig && !verifySignature(rawBody, sig, secret)) {
-    return res.status(400).json({ error: 'Invalid signature' });
+  if (!verifyBasicAuth(req.headers.authorization as string | undefined)) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  let event: PagarmeEvent;
-  try {
-    event = JSON.parse(rawBody.toString('utf8'));
-  } catch {
-    return res.status(400).json({ error: 'Invalid JSON' });
-  }
-
+  const event = req.body as PagarmeEvent;
   const { type, data } = event;
   const householdId = data?.metadata?.householdId;
 
