@@ -84,8 +84,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!pmRes.ok) {
       const errText = await pmRes.text();
-      console.error('Pagar.me error:', errText);
-      return res.status(502).json({ error: 'Erro ao criar sessão de pagamento' });
+      return res.status(502).json({ error: `Pagar.me ${pmRes.status}: ${errText}` });
     }
 
     const order = (await pmRes.json()) as {
