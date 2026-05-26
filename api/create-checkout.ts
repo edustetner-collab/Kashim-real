@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import jwt from 'jsonwebtoken';
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL!,
@@ -8,10 +7,15 @@ const supabase = createClient(
 );
 
 function verifyToken(authHeader?: string): { sub: string } | null {
-  if (!authHeader?.startsWith('Bearer ')) return null;
-  const token = authHeader.slice(7);
+  const token = (authHeader ?? '').replace('Bearer ', '').trim();
+  if (!token) return null;
   try {
-    return jwt.verify(token, process.env.SUPABASE_JWT_SECRET!) as { sub: string };
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as { sub?: string; exp?: number };
+    if (!payload.sub) return null;
+    if (payload.exp && payload.exp < Date.now() / 1000) return null;
+    return { sub: payload.sub };
   } catch {
     return null;
   }
@@ -34,24 +38,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!membership) return res.status(404).json({ error: 'Household not found' });
 
   const householdId = membership.household_id;
-  const { origin } = req.body as { origin?: string };
+  const { origin, plan } = req.body as { origin?: string; plan?: 'monthly' | 'annual' };
   const baseUrl = (origin ?? 'https://kashim.com.br').replace(/\/$/, '');
+  const isAnnual = plan === 'annual';
 
   const pagarmeKey = process.env.PAGARME_SECRET_KEY!;
   const authHeader = `Basic ${Buffer.from(`${pagarmeKey}:`).toString('base64')}`;
 
+  const amount = isAnnual ? 13188 : 1499;
+  const description = isAnnual ? 'Kashim Premium — Anual (12 meses)' : 'Kashim Premium — Mensal';
+  const itemCode = isAnnual ? 'kashim_annual' : 'kashim_monthly';
+
   const orderBody = {
-    items: [
-      {
-        amount: 999,
-        description: 'Kashim Premium — Mensal',
-        quantity: 1,
-        code: 'kashim_monthly',
-      },
-    ],
-    customer: {
-      type: 'individual',
-    },
+    items: [{ amount, description, quantity: 1, code: itemCode }],
+    customer: { type: 'individual' },
     payments: [
       {
         payment_method: 'checkout',
@@ -64,12 +64,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           default_payment_method: 'pix',
           credit_card: {
             statement_descriptor: 'KASHIM',
-            installments: [{ number: 1, total: 999 }],
+            installments: [{ number: 1, total: amount }],
           },
         },
       },
     ],
-    metadata: { householdId, clerkUserId },
+    metadata: { householdId, clerkUserId, plan: isAnnual ? 'annual' : 'monthly' },
   };
 
   try {

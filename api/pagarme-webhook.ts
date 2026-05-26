@@ -27,6 +27,7 @@ interface PagarmeEvent {
     metadata?: {
       householdId?: string;
       clerkUserId?: string;
+      plan?: string;
     };
   };
 }
@@ -41,16 +42,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const event = req.body as PagarmeEvent;
   const { type, data } = event;
   const householdId = data?.metadata?.householdId;
+  const plan = data?.metadata?.plan ?? 'monthly';
 
   if (!householdId) return res.status(200).json({ received: true });
 
   if (type === 'order.paid') {
+    const now = new Date();
+    const expiresAt = new Date(now);
+    expiresAt.setMonth(expiresAt.getMonth() + (plan === 'annual' ? 12 : 1));
+
     await supabase
       .from('households')
       .update({
         subscription_status: 'active',
         stripe_subscription_id: data?.id ?? null,
-        subscription_started_at: new Date().toISOString(),
+        subscription_started_at: now.toISOString(),
+        subscription_expires_at: expiresAt.toISOString(),
       })
       .eq('id', householdId);
   }

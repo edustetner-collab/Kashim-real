@@ -38,6 +38,7 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
   const [subLoading, setSubLoading] = useState(false);
   const [subError, setSubError] = useState('');
   const [subStartedAt, setSubStartedAt] = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'annual'>('annual');
 
   // Coach access
   const [coachAccess, setCoachAccess] = useState<any[]>([]);
@@ -95,7 +96,7 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
       const res = await fetch('/api/create-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ plan: selectedPlan }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { error?: string };
@@ -655,62 +656,78 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
                 </button>
               </div>
             ) : (
-              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden">
-                <div className="bg-gradient-to-br from-green-500/20 via-green-400/10 to-transparent p-6 pb-4">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-12 h-12 bg-green-500/20 border border-green-500/30 rounded-2xl flex items-center justify-center flex-shrink-0">
-                      <i className="fas fa-crown text-green-400 text-xl"></i>
+              <div className="flex flex-col gap-3">
+                {/* Plan selector */}
+                <button
+                  onClick={() => setSelectedPlan('annual')}
+                  className={`relative w-full rounded-3xl p-5 border-2 text-left transition-all ${selectedPlan === 'annual' ? 'border-green-500 bg-green-500/10' : 'border-zinc-700 bg-zinc-900'}`}
+                >
+                  {selectedPlan === 'annual' && (
+                    <div className="absolute top-3 right-3 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
+                      <i className="fas fa-check text-black text-[9px]"></i>
                     </div>
-                    <div>
-                      <p className="text-white font-black text-base uppercase italic tracking-tight">Kashim Premium</p>
-                      <p className="text-green-400 font-black text-2xl leading-tight">
-                        R$ 9,99<span className="text-zinc-500 text-sm font-normal">/mês</span>
-                      </p>
-                    </div>
+                  )}
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="bg-green-500 text-black text-[9px] font-black uppercase px-2 py-0.5 rounded-full">Mais popular</span>
                   </div>
-                  <p className="text-zinc-400 text-xs leading-relaxed">
-                    Controle financeiro completo com inteligência artificial para guiar suas decisões.
-                  </p>
-                </div>
+                  <p className="text-white font-black text-sm uppercase tracking-wide">Plano Anual</p>
+                  <div className="flex items-baseline gap-1 mt-0.5">
+                    <span className="text-green-400 font-black text-2xl">R$ 10,99</span>
+                    <span className="text-zinc-500 text-xs">/mês</span>
+                    <span className="text-zinc-600 text-xs ml-1">— R$ 131,88 à vista</span>
+                  </div>
+                  <p className="text-zinc-500 text-[10px] mt-1">Economia de R$ 48 vs. mensal</p>
+                </button>
 
-                <div className="px-6 py-4 flex flex-col gap-3 border-t border-zinc-800">
+                <button
+                  onClick={() => setSelectedPlan('monthly')}
+                  className={`relative w-full rounded-3xl p-5 border-2 text-left transition-all ${selectedPlan === 'monthly' ? 'border-green-500 bg-green-500/10' : 'border-zinc-700 bg-zinc-900'}`}
+                >
+                  {selectedPlan === 'monthly' && (
+                    <div className="absolute top-3 right-3 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
+                      <i className="fas fa-check text-black text-[9px]"></i>
+                    </div>
+                  )}
+                  <p className="text-white font-black text-sm uppercase tracking-wide">Plano Mensal</p>
+                  <div className="flex items-baseline gap-1 mt-0.5">
+                    <span className="text-white font-black text-2xl">R$ 14,99</span>
+                    <span className="text-zinc-500 text-xs">/mês</span>
+                  </div>
+                  <p className="text-zinc-500 text-[10px] mt-1">Cancele quando quiser</p>
+                </button>
+
+                {/* Benefits */}
+                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl px-5 py-4 flex flex-col gap-2.5">
                   {([
-                    ['fa-robot', 'AICoach por voz', 'Registre gastos falando e receba análises inteligentes'],
-                    ['fa-chart-line', 'Dashboard completo', 'Visualize tetos, saldos e projeções mensais'],
-                    ['fa-heart', 'Modo Casal', 'Compartilhe o plano financeiro com seu parceiro'],
-                    ['fa-envelope', 'Resumo semanal', 'Receba insights do seu mês direto no e-mail'],
-                    ['fa-file-pdf', 'Exportação em PDF', 'Exporte seu plano financeiro a qualquer momento'],
-                  ] as const).map(([icon, title, desc]) => (
-                    <div key={title} className="flex items-start gap-3">
-                      <div className="w-8 h-8 bg-green-500/10 border border-green-500/20 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <i className={`fas ${icon} text-green-400 text-xs`}></i>
-                      </div>
-                      <div>
-                        <p className="text-white text-sm font-bold">{title}</p>
-                        <p className="text-zinc-500 text-xs">{desc}</p>
-                      </div>
+                    ['fa-robot', 'AICoach por voz'],
+                    ['fa-chart-line', 'Dashboard completo com tetos'],
+                    ['fa-heart', 'Modo Casal'],
+                    ['fa-envelope', 'Resumo semanal por e-mail'],
+                    ['fa-file-pdf', 'Exportação em PDF'],
+                  ] as const).map(([icon, title]) => (
+                    <div key={title} className="flex items-center gap-2.5">
+                      <i className={`fas ${icon} text-green-400 text-xs w-4 text-center`}></i>
+                      <p className="text-zinc-300 text-sm">{title}</p>
                     </div>
                   ))}
                 </div>
 
-                <div className="px-6 pb-6 pt-2">
-                  {subError && (
-                    <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-4">
-                      <i className="fas fa-exclamation-circle text-red-400 text-sm mt-0.5"></i>
-                      <span className="text-red-400 text-sm">{subError}</span>
-                    </div>
-                  )}
-                  <button
-                    onClick={handleSubscribe}
-                    disabled={subLoading}
-                    className="w-full bg-green-500 hover:bg-green-400 active:scale-[0.98] disabled:opacity-50 text-black font-black py-4 rounded-2xl transition-all text-sm uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-green-500/20"
-                  >
-                    {subLoading
-                      ? <i className="fas fa-circle-notch animate-spin"></i>
-                      : <><i className="fas fa-crown"></i> Assinar agora</>}
-                  </button>
-                  <p className="text-zinc-600 text-[10px] text-center mt-3">Cancele quando quiser • Sem fidelidade</p>
-                </div>
+                {subError && (
+                  <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-2xl px-4 py-3">
+                    <i className="fas fa-exclamation-circle text-red-400 text-sm mt-0.5"></i>
+                    <span className="text-red-400 text-sm">{subError}</span>
+                  </div>
+                )}
+                <button
+                  onClick={handleSubscribe}
+                  disabled={subLoading}
+                  className="w-full bg-green-500 hover:bg-green-400 active:scale-[0.98] disabled:opacity-50 text-black font-black py-4 rounded-3xl transition-all text-sm uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-green-500/20"
+                >
+                  {subLoading
+                    ? <i className="fas fa-circle-notch animate-spin"></i>
+                    : <><i className="fas fa-crown"></i> Assinar {selectedPlan === 'annual' ? '— R$ 131,88' : '— R$ 14,99/mês'}</>}
+                </button>
+                <p className="text-zinc-600 text-[10px] text-center">Cancele quando quiser • Sem fidelidade</p>
               </div>
             )}
           </div>
