@@ -1,6 +1,6 @@
 ﻿
 import React, { useState, useEffect, useRef } from 'react';
-import { useUser, useClerk, useSignIn } from '@clerk/clerk-react';
+import { useUser, useClerk, useSignIn, useAuth } from '@clerk/clerk-react';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { NotificationPrefs, SummaryData } from '../types';
 import { saveNotificationPrefs, loadNotificationPrefs } from '../lib/db';
@@ -14,10 +14,11 @@ interface ClientSettingsProps {
   summary?: SummaryData;
   currentMonthIdx?: number;
   currentYear?: number;
+  subscriptionStatus?: string | null;
 }
 
 type PasswordView = 'idle' | 'set' | 'change';
-type SettingsTab = 'conta' | 'notificacoes' | 'parceiro';
+type SettingsTab = 'conta' | 'notificacoes' | 'parceiro' | 'assinatura';
 
 const DEFAULT_PREFS: NotificationPrefs = {
   weeklyEmail: false,
@@ -26,11 +27,17 @@ const DEFAULT_PREFS: NotificationPrefs = {
   recurringReminderDay: 20,
 };
 
-const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClose, summary, currentMonthIdx, currentYear }) => {
+const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClose, summary, currentMonthIdx, currentYear, subscriptionStatus }) => {
   const { user } = useUser();
   const { signOut } = useClerk();
   const { signIn, setActive } = useSignIn();
+  const { getToken } = useAuth();
   const [tab, setTab] = useState<SettingsTab>('conta');
+
+  // Subscription
+  const [subLoading, setSubLoading] = useState(false);
+  const [subError, setSubError] = useState('');
+  const [subStartedAt, setSubStartedAt] = useState<string | null>(null);
 
   // Coach access
   const [coachAccess, setCoachAccess] = useState<any[]>([]);
@@ -72,7 +79,36 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
     if (user) {
       loadNotificationPrefs(db, user.id).then(p => { if (p) setPrefs(p); }).catch(() => {});
     }
+    db.from('households')
+      .select('subscription_started_at')
+      .eq('id', householdId)
+      .single()
+      .then(({ data }) => { if (data?.subscription_started_at) setSubStartedAt(data.subscription_started_at); })
+      .catch(() => {});
   }, [householdId]);
+
+  async function handleSubscribe() {
+    setSubLoading(true);
+    setSubError('');
+    try {
+      const token = await getToken({ template: 'supabase' });
+      const res = await fetch('/api/create-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? 'Erro ao criar sessão de pagamento.');
+      }
+      const { url } = await res.json() as { url: string };
+      window.location.href = url;
+    } catch (err: unknown) {
+      setSubError(err instanceof Error ? err.message : 'Erro ao iniciar assinatura.');
+    } finally {
+      setSubLoading(false);
+    }
+  }
 
   async function loadCoachAccess() {
     const { data } = await db.from('coach_access').select('*').eq('household_id', householdId).eq('status', 'approved');
@@ -263,7 +299,7 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
 
         {/* Tabs */}
         <div className="flex gap-1 mb-5 bg-zinc-900 p-1 rounded-xl border border-zinc-800">
-          {([['conta','Conta','fa-user'],['notificacoes','Notificações','fa-bell'],['parceiro','Parceiro','fa-heart']] as const).map(([key, label, icon]) => (
+          {([['conta','Conta','fa-user'],['notificacoes','Avisos','fa-bell'],['parceiro','Casal','fa-heart'],['assinatura','Plano','fa-crown']] as const).map(([key, label, icon]) => (
             <button
               key={key}
               onClick={() => setTab(key)}
@@ -541,6 +577,142 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
               </p>
               <InvitePartner db={db} householdId={householdId} currentUserId={user?.id ?? ''} />
             </div>
+          </div>
+        )}
+
+        {/* ── ASSINATURA TAB ── */}
+        {tab === 'assinatura' && (
+          <div className="flex flex-col gap-4">
+            {subscriptionStatus === 'active' ? (
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/20 rounded-2xl p-4 mb-5">
+                  <div className="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center flex-shrink-0">
+                    <i className="fas fa-crown text-green-400 text-lg"></i>
+                  </div>
+                  <div>
+                    <p className="text-green-400 font-black text-sm uppercase tracking-widest">Kashim Premium</p>
+                    <p className="text-green-300/70 text-xs">Plano ativo</p>
+                  </div>
+                </div>
+                {subStartedAt && (
+                  <div className="flex items-center gap-3 py-3 border-b border-zinc-800">
+                    <i className="fas fa-calendar text-zinc-500 text-sm w-4 text-center flex-shrink-0"></i>
+                    <div>
+                      <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">Ativo desde</p>
+                      <p className="text-white text-sm font-bold">
+                        {new Date(subStartedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                <div className="flex items-center gap-3 py-3 border-b border-zinc-800">
+                  <i className="fas fa-credit-card text-zinc-500 text-sm w-4 text-center flex-shrink-0"></i>
+                  <div>
+                    <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">Valor</p>
+                    <p className="text-white text-sm font-bold">R$ 9,99 / mês</p>
+                  </div>
+                </div>
+                {hasActiveCoach && (
+                  <div className="flex items-center gap-3 py-3 border-b border-zinc-800">
+                    <i className="fas fa-user-tie text-zinc-500 text-sm w-4 text-center flex-shrink-0"></i>
+                    <div>
+                      <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">Consultor</p>
+                      <p className="text-white text-sm font-bold">Consultor financeiro com acesso ativo</p>
+                    </div>
+                  </div>
+                )}
+                <p className="text-zinc-600 text-[10px] mt-4 leading-relaxed">
+                  Para cancelar, entre em contato em{' '}
+                  <span className="text-zinc-400">suporte@kashim.com.br</span>{' '}
+                  ou cancele diretamente no seu banco ou cartão.
+                </p>
+              </div>
+            ) : subscriptionStatus === 'past_due' ? (
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 rounded-2xl p-4 mb-5">
+                  <div className="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center flex-shrink-0">
+                    <i className="fas fa-exclamation-triangle text-red-400 text-lg"></i>
+                  </div>
+                  <div>
+                    <p className="text-red-400 font-black text-sm">Pagamento com problema</p>
+                    <p className="text-zinc-500 text-xs">Renove para continuar usando o Kashim</p>
+                  </div>
+                </div>
+                {subError && (
+                  <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-4">
+                    <i className="fas fa-exclamation-circle text-red-400 text-sm mt-0.5"></i>
+                    <span className="text-red-400 text-sm">{subError}</span>
+                  </div>
+                )}
+                <button
+                  onClick={handleSubscribe}
+                  disabled={subLoading}
+                  className="w-full bg-green-500 hover:bg-green-400 active:scale-[0.98] disabled:opacity-50 text-black font-black py-4 rounded-2xl transition-all text-sm uppercase tracking-widest flex items-center justify-center gap-2"
+                >
+                  {subLoading
+                    ? <i className="fas fa-circle-notch animate-spin"></i>
+                    : <><i className="fas fa-redo"></i> Renovar assinatura</>}
+                </button>
+              </div>
+            ) : (
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden">
+                <div className="bg-gradient-to-br from-green-500/20 via-green-400/10 to-transparent p-6 pb-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-12 h-12 bg-green-500/20 border border-green-500/30 rounded-2xl flex items-center justify-center flex-shrink-0">
+                      <i className="fas fa-crown text-green-400 text-xl"></i>
+                    </div>
+                    <div>
+                      <p className="text-white font-black text-base uppercase italic tracking-tight">Kashim Premium</p>
+                      <p className="text-green-400 font-black text-2xl leading-tight">
+                        R$ 9,99<span className="text-zinc-500 text-sm font-normal">/mês</span>
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-zinc-400 text-xs leading-relaxed">
+                    Controle financeiro completo com inteligência artificial para guiar suas decisões.
+                  </p>
+                </div>
+
+                <div className="px-6 py-4 flex flex-col gap-3 border-t border-zinc-800">
+                  {([
+                    ['fa-robot', 'AICoach por voz', 'Registre gastos falando e receba análises inteligentes'],
+                    ['fa-chart-line', 'Dashboard completo', 'Visualize tetos, saldos e projeções mensais'],
+                    ['fa-heart', 'Modo Casal', 'Compartilhe o plano financeiro com seu parceiro'],
+                    ['fa-envelope', 'Resumo semanal', 'Receba insights do seu mês direto no e-mail'],
+                    ['fa-file-pdf', 'Exportação em PDF', 'Exporte seu plano financeiro a qualquer momento'],
+                  ] as const).map(([icon, title, desc]) => (
+                    <div key={title} className="flex items-start gap-3">
+                      <div className="w-8 h-8 bg-green-500/10 border border-green-500/20 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i className={`fas ${icon} text-green-400 text-xs`}></i>
+                      </div>
+                      <div>
+                        <p className="text-white text-sm font-bold">{title}</p>
+                        <p className="text-zinc-500 text-xs">{desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="px-6 pb-6 pt-2">
+                  {subError && (
+                    <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-4">
+                      <i className="fas fa-exclamation-circle text-red-400 text-sm mt-0.5"></i>
+                      <span className="text-red-400 text-sm">{subError}</span>
+                    </div>
+                  )}
+                  <button
+                    onClick={handleSubscribe}
+                    disabled={subLoading}
+                    className="w-full bg-green-500 hover:bg-green-400 active:scale-[0.98] disabled:opacity-50 text-black font-black py-4 rounded-2xl transition-all text-sm uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-green-500/20"
+                  >
+                    {subLoading
+                      ? <i className="fas fa-circle-notch animate-spin"></i>
+                      : <><i className="fas fa-crown"></i> Assinar agora</>}
+                  </button>
+                  <p className="text-zinc-600 text-[10px] text-center mt-3">Cancele quando quiser • Sem fidelidade</p>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
