@@ -42,16 +42,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const baseUrl = (origin ?? 'https://kashim.com.br').replace(/\/$/, '');
   const isAnnual = plan === 'annual';
 
-  const pagarmeKey = (process.env.PAGARME_SECRET_KEY ?? '').trim();
+  // Accept both PAGARME_SECRET_KEY and VITE_PAGARME_SECRET_KEY (latter if user set it with VITE_ prefix by mistake)
+  const pagarmeKey = (process.env.PAGARME_SECRET_KEY ?? process.env.VITE_PAGARME_SECRET_KEY ?? '').trim();
   if (!pagarmeKey) {
-    console.error('[create-checkout] PAGARME_SECRET_KEY não definida');
-    return res.status(500).json({ error: 'Configuração de pagamento ausente. Contate o suporte.' });
+    console.error('[create-checkout] PAGARME_SECRET_KEY não definida em nenhum formato');
+    return res.status(500).json({ error: 'Configuração de pagamento ausente — adicione PAGARME_SECRET_KEY no Vercel Dashboard.' });
   }
   if (!pagarmeKey.startsWith('sk_test_') && !pagarmeKey.startsWith('sk_live_')) {
-    console.error('[create-checkout] PAGARME_SECRET_KEY com formato inválido. Prefixo recebido:', pagarmeKey.slice(0, 8));
-    return res.status(500).json({ error: 'Chave Pagar.me com formato inválido.' });
+    console.error('[create-checkout] chave com formato inválido, primeiros chars:', JSON.stringify(pagarmeKey.slice(0, 12)));
+    return res.status(500).json({ error: `Chave Pagar.me inválida — deve começar com sk_test_ ou sk_live_. Recebido: "${pagarmeKey.slice(0, 8)}..."` });
   }
-  console.log('[create-checkout] chave OK, prefixo:', pagarmeKey.slice(0, 8) + '...');
+  const usedVar = process.env.PAGARME_SECRET_KEY ? 'PAGARME_SECRET_KEY' : 'VITE_PAGARME_SECRET_KEY';
+  console.log(`[create-checkout] chave OK via ${usedVar}, prefixo: ${pagarmeKey.slice(0, 8)}...`);
   const authHeader = `Basic ${Buffer.from(`${pagarmeKey}:`).toString('base64')}`;
 
   const amount = isAnnual ? 13188 : 1499;
