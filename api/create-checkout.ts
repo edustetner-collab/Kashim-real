@@ -42,7 +42,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const baseUrl = (origin ?? 'https://kashim.com.br').replace(/\/$/, '');
   const isAnnual = plan === 'annual';
 
-  const pagarmeKey = process.env.PAGARME_SECRET_KEY!;
+  const pagarmeKey = (process.env.PAGARME_SECRET_KEY ?? '').trim();
+  if (!pagarmeKey) {
+    console.error('[create-checkout] PAGARME_SECRET_KEY não definida');
+    return res.status(500).json({ error: 'Configuração de pagamento ausente. Contate o suporte.' });
+  }
+  if (!pagarmeKey.startsWith('sk_test_') && !pagarmeKey.startsWith('sk_live_')) {
+    console.error('[create-checkout] PAGARME_SECRET_KEY com formato inválido. Prefixo recebido:', pagarmeKey.slice(0, 8));
+    return res.status(500).json({ error: 'Chave Pagar.me com formato inválido.' });
+  }
+  console.log('[create-checkout] chave OK, prefixo:', pagarmeKey.slice(0, 8) + '...');
   const authHeader = `Basic ${Buffer.from(`${pagarmeKey}:`).toString('base64')}`;
 
   const amount = isAnnual ? 13188 : 1499;
