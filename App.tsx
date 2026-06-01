@@ -579,6 +579,11 @@ const App: React.FC = () => {
     // matchedItem may be null when item was just created in the same event (stale closure) — proceed anyway
 
     const now = new Date();
+    // Use the purchase date the user specified; fall back to today for AI-detected expenses
+    const refDay = data.purchaseDate?.day ?? now.getDate();
+    const refMonth = data.purchaseDate?.month ?? now.getMonth(); // 0-indexed
+    const refYear = data.purchaseDate?.year ?? now.getFullYear();
+
     const installments = Math.max(1, data.installments ?? 1);
     const fallbackDesc = data.description || matchedItem?.description || '';
 
@@ -587,21 +592,21 @@ const App: React.FC = () => {
       months.findIndex(m => m.year === year && m.index === calMonth);
 
     if (installments <= 1) {
-      const today = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      const dateStr = `${String(refDay).padStart(2, '0')}/${String(refMonth + 1).padStart(2, '0')}`;
       handleAddPartial(data.itemId, {
         id: crypto.randomUUID(),
-        date: today,
+        date: dateStr,
         description: fallbackDesc,
         value: data.value,
-      });
+      }, refYear, refMonth);
       if (!matchedItem) {
-        const arrIdx = toArrIdx(now.getFullYear(), now.getMonth());
+        const arrIdx = toArrIdx(refYear, refMonth);
         if (arrIdx >= 0) handleUpdateValue(data.itemId, arrIdx, String(data.value));
       }
     } else {
-      // Installments always start from purchase month for budget-limit tracking.
-      // Card fatura offset is irrelevant here — if you buy in May, installment 1 counts in May.
-      const startAbsMonth = now.getFullYear() * 12 + now.getMonth();
+      // Installments start from the purchase month so budget tracking aligns with the card billing cycle.
+      // E.g. buying on May 20 → installment 1 tracked in May → offsets June's card bill.
+      const startAbsMonth = refYear * 12 + refMonth;
       const baseValue = parseFloat((data.value / installments).toFixed(2));
 
       for (let i = 0; i < installments; i++) {
@@ -611,7 +616,7 @@ const App: React.FC = () => {
         const value = i === installments - 1 ? parseFloat((data.value - baseValue * (installments - 1)).toFixed(2)) : baseValue;
         handleAddPartial(data.itemId, {
           id: crypto.randomUUID(),
-          date: `01/${String(targetCalMonth + 1).padStart(2, '0')}`,
+          date: `${String(i === 0 ? refDay : 1).padStart(2, '0')}/${String(targetCalMonth + 1).padStart(2, '0')}`,
           description: `${fallbackDesc} ${i + 1}/${installments}`,
           value,
         }, targetYear, targetCalMonth);
@@ -935,6 +940,7 @@ const App: React.FC = () => {
           summary={monthlySummaries[mobileMonthIdx]}
           currentMonthIdx={months[mobileMonthIdx].index}
           currentYear={months[mobileMonthIdx].year}
+          subscriptionStatus={subscriptionStatus}
         />
       ) : showSettings && dbLoading ? (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowSettings(false)}>
@@ -1171,7 +1177,11 @@ const App: React.FC = () => {
                   trackedByCardId={block.type === CategoryType.CREDIT_CARD ? trackedByCardPrevMonth : undefined}
                   trackedByCardAllMonths={block.type === CategoryType.CREDIT_CARD ? trackedByCardAllMonths : undefined}
                   onRequestExpenseSheet={block.type === CategoryType.VARIABLE_EXPENSE
-                    ? () => setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1, isCredit: false })
+                    ? () => {
+                        const vm = months[mobileMonthIdx];
+                        const isNow = vm.index === currentActualMonth && vm.year === currentActualYear;
+                        setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1, isCredit: false, purchaseDate: { day: isNow ? new Date().getDate() : 1, month: vm.index, year: vm.year } });
+                      }
                     : undefined}
                   onAddLeisureItem={block.type === CategoryType.PERSONAL_LEISURE ? handleAddLeisureItem : undefined}
                 />
@@ -1295,7 +1305,11 @@ const App: React.FC = () => {
 
             {/* Central launch button */}
             <button
-              onClick={() => setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1, isCredit: false })}
+              onClick={() => {
+                const vm = months[mobileMonthIdx];
+                const isNow = vm.index === currentActualMonth && vm.year === currentActualYear;
+                setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1, isCredit: false, purchaseDate: { day: isNow ? new Date().getDate() : 1, month: vm.index, year: vm.year } });
+              }}
               className="min-w-[72px] flex flex-col items-center justify-center py-1.5 gap-0.5 mx-1 rounded-xl active:scale-95 transition-all k-btn-lime"
               style={{background:'linear-gradient(180deg,#c5f23a 0%,#a2d800 50%,#8cc400 100%)',boxShadow:'0 4px 14px rgba(130,192,0,0.4),inset 0 1px 0 rgba(255,255,255,0.45)',borderRadius:'14px'}}
             >
@@ -1348,6 +1362,7 @@ const App: React.FC = () => {
         initialValue={pendingExpense?.value}
         initialDescription={pendingExpense?.description}
         initialInstallments={pendingExpense?.installments}
+        defaultPurchaseDate={pendingExpense?.purchaseDate}
         onConfirm={handleConfirmExpense}
         onClose={() => setPendingExpense(null)}
         onCreateItem={handleCreateItem}

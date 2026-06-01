@@ -11,6 +11,7 @@ export interface DetectedExpense {
   isCredit: boolean;
   category?: CategoryType;
   linkedCardId?: string;
+  purchaseDate?: { day: number; month: number; year: number }; // month: 0-indexed (0=Jan)
 }
 
 interface ExpenseSheetProps {
@@ -21,6 +22,7 @@ interface ExpenseSheetProps {
   initialValue?: number;
   initialDescription?: string;
   initialInstallments?: number;
+  defaultPurchaseDate?: { day: number; month: number; year: number };
   onConfirm: (data: DetectedExpense) => void;
   onClose: () => void;
   onCreateItem?: (description: string, category: CategoryType) => string;
@@ -63,9 +65,12 @@ function catStyle(cat: CategoryType) {
   return { icon: 'fa-anchor', color: 'text-purple-400' };
 }
 
+const MONTHS_BR_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
 const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
   open, source, items,
   initialItemId, initialValue, initialDescription, initialInstallments,
+  defaultPurchaseDate,
   onConfirm, onClose, onCreateItem,
 }) => {
   const [step, setStep] = useState<Step>('category');
@@ -79,11 +84,18 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
   const [installCount, setInstallCount] = useState('');
   const [showItemPicker, setShowItemPicker] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState('');
+  const [purchaseDay, setPurchaseDay] = useState(() => defaultPurchaseDate?.day ?? new Date().getDate());
+  const [purchaseMonth, setPurchaseMonth] = useState(() => defaultPurchaseDate?.month ?? new Date().getMonth());
+  const [purchaseYear, setPurchaseYear] = useState(() => defaultPurchaseDate?.year ?? new Date().getFullYear());
 
   const valueRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
+    const ref = defaultPurchaseDate ?? { day: new Date().getDate(), month: new Date().getMonth(), year: new Date().getFullYear() };
+    setPurchaseDay(ref.day);
+    setPurchaseMonth(ref.month);
+    setPurchaseYear(ref.year);
     setSearch('');
     setShowItemPicker(false);
     if (source === 'ai') {
@@ -110,7 +122,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
       const initManual = Math.max(1, initialInstallments ?? 1);
       setInstallCount(initManual > 1 ? String(initManual) : '');
     }
-  }, [open, source, initialItemId, initialValue, initialDescription, initialInstallments]);
+  }, [open, source, initialItemId, initialValue, initialDescription, initialInstallments, defaultPurchaseDate]);
 
   useEffect(() => {
     if (step === 'value-payment' && open && !showItemPicker) {
@@ -161,6 +173,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
       isCredit,
       category: category ?? selectedItem?.category,
       linkedCardId: isCredit && selectedCardId ? selectedCardId : undefined,
+      purchaseDate: { day: purchaseDay, month: purchaseMonth, year: purchaseYear },
     });
   };
 
@@ -203,6 +216,50 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
         {isParcelado && numericValue > 0 && installments > 1 && (
           <p className="text-zinc-500 text-[10px] mt-1 font-mono">
             {installments}x de {formatCurrency(numericValue / installments)}
+          </p>
+        )}
+      </div>
+
+      {/* Purchase date */}
+      <div className="px-4 py-3 bg-zinc-800 rounded-2xl border border-zinc-700">
+        <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-2">Data da compra</p>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={31}
+            value={purchaseDay}
+            onChange={e => setPurchaseDay(Math.max(1, Math.min(31, parseInt(e.target.value) || 1)))}
+            className="w-12 bg-zinc-900 rounded-xl px-2 py-1.5 text-white text-sm font-black text-center outline-none border border-zinc-700 focus:border-green-400/50"
+            placeholder="DD"
+          />
+          <span className="text-zinc-600 text-sm font-bold">/</span>
+          <select
+            value={purchaseMonth}
+            onChange={e => setPurchaseMonth(parseInt(e.target.value))}
+            className="bg-zinc-900 rounded-xl px-2 py-1.5 text-white text-sm font-black outline-none border border-zinc-700 focus:border-green-400/50"
+          >
+            {MONTHS_BR_SHORT.map((m, i) => (
+              <option key={i} value={i}>{m}</option>
+            ))}
+          </select>
+          <span className="text-zinc-600 text-sm font-bold">/</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={2020}
+            max={2099}
+            value={purchaseYear}
+            onChange={e => setPurchaseYear(parseInt(e.target.value) || new Date().getFullYear())}
+            className="w-20 bg-zinc-900 rounded-xl px-2 py-1.5 text-white text-sm font-black text-center outline-none border border-zinc-700 focus:border-green-400/50"
+            placeholder="AAAA"
+          />
+        </div>
+        {(purchaseMonth !== new Date().getMonth() || purchaseYear !== new Date().getFullYear()) && (
+          <p className="text-amber-400 text-[10px] mt-2 font-bold">
+            <i className="fas fa-history mr-1" />
+            Lançamento retroativo — registrando em {MONTHS_BR_SHORT[purchaseMonth]}/{purchaseYear}
           </p>
         )}
       </div>
