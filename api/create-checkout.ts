@@ -49,11 +49,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const supabaseKeys = allKeys.filter(k => k.toUpperCase().includes('SUPABASE'));
   const directVal = process.env['PAGARME_SECRET_KEY'];
   if (!pagarmeKey) {
-    console.error('[create-checkout] diagnóstico:', { totalKeys: allKeys.length, pagarmeKeys, supabaseKeys, directVal: directVal ? `${directVal.slice(0,6)}...` : 'undefined' });
-    return res.status(500).json({
-      error: 'Configuração de pagamento ausente',
-      debug: { totalEnvKeys: allKeys.length, pagarmeKeys, supabaseKeys, directValFound: !!directVal }
-    });
+    const diagMsg = `total=${allKeys.length} pagarme=[${pagarmeKeys.join(',')}] supabase=[${supabaseKeys.join(',')}] direct=${directVal ? directVal.slice(0,8)+'...' : 'undefined'}`;
+    console.error('[create-checkout] diagnóstico:', diagMsg);
+    return res.status(500).json({ error: `ENV DEBUG: ${diagMsg}` });
   }
   if (!pagarmeKey.startsWith('sk_')) {
     console.error('[create-checkout] chave com formato inválido, primeiros chars:', JSON.stringify(pagarmeKey.slice(0, 12)));
