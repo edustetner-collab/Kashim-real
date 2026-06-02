@@ -44,10 +44,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Accept both PAGARME_SECRET_KEY and VITE_PAGARME_SECRET_KEY (latter if user set it with VITE_ prefix by mistake)
   const pagarmeKey = (process.env.PAGARME_SECRET_KEY ?? process.env.VITE_PAGARME_SECRET_KEY ?? '').trim();
-  const pagarmeEnvKeys = Object.keys(process.env).filter(k => k.toUpperCase().includes('PAGARME'));
+  const allKeys = Object.keys(process.env);
+  const pagarmeKeys = allKeys.filter(k => k.toUpperCase().includes('PAGARME'));
+  const supabaseKeys = allKeys.filter(k => k.toUpperCase().includes('SUPABASE'));
+  const directVal = process.env['PAGARME_SECRET_KEY'];
   if (!pagarmeKey) {
-    console.error('[create-checkout] PAGARME_SECRET_KEY não definida. Chaves PAGARME visíveis:', JSON.stringify(pagarmeEnvKeys));
-    return res.status(500).json({ error: `Configuração de pagamento ausente — chaves visíveis: ${JSON.stringify(pagarmeEnvKeys)}` });
+    console.error('[create-checkout] diagnóstico:', { totalKeys: allKeys.length, pagarmeKeys, supabaseKeys, directVal: directVal ? `${directVal.slice(0,6)}...` : 'undefined' });
+    return res.status(500).json({
+      error: 'Configuração de pagamento ausente',
+      debug: { totalEnvKeys: allKeys.length, pagarmeKeys, supabaseKeys, directValFound: !!directVal }
+    });
   }
   if (!pagarmeKey.startsWith('sk_')) {
     console.error('[create-checkout] chave com formato inválido, primeiros chars:', JSON.stringify(pagarmeKey.slice(0, 12)));
