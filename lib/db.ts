@@ -7,11 +7,13 @@ export async function getOrCreateHousehold(
   db: SupabaseClient,
   clerkUserId: string
 ): Promise<string> {
-  // Verifica se já é membro de algum household
+  // Verifica se já é membro de algum household — usa o mais antigo (owner original)
   const { data: membership } = await db
     .from('household_members')
     .select('household_id')
     .eq('clerk_user_id', clerkUserId)
+    .order('created_at', { ascending: true })
+    .limit(1)
     .maybeSingle();
 
   if (membership) return membership.household_id;

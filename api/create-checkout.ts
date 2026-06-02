@@ -33,6 +33,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .from('household_members')
     .select('household_id')
     .eq('clerk_user_id', clerkUserId)
+    .order('created_at', { ascending: true })
+    .limit(1)
     .maybeSingle();
 
   if (!membership) return res.status(404).json({ error: 'Household not found' });
