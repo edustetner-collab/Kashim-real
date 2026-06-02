@@ -1,6 +1,6 @@
 ﻿
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useUser, useClerk, useSignIn, SignIn, SignUp } from '@clerk/clerk-react';
+import { useUser, useClerk, useSignIn, useAuth, SignIn, SignUp } from '@clerk/clerk-react';
 import { CategoryType, FinanceItem, SummaryData, LinkType, PartialExpense, Goal } from './types';
 import { getNext12Months, formatCurrency, MONTHS_BR } from './constants';
 import BlockSection from './components/BlockSection';
@@ -36,6 +36,7 @@ const App: React.FC = () => {
   const { isSignedIn, user, isLoaded } = useUser();
   const { signOut } = useClerk();
   const { signIn, setActive: setSignInActive } = useSignIn();
+  const { getToken } = useAuth();
   const db = useSupabase();
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [clerkTimeout, setClerkTimeout] = useState(false);
@@ -419,17 +420,35 @@ const App: React.FC = () => {
 
     setStartMonth(newStartMonth);
     setStartYear(newStartYear);
-    if (db && householdId) updateHouseholdPlan(db, householdId, newStartMonth, newStartYear);
+    if (householdId) {
+      getToken({ template: 'supabase' }).then(token =>
+        fetch('/api/update-start-month', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ householdId, startMonth: newStartMonth, startYear: newStartYear }),
+        })
+      ).catch(console.error);
+    }
     setShowProjectionModal(false);
   };
 
   // Moves the 12-month window back to an earlier start WITHOUT remapping values.
   // Safe because going back just relabels which position = which month (no data lost).
+  // Uses the service-key API to bypass RLS (direct Supabase client fails for coach views).
   const handleSetStartMonth = async (newStartMonth: number, newStartYear: number) => {
     setStartMonth(newStartMonth);
     setStartYear(newStartYear);
-    if (db && householdId) {
-      await updateHouseholdPlan(db, householdId, newStartMonth, newStartYear).catch(console.error);
+    if (householdId) {
+      try {
+        const token = await getToken({ template: 'supabase' });
+        await fetch('/api/update-start-month', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ householdId, startMonth: newStartMonth, startYear: newStartYear }),
+        });
+      } catch (e) {
+        console.error('handleSetStartMonth save failed:', e);
+      }
     }
     const tempMonths = Array.from({ length: 12 }, (_, i) => {
       const d = new Date(newStartYear, newStartMonth + i, 1);
