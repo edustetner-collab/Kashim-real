@@ -49,7 +49,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (!householdId) {
     console.warn('[webhook] householdId ausente — ignorando');
-    return res.status(200).json({ received: true });
+    return res.status(200).json({ received: true, debug: 'householdId ausente', type, bodySlice: JSON.stringify(req.body).slice(0, 300) });
   }
 
   if (type === 'order.paid') {
@@ -80,5 +80,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .eq('id', householdId);
   }
 
-  return res.status(200).json({ received: true });
+  return res.status(200).json({ received: true, type, householdId });
 }
