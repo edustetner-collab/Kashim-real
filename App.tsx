@@ -101,8 +101,14 @@ const App: React.FC = () => {
   });
   const [mobileMonthIdx, setMobileMonthIdx] = useState(0);
 
-  const [startMonth, setStartMonth] = useState<number>(() => new Date().getMonth());
-  const [startYear, setStartYear] = useState<number>(() => new Date().getFullYear());
+  const [startMonth, setStartMonth] = useState<number>(() => {
+    const cached = localStorage.getItem('kashim_startMonth');
+    return cached !== null ? parseInt(cached) : new Date().getMonth();
+  });
+  const [startYear, setStartYear] = useState<number>(() => {
+    const cached = localStorage.getItem('kashim_startYear');
+    return cached !== null ? parseInt(cached) : new Date().getFullYear();
+  });
 
   const months = useMemo(() => {
     const result = [];
@@ -246,6 +252,12 @@ const App: React.FC = () => {
 
     loadData();
   }, [db, user]);
+
+  // Persist startMonth/startYear to localStorage so PWA reloads don't flash back to current month
+  useEffect(() => {
+    localStorage.setItem('kashim_startMonth', String(startMonth));
+    localStorage.setItem('kashim_startYear', String(startYear));
+  }, [startMonth, startYear]);
 
   // Keep refs in sync with state so we can capture snapshots synchronously
   useEffect(() => { currentHouseholdIdRef.current = householdId; }, [householdId]);
