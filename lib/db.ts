@@ -55,10 +55,12 @@ export async function updateHouseholdPlan(
   startMonth: number,
   startYear: number
 ) {
-  await db
+  const { error, count } = await db
     .from('households')
-    .update({ start_month: startMonth, start_year: startYear })
+    .update({ start_month: startMonth, start_year: startYear }, { count: 'exact' })
     .eq('id', householdId);
+  if (error) throw new Error(`Supabase update failed: ${error.message} (code: ${error.code})`);
+  if (count === 0) throw new Error(`RLS bloqueou o update — nenhuma linha atualizada. householdId: ${householdId}`);
 }
 
 // ─── FINANCE ITEMS ────────────────────────────────────────────────────────────
