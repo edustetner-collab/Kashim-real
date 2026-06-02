@@ -38,6 +38,7 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
   const [subLoading, setSubLoading] = useState(false);
   const [subError, setSubError] = useState('');
   const [subStartedAt, setSubStartedAt] = useState<string | null>(null);
+  const [subExpiresAt, setSubExpiresAt] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'annual'>('annual');
 
   // Coach access
@@ -81,10 +82,13 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
       loadNotificationPrefs(db, user.id).then(p => { if (p) setPrefs(p); }).catch(() => {});
     }
     db.from('households')
-      .select('subscription_started_at')
+      .select('subscription_started_at, subscription_expires_at')
       .eq('id', householdId)
       .single()
-      .then(({ data }) => { if (data?.subscription_started_at) setSubStartedAt(data.subscription_started_at); })
+      .then(({ data }) => {
+        if (data?.subscription_started_at) setSubStartedAt(data.subscription_started_at);
+        if (data?.subscription_expires_at) setSubExpiresAt(data.subscription_expires_at);
+      })
       .catch(() => {});
   }, [householdId]);
 
@@ -609,10 +613,25 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
                 <div className="flex items-center gap-3 py-3 border-b border-zinc-800">
                   <i className="fas fa-credit-card text-zinc-500 text-sm w-4 text-center flex-shrink-0"></i>
                   <div>
-                    <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">Valor</p>
-                    <p className="text-white text-sm font-bold">R$ 9,99 / mês</p>
+                    <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">Plano</p>
+                    <p className="text-white text-sm font-bold">
+                      {subExpiresAt && subStartedAt && (new Date(subExpiresAt).getTime() - new Date(subStartedAt).getTime()) > 300 * 24 * 60 * 60 * 1000
+                        ? 'Anual — R$ 10,99 / mês (R$ 131,88)'
+                        : 'Mensal — R$ 14,99 / mês'}
+                    </p>
                   </div>
                 </div>
+                {subExpiresAt && (
+                  <div className="flex items-center gap-3 py-3 border-b border-zinc-800">
+                    <i className="fas fa-sync-alt text-zinc-500 text-sm w-4 text-center flex-shrink-0"></i>
+                    <div>
+                      <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">Renovação</p>
+                      <p className="text-white text-sm font-bold">
+                        {new Date(subExpiresAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                      </p>
+                    </div>
+                  </div>
+                )}
                 {hasActiveCoach && (
                   <div className="flex items-center gap-3 py-3 border-b border-zinc-800">
                     <i className="fas fa-user-tie text-zinc-500 text-sm w-4 text-center flex-shrink-0"></i>
