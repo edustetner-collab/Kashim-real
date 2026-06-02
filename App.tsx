@@ -892,6 +892,13 @@ const App: React.FC = () => {
           </button>
 
           <div className="text-zinc-900 text-[10px] font-black uppercase tracking-[0.6em] opacity-40">Professor Digital Stets</div>
+
+          <p className="text-zinc-700 text-[10px] text-center leading-relaxed">
+            Ao criar sua conta, você concorda com os nossos{' '}
+            <a href="/termos.html" target="_blank" rel="noopener noreferrer" className="text-zinc-500 hover:text-green-400 underline transition-colors">
+              Termos de Uso e Política de Privacidade
+            </a>
+          </p>
         </div>
       </div>
     );

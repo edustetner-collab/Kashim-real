@@ -91,6 +91,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     await db.from('households').update({ status: 'active' }).eq('id', householdId);
 
+    // Grant 5 months of free coaching access
+    const now = new Date();
+    const expiresAt = new Date(now);
+    expiresAt.setMonth(expiresAt.getMonth() + 5);
+    await db.from('coach_access').insert({
+      household_id: householdId,
+      coach_user_id: requesterId,
+      status: 'approved',
+      expires_at: expiresAt.toISOString(),
+      approved_at: now.toISOString(),
+    });
+
     // Gera link mágico de acesso (válido por 7 dias)
     let signInUrl: string | null = null;
     const tokenRes = await fetch('https://api.clerk.com/v1/sign_in_tokens', {
