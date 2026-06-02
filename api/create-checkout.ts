@@ -42,23 +42,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const baseUrl = (origin ?? 'https://kashim.com.br').replace(/\/$/, '');
   const isAnnual = plan === 'annual';
 
-  // Accept both PAGARME_SECRET_KEY and VITE_PAGARME_SECRET_KEY (latter if user set it with VITE_ prefix by mistake)
-  const pagarmeKey = (process.env.PAGARME_SECRET_KEY ?? process.env.VITE_PAGARME_SECRET_KEY ?? '').trim();
-  const allKeys = Object.keys(process.env);
-  const pagarmeKeys = allKeys.filter(k => k.toUpperCase().includes('PAGARME'));
-  const supabaseKeys = allKeys.filter(k => k.toUpperCase().includes('SUPABASE'));
-  const directVal = process.env['PAGARME_SECRET_KEY'];
+  const pagarmeKey = (process.env.PAGARME_SECRET_KEY ?? '').trim();
   if (!pagarmeKey) {
-    const diagMsg = `total=${allKeys.length} pagarme=[${pagarmeKeys.join(',')}] supabase=[${supabaseKeys.join(',')}] direct=${directVal ? directVal.slice(0,8)+'...' : 'undefined'}`;
-    console.error('[create-checkout] diagnóstico:', diagMsg);
-    return res.status(500).json({ error: `ENV DEBUG: ${diagMsg}` });
+    return res.status(500).json({ error: 'Configuração de pagamento ausente.' });
   }
-  if (!pagarmeKey.startsWith('sk_')) {
-    console.error('[create-checkout] chave com formato inválido, primeiros chars:', JSON.stringify(pagarmeKey.slice(0, 12)));
-    return res.status(500).json({ error: `Chave Pagar.me inválida — deve começar com sk_. Recebido: "${pagarmeKey.slice(0, 8)}..."` });
-  }
-  const usedVar = process.env.PAGARME_SECRET_KEY ? 'PAGARME_SECRET_KEY' : 'VITE_PAGARME_SECRET_KEY';
-  console.log(`[create-checkout] chave OK via ${usedVar}, prefixo: ${pagarmeKey.slice(0, 8)}...`);
   const authHeader = `Basic ${Buffer.from(`${pagarmeKey}:`).toString('base64')}`;
 
   const amount = isAnnual ? 13188 : 1499;
@@ -67,7 +54,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const orderBody = {
     items: [{ amount, description, quantity: 1, code: itemCode }],
-    customer: { type: 'individual' },
+    customer: {
+      type: 'individual',
+      name: 'Cliente Kashim', // customer_editable: true allows user to fill real name at checkout
+    },
     payments: [
       {
         payment_method: 'checkout',
@@ -75,12 +65,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           expires_in: 120,
           billing_address_editable: false,
           customer_editable: true,
-          accepted_payment_methods: ['credit_card', 'pix', 'boleto'],
+          accepted_payment_methods: ['credit_card', 'pix'],
           success_url: `${baseUrl}/?payment=success`,
           default_payment_method: 'pix',
           credit_card: {
             statement_descriptor: 'KASHIM',
             installments: [{ number: 1, total: amount }],
+          },
+          pix: {
+            expires_in: 1800,
           },
         },
       },
