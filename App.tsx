@@ -413,10 +413,21 @@ const App: React.FC = () => {
 
   // Moves the 12-month window back to an earlier start WITHOUT remapping values.
   // Safe because going back just relabels which position = which month (no data lost).
-  const handleSetStartMonth = (newStartMonth: number, newStartYear: number) => {
+  const handleSetStartMonth = async (newStartMonth: number, newStartYear: number) => {
     setStartMonth(newStartMonth);
     setStartYear(newStartYear);
-    if (db && householdId) updateHouseholdPlan(db, householdId, newStartMonth, newStartYear);
+    if (db && householdId) {
+      try {
+        await updateHouseholdPlan(db, householdId, newStartMonth, newStartYear);
+        console.log('✅ start_month salvo no banco:', newStartMonth, newStartYear, 'householdId:', householdId);
+      } catch (e) {
+        console.error('❌ Erro ao salvar start_month:', e);
+        alert(`Erro ao salvar mês: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    } else {
+      console.warn('⚠️ Não salvou — db:', !!db, 'householdId:', householdId);
+      alert(`Não foi possível salvar: db=${!!db}, householdId=${householdId}`);
+    }
     const tempMonths = Array.from({ length: 12 }, (_, i) => {
       const d = new Date(newStartYear, newStartMonth + i, 1);
       return { index: d.getMonth(), year: d.getFullYear() };
