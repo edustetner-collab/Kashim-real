@@ -187,22 +187,37 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
     setColumns(columns.map(c => c.id === id ? { ...c, [field]: value } : c));
   };
 
+  // Variable expense columns only show when they have entries in the viewed month.
+  // Fixed, Leisure, CreditCard columns always show.
+  const displayColumns = useMemo(() => {
+    return columns.filter(col => {
+      if (!col.linkedItemId) return true;
+      const linkedItem = items.find(i => i.id === col.linkedItemId);
+      if (!linkedItem) return true;
+      if (linkedItem.category === CategoryType.VARIABLE_EXPENSE) {
+        const partials = linkedItem.partialExpenses?.[monthKey] || [];
+        return partials.length > 0;
+      }
+      return true;
+    });
+  }, [columns, items, monthKey]);
+
   const columnsScrollRef = useRef<HTMLDivElement>(null);
   const [visibleColIdx, setVisibleColIdx] = useState(0);
 
   const scrollToCard = (idx: number) => {
     const container = columnsScrollRef.current;
     if (!container) return;
-    const cardWidth = container.scrollWidth / Math.max(columns.length, 1);
+    const cardWidth = container.scrollWidth / Math.max(displayColumns.length, 1);
     container.scrollTo({ left: idx * cardWidth, behavior: 'smooth' });
   };
 
   const handleContainerScroll = () => {
     const container = columnsScrollRef.current;
-    if (!container || columns.length === 0) return;
-    const cardWidth = container.scrollWidth / columns.length;
+    if (!container || displayColumns.length === 0) return;
+    const cardWidth = container.scrollWidth / displayColumns.length;
     const idx = Math.round(container.scrollLeft / cardWidth);
-    setVisibleColIdx(Math.max(0, Math.min(idx, columns.length - 1)));
+    setVisibleColIdx(Math.max(0, Math.min(idx, displayColumns.length - 1)));
   };
 
   // Sort mode: long-press activates, then use ← → arrows to move the card
@@ -373,7 +388,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       )}
 
       {/* Navigation arrows + dots — only shown when there are multiple cards */}
-      {columns.length > 1 && (
+      {displayColumns.length > 1 && (
         <div className="flex items-center justify-between px-1 mb-2">
           <button
             onClick={() => scrollToCard(visibleColIdx - 1)}
@@ -383,7 +398,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
             <i className="fas fa-chevron-left text-sm"></i>
           </button>
           <div className="flex items-center gap-1.5">
-            {columns.map((_, i) => (
+            {displayColumns.map((_, i) => (
               <button
                 key={i}
                 onClick={() => scrollToCard(i)}
@@ -393,8 +408,8 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
           </div>
           <button
             onClick={() => scrollToCard(visibleColIdx + 1)}
-            disabled={visibleColIdx === columns.length - 1}
-            className={`w-8 h-8 flex items-center justify-center rounded-full transition-all ${visibleColIdx === columns.length - 1 ? 'text-[#d2d2d7]' : 'text-[#7ab800] active:bg-[#f0fad0]'}`}
+            disabled={visibleColIdx === displayColumns.length - 1}
+            className={`w-8 h-8 flex items-center justify-center rounded-full transition-all ${visibleColIdx === displayColumns.length - 1 ? 'text-[#d2d2d7]' : 'text-[#7ab800] active:bg-[#f0fad0]'}`}
           >
             <i className="fas fa-chevron-right text-sm"></i>
           </button>
@@ -402,7 +417,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       )}
 
       <div ref={columnsScrollRef} onScroll={handleContainerScroll} className="flex gap-3 items-start overflow-x-auto pb-6 pt-1 px-1 snap-x snap-mandatory scrollbar-none">
-        {columns.map((col, colIdx) => {
+        {displayColumns.map((col, colIdx) => {
           const linkedItem = items.find(i => i.id === col.linkedItemId);
           const teto = linkedItem ? (linkedItem.values[currentMonthIdx] || 0) : 0;
           const partials = linkedItem?.partialExpenses?.[monthKey] || [];
