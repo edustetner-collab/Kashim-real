@@ -100,6 +100,7 @@ const App: React.FC = () => {
     try { return JSON.parse(localStorage.getItem('kashim_goals') || '[]'); } catch { return []; }
   });
   const [mobileMonthIdx, setMobileMonthIdx] = useState(0);
+  const monthIdxInitializedRef = useRef(false);
 
   const [startMonth, setStartMonth] = useState<number>(() => new Date().getMonth());
   const [startYear, setStartYear] = useState<number>(() => new Date().getFullYear());
@@ -236,6 +237,16 @@ const App: React.FC = () => {
 
     loadData();
   }, [db, user]);
+
+  // Jump to actual current calendar month once months array has it (after DB load sets startMonth)
+  useEffect(() => {
+    if (monthIdxInitializedRef.current) return;
+    const idx = months.findIndex(m => m.index === currentActualMonth && m.year === currentActualYear);
+    if (idx >= 0) {
+      setMobileMonthIdx(idx);
+      monthIdxInitializedRef.current = true;
+    }
+  }, [months]);
 
   // Keep refs in sync with state so we can capture snapshots synchronously
   useEffect(() => { currentHouseholdIdRef.current = householdId; }, [householdId]);
@@ -1144,7 +1155,7 @@ const App: React.FC = () => {
                 </button>
                 <div className="text-center">
                   <div className="text-[#1d1d1f] font-black uppercase tracking-tight text-base">{months[mobileMonthIdx].monthName} {months[mobileMonthIdx].year}</div>
-                  {mobileMonthIdx === 0 && <div className="text-[#7ab800] text-[9px] font-black uppercase tracking-widest mt-0.5">Mês atual</div>}
+                  {months[mobileMonthIdx].index === currentActualMonth && months[mobileMonthIdx].year === currentActualYear && <div className="text-[#7ab800] text-[9px] font-black uppercase tracking-widest mt-0.5">Mês atual</div>}
                 </div>
                 <button onClick={() => setMobileMonthIdx(i => Math.min(11, i + 1))} disabled={mobileMonthIdx === 11} className="w-10 h-10 flex items-center justify-center text-[#aeaeb2] disabled:opacity-20 active:text-[#7ab800] rounded-xl">
                   <i className="fas fa-chevron-right text-sm"></i>
