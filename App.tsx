@@ -100,7 +100,6 @@ const App: React.FC = () => {
     try { return JSON.parse(localStorage.getItem('kashim_goals') || '[]'); } catch { return []; }
   });
   const [mobileMonthIdx, setMobileMonthIdx] = useState(0);
-  const monthIdxInitializedRef = useRef(false);
 
   const [startMonth, setStartMonth] = useState<number>(() => new Date().getMonth());
   const [startYear, setStartYear] = useState<number>(() => new Date().getFullYear());
@@ -156,8 +155,18 @@ const App: React.FC = () => {
           })));
         }
 
-        if (household?.start_month != null) setStartMonth(household.start_month);
-        if (household?.start_year != null) setStartYear(household.start_year);
+        const loadedStartMonth = household?.start_month ?? new Date().getMonth();
+        const loadedStartYear = household?.start_year ?? new Date().getFullYear();
+        if (household?.start_month != null) setStartMonth(loadedStartMonth);
+        if (household?.start_year != null) setStartYear(loadedStartYear);
+
+        // Jump mobileMonthIdx to the actual current calendar month based on real DB start
+        const tempMonths = Array.from({ length: 12 }, (_, i) => {
+          const d = new Date(loadedStartYear, loadedStartMonth + i, 1);
+          return { index: d.getMonth(), year: d.getFullYear() };
+        });
+        const calIdx = tempMonths.findIndex(m => m.index === new Date().getMonth() && m.year === new Date().getFullYear());
+        if (calIdx >= 0) setMobileMonthIdx(calIdx);
 
         // Verifica status da assinatura
         const status = household?.subscription_status ?? null;
@@ -238,16 +247,6 @@ const App: React.FC = () => {
     loadData();
   }, [db, user]);
 
-  // Jump to actual current calendar month once months array has it (after DB load sets startMonth)
-  useEffect(() => {
-    if (monthIdxInitializedRef.current) return;
-    const idx = months.findIndex(m => m.index === currentActualMonth && m.year === currentActualYear);
-    if (idx >= 0) {
-      setMobileMonthIdx(idx);
-      monthIdxInitializedRef.current = true;
-    }
-  }, [months]);
-
   // Keep refs in sync with state so we can capture snapshots synchronously
   useEffect(() => { currentHouseholdIdRef.current = householdId; }, [householdId]);
   useEffect(() => { currentItemsRef.current = items; }, [items]);
@@ -326,11 +325,9 @@ const App: React.FC = () => {
     }, 1500);
   }, [items, db, householdId]);
 
-  // Salva mês/ano de início no Supabase
-  useEffect(() => {
-    if (!db || !householdId) return;
-    updateHouseholdPlan(db, householdId, startMonth, startYear);
-  }, [startMonth, startYear, db, householdId]);
+  // startMonth/startYear are saved explicitly in handleReproject and handleSetStartMonth only.
+  // Auto-saving here caused a race condition: householdId becoming non-null triggered this effect
+  // before setStartMonth(DB value) ran, overwriting the DB with the wrong (current date) month.
 
 
   // Detecta retorno do Stripe com pagamento confirmado
@@ -410,7 +407,22 @@ const App: React.FC = () => {
 
     setStartMonth(newStartMonth);
     setStartYear(newStartYear);
+    if (db && householdId) updateHouseholdPlan(db, householdId, newStartMonth, newStartYear);
     setShowProjectionModal(false);
+  };
+
+  // Moves the 12-month window back to an earlier start WITHOUT remapping values.
+  // Safe because going back just relabels which position = which month (no data lost).
+  const handleSetStartMonth = (newStartMonth: number, newStartYear: number) => {
+    setStartMonth(newStartMonth);
+    setStartYear(newStartYear);
+    if (db && householdId) updateHouseholdPlan(db, householdId, newStartMonth, newStartYear);
+    const tempMonths = Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(newStartYear, newStartMonth + i, 1);
+      return { index: d.getMonth(), year: d.getFullYear() };
+    });
+    const calIdx = tempMonths.findIndex(m => m.index === new Date().getMonth() && m.year === new Date().getFullYear());
+    if (calIdx >= 0) setMobileMonthIdx(calIdx);
   };
 
   const handleWizardComplete = async (result: WizardResult) => {
@@ -796,7 +808,7 @@ const App: React.FC = () => {
   const projectionOptions = useMemo(() => {
     const options = [];
     const now = new Date();
-    for (let i = 0; i < 24; i++) {
+    for (let i = -3; i < 21; i++) { // 3 months back so user can recover from auto-advance bug
       const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
       options.push({ month: d.getMonth(), year: d.getFullYear(), label: `${MONTHS_BR[d.getMonth()]} ${d.getFullYear()}` });
     }
@@ -1265,13 +1277,21 @@ const App: React.FC = () => {
                 </div>
               </div>
               <div className="flex items-center gap-3 w-full md:w-auto">
-                <select 
+                <select
                   className="bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-xs font-black uppercase text-zinc-700 outline-none focus:border-green-400 transition-all"
                   value={`${startMonth}-${startYear}`}
                   onChange={(e) => {
                     const [m, y] = e.target.value.split('-').map(Number);
-                    setPendingStartMonth({ month: m, year: y });
-                    setShowProjectionModal(true);
+                    const selectedAbs = y * 12 + m;
+                    const currentAbs = startYear * 12 + startMonth;
+                    if (selectedAbs <= currentAbs) {
+                      // Going back: just relabel months, no remap or data loss
+                      handleSetStartMonth(m, y);
+                    } else {
+                      // Going forward: full reproject (export + remap)
+                      setPendingStartMonth({ month: m, year: y });
+                      setShowProjectionModal(true);
+                    }
                   }}
                 >
                   {projectionOptions.map((opt, i) => <option key={i} value={`${opt.month}-${opt.year}`}>{opt.label}</option>)}
