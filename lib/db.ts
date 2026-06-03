@@ -7,25 +7,11 @@ export async function getOrCreateHousehold(
   db: SupabaseClient,
   clerkUserId: string
 ): Promise<string> {
-  // Pega o household onde o usuário é owner (seu próprio, não onde foi convidado)
-  const { data: ownerMembership } = await db
-    .from('household_members')
-    .select('household_id')
-    .eq('clerk_user_id', clerkUserId)
-    .eq('role', 'owner')
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  if (ownerMembership) return ownerMembership.household_id;
-
-  // Fallback: qualquer membership (convidado)
+  // Verifica se já é membro de algum household
   const { data: membership } = await db
     .from('household_members')
     .select('household_id')
     .eq('clerk_user_id', clerkUserId)
-    .order('created_at', { ascending: true })
-    .limit(1)
     .maybeSingle();
 
   if (membership) return membership.household_id;
