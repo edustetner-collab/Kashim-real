@@ -93,15 +93,21 @@ const InvitePartner: React.FC<InvitePartnerProps> = ({ db, householdId, currentU
         body: JSON.stringify({ email: email.trim(), token, householdId, inviterName }),
       });
 
-      if (!emailRes.ok) {
-        // Fallback: abre mailto se o email automático falhar
-        const subject = encodeURIComponent('Convite para o Kashim — Finanças do Casal');
-        const body = encodeURIComponent(`Olá!\n\nVocê foi convidado(a) para o Kashim.\n\nAceite aqui: ${inviteLink}\n\n— Kashim`);
-        window.open(`mailto:${email.trim()}?subject=${subject}&body=${body}`);
+      const emailOk = emailRes.ok;
+      if (!emailOk) {
+        const errBody = await emailRes.json().catch(() => ({})) as { error?: string };
+        setPendingLink(inviteLink);
+        setMessage({
+          type: 'error',
+          text: `Convite criado, mas o email automático falhou: ${errBody.error ?? 'erro desconhecido'}. Copie o link abaixo e envie manualmente.`,
+        });
+        setEmail('');
+        loadInvites();
+        return;
       }
 
       setPendingLink(inviteLink);
-      setMessage({ type: 'success', text: `Convite enviado para ${email.trim()} por e-mail!` });
+      setMessage({ type: 'success', text: `Email de convite enviado para ${email.trim()}!` });
       setEmail('');
       loadInvites();
     } catch (err: any) {
