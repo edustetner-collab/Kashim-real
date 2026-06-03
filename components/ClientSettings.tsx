@@ -601,7 +601,13 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
               <p className="text-zinc-500 text-xs mb-4 leading-relaxed">
                 Convide seu parceiro(a) para acessar e lançar gastos no mesmo plano. Vocês compartilham os mesmos dados em tempo real.
               </p>
-              <InvitePartner db={db} householdId={householdId} currentUserId={user?.id ?? ''} />
+              <InvitePartner
+                db={db}
+                householdId={householdId}
+                currentUserId={user?.id ?? ''}
+                inviterName={`${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || 'Seu parceiro(a)'}
+                getToken={() => getToken({ template: 'supabase' })}
+              />
             </div>
           </div>
         )}
