@@ -40,6 +40,8 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
   const [subStartedAt, setSubStartedAt] = useState<string | null>(null);
   const [subExpiresAt, setSubExpiresAt] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'annual'>('annual');
+  const [cancelConfirm, setCancelConfirm] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   // Coach access
   const [coachAccess, setCoachAccess] = useState<any[]>([]);
@@ -91,6 +93,25 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
       })
       .catch(() => {});
   }, [householdId]);
+
+  async function handleCancelSubscription() {
+    setCancelling(true);
+    try {
+      const token = await getToken({ template: 'supabase' });
+      const res = await fetch('/api/cancel-subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ householdId }),
+      });
+      if (!res.ok) throw new Error('Erro ao cancelar');
+      setCancelConfirm(false);
+      window.location.reload();
+    } catch {
+      setSubError('Não foi possível cancelar. Entre em contato: kashimappbr@gmail.com');
+    } finally {
+      setCancelling(false);
+    }
+  }
 
   async function handleSubscribe() {
     setSubLoading(true);
@@ -623,9 +644,9 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
                 </div>
                 {subExpiresAt && (
                   <div className="flex items-center gap-3 py-3 border-b border-zinc-800">
-                    <i className="fas fa-sync-alt text-zinc-500 text-sm w-4 text-center flex-shrink-0"></i>
+                    <i className="fas fa-calendar-check text-zinc-500 text-sm w-4 text-center flex-shrink-0"></i>
                     <div>
-                      <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">Renovação</p>
+                      <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">Válido até</p>
                       <p className="text-white text-sm font-bold">
                         {new Date(subExpiresAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
                       </p>
@@ -641,11 +662,50 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
                     </div>
                   </div>
                 )}
-                <p className="text-zinc-600 text-[10px] mt-4 leading-relaxed">
-                  Para cancelar, entre em contato em{' '}
-                  <span className="text-zinc-400">suporte@kashim.com.br</span>{' '}
-                  ou cancele diretamente no seu banco ou cartão.
-                </p>
+
+                {subError && (
+                  <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mt-4">
+                    <i className="fas fa-exclamation-circle text-red-400 text-sm mt-0.5"></i>
+                    <span className="text-red-400 text-sm">{subError}</span>
+                  </div>
+                )}
+
+                <div className="mt-5 pt-4 border-t border-zinc-800">
+                  <p className="text-zinc-600 text-[10px] mb-3 leading-relaxed">
+                    Dúvidas? Fale com a gente:{' '}
+                    <a href="mailto:kashimappbr@gmail.com" className="text-zinc-400 underline">kashimappbr@gmail.com</a>
+                  </p>
+                  {!cancelConfirm ? (
+                    <button
+                      onClick={() => setCancelConfirm(true)}
+                      className="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-500 hover:text-red-400 font-bold py-2.5 rounded-xl text-[10px] uppercase tracking-widest transition-all"
+                    >
+                      Cancelar assinatura
+                    </button>
+                  ) : (
+                    <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4">
+                      <p className="text-red-400 font-bold text-sm mb-1">Cancelar assinatura?</p>
+                      <p className="text-zinc-500 text-xs mb-4 leading-relaxed">
+                        Você perderá acesso ao Kashim Premium ao fim do período pago.
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleCancelSubscription}
+                          disabled={cancelling}
+                          className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-black py-2.5 rounded-xl text-xs uppercase transition-all"
+                        >
+                          {cancelling ? <i className="fas fa-circle-notch animate-spin"></i> : 'Sim, cancelar'}
+                        </button>
+                        <button
+                          onClick={() => setCancelConfirm(false)}
+                          className="flex-1 bg-zinc-700 text-white font-black py-2.5 rounded-xl text-xs uppercase"
+                        >
+                          Manter plano
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             ) : subscriptionStatus === 'past_due' ? (
               <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
