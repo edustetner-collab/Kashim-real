@@ -783,13 +783,14 @@ const App: React.FC = () => {
       const totalVariableDuplicado = items.filter(i => i.category === CategoryType.VARIABLE_EXPENSE && i.linkedCardId && (m === 0 || i.linkType === LinkType.INSTALLMENT)).reduce((sum, i) => sum + (i.values[m] || 0), 0);
       const totalLeisureDuplicado = items.filter(i => i.category === CategoryType.PERSONAL_LEISURE && i.linkedCardId && (m === 0 || i.linkType === LinkType.INSTALLMENT)).reduce((sum, i) => sum + (i.values[m] || 0), 0);
 
-      const totalCost = totalCreditCard +
-                        (totalFixed - totalFixedDuplicado) +
-                        (totalVariable - totalVariableDuplicado) +
-                        (totalLeisure - totalLeisureDuplicado);
+      const totalFixedNet = totalFixed - totalFixedDuplicado;
+      const totalVariableNet = totalVariable - totalVariableDuplicado;
+      const totalLeisureNet = totalLeisure - totalLeisureDuplicado;
+      const totalCost = totalCreditCard + totalFixedNet + totalVariableNet + totalLeisureNet;
       const balance = totalIncome - totalCost;
       accumulated += balance;
-      summaries.push({ totalIncome, totalCreditCard, totalFixed, totalVariable, totalLeisure, totalCost, balance, accumulated });
+      // Armazena valores líquidos (deduplicados) para que Desempenho e tabela anual usem os mesmos números do Plano
+      summaries.push({ totalIncome, totalCreditCard, totalFixed: totalFixedNet, totalVariable: totalVariableNet, totalLeisure: totalLeisureNet, totalCost, balance, accumulated });
     }
     return summaries;
   }, [items, months]);
