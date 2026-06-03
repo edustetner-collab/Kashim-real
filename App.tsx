@@ -164,8 +164,7 @@ const App: React.FC = () => {
 
         const loadedStartMonth = household?.start_month ?? new Date().getMonth();
         const loadedStartYear = household?.start_year ?? new Date().getFullYear();
-        console.log('[DEBUG] loadData householdId:', hId, '| household.start_month:', household?.start_month, '| loadedStartMonth:', loadedStartMonth);
-        if (household?.start_month != null) { console.log('[DEBUG] setStartMonth via loadData →', loadedStartMonth); setStartMonth(loadedStartMonth); }
+        if (household?.start_month != null) setStartMonth(loadedStartMonth);
         if (household?.start_year != null) setStartYear(loadedStartYear);
 
         // Jump mobileMonthIdx to the actual current calendar month based on real DB start
@@ -290,7 +289,7 @@ const App: React.FC = () => {
           getHousehold(db!, coachViewHouseholdId!),
           loadFinanceItems(db!, coachViewHouseholdId!),
         ]);
-        if (household?.start_month != null) { console.log('[DEBUG] setStartMonth via coachView →', household.start_month); setStartMonth(household.start_month); }
+        if (household?.start_month != null) setStartMonth(household.start_month);
         if (household?.start_year != null) setStartYear(household.start_year);
         if (dbItems.length > 0) setItems(dbItems);
       } catch (e) {
@@ -312,7 +311,6 @@ const App: React.FC = () => {
     coachViewLoadedRef.current = null;
     setHouseholdId(snap.householdId);
     setItems(snap.items);
-    console.log('[DEBUG] setStartMonth via coachExit restore →', snap.startMonth);
     setStartMonth(snap.startMonth);
     setStartYear(snap.startYear);
   }, [coachViewHouseholdId]);
@@ -420,7 +418,6 @@ const App: React.FC = () => {
       return { ...item, values: newValues, paidStatus: newPaidStatus, partialExpenses: newPartialExpenses };
     }));
 
-    console.log('[DEBUG] setStartMonth via handleReproject →', newStartMonth);
     setStartMonth(newStartMonth);
     setStartYear(newStartYear);
     if (householdId) {
@@ -439,19 +436,16 @@ const App: React.FC = () => {
   // Safe because going back just relabels which position = which month (no data lost).
   // Uses the service-key API to bypass RLS (direct Supabase client fails for coach views).
   const handleSetStartMonth = async (newStartMonth: number, newStartYear: number) => {
-    console.log('[DEBUG] setStartMonth via handleSetStartMonth →', newStartMonth, '| householdId:', householdId);
     setStartMonth(newStartMonth);
     setStartYear(newStartYear);
     if (householdId) {
       try {
         const token = await getToken({ template: 'supabase' });
-        const res = await fetch('/api/update-start-month', {
+        await fetch('/api/update-start-month', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ householdId, startMonth: newStartMonth, startYear: newStartYear }),
         });
-        const resJson = await res.json().catch(() => null);
-        console.log('[DEBUG] update-start-month response:', res.status, resJson);
       } catch (e) {
         console.error('handleSetStartMonth save failed:', e);
       }
