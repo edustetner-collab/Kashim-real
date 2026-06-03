@@ -179,15 +179,13 @@ const App: React.FC = () => {
         const status = household?.subscription_status ?? null;
         setSubscriptionStatus(status);
 
-        // Checa se o acesso do coach expirou e não tem assinatura
-        const coachAccessData = await db!.from('coach_access')
-          .select('expires_at')
-          .eq('household_id', hId)
-          .eq('status', 'approved')
-          .maybeSingle();
-        const coachExpired = coachAccessData?.data?.expires_at
-          ? new Date(coachAccessData.data.expires_at) < new Date()
-          : false;
+        // Checa se o acesso do coach expirou e não tem assinatura (via API server-side — bypassa RLS)
+        const token = await getToken({ template: 'supabase' });
+        const coachAccessRes = await fetch(`/api/check-coach-access?householdId=${hId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }).then(r => r.ok ? r.json() : null).catch(() => null) as { hasCoach: boolean; expired: boolean } | null;
+        const coachExpired = coachAccessRes?.expired ?? false;
+        const hasCoach = coachAccessRes?.hasCoach ?? false;
 
         if (coachExpired && status !== 'active') {
           setShowSubscriptionGate(true);
@@ -232,7 +230,6 @@ const App: React.FC = () => {
         // Detecta se é cliente sem coach que precisa do wizard de onboarding
         const onboardingKey = `onboarding_done_${user!.id}`;
         if (localStorage.getItem(onboardingKey) !== 'true') {
-          const hasCoach = !!coachAccessData?.data;
           const hasData = dbItems.some(i => i.values.some(v => v > 0));
           if (!hasCoach && !hasData) {
             setShowOnboarding(true);
