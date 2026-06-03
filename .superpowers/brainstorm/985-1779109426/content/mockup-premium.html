@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kashim — Premium v3</title>
+
+<!-- Inter (Apple-style sans) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+<!-- Phosphor Icons — Thin weight (Apple SF Symbols feel) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/thin/style.css"/>
+<!-- Phosphor Light weight (for secondary icons) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/light/style.css"/>
+
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-font-smoothing:antialiased; }
+
+:root {
+  --white: #ffffff;
+  --bg:    #f5f5f7;
+  --bg2:   #e8e8ed;
+  --bg3:   #d2d2d7;
+  --card:  #ffffff;
+  --text:  #1d1d1f;
+  --text2: #6e6e73;
+  --text3: #aeaeb2;
+  --border:#d2d2d7;
+  --border-soft: #e8e8ed;
+  --lime:       #a8e716;
+  --lime-dark:  #7ab800;
+  --lime-deeper:#5d8c00;
+  --lime-bg:    #f0fad0;
+  --lime-bg2:   #e4f5b0;
+  --red:   #ff3b30;
+  --blue:  #007aff;
+  --r-card:22px;
+  --r-pill:999px;
+}
+
+body {
+  background: #dddde3;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  color: var(--text);
+  padding: 28px 16px 48px;
+}
+
+/* ── Numbers: Inter tabular — no slashed zero ── */
+.num {
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.num-hero {
+  font-size: 44px;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+.num-lg   { font-size: 20px; letter-spacing: -0.03em; }
+.num-md   { font-size: 15px; }
+.num-sm   { font-size: 12px; font-weight: 700; }
+
+.page-label { font-size: 17px; font-weight: 700; margin-bottom: 4px; letter-spacing: -0.3px; }
+.page-sub   { font-size: 13px; color: #86868b; margin-bottom: 22px; }
+
+/* tab switcher */
+.tab-nav {
+  display:flex; gap:4px; margin-bottom:22px;
+  background:var(--bg2); border-radius:14px; padding:4px;
+}
+.tab-btn {
+  flex:1; padding:8px 2px; border-radius:10px;
+  background:none; border:none; cursor:pointer;
+  font-size:10px; font-weight:700; color:var(--text3);
+  letter-spacing:0.3px; text-transform:uppercase; font-family:inherit;
+  transition:all 0.18s;
+}
+.tab-btn.active {
+  background:var(--white);
+  color:var(--text);
+  box-shadow:0 1px 4px rgba(0,0,0,0.1),0 0 0 0.5px rgba(0,0,0,0.05);
+}
+
+/* phone */
+.phone {
+  width:375px; min-height:830px;
+  background:var(--bg);
+  border-radius:52px;
+  border:1px solid rgba(0,0,0,0.1);
+  box-shadow:0 0 0 8px #c8c8cc, 0 36px 90px rgba(0,0,0,0.3), 0 8px 20px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.85);
+  overflow:hidden; position:relative; margin:0 auto;
+}
+.notch { position:absolute;top:0;left:50%;transform:translateX(-50%);width:120px;height:32px;background:#161617;border-radius:0 0 20px 20px;z-index:20; }
+.status-bar { display:flex;justify-content:space-between;align-items:center;padding:14px 28px 0;z-index:10;position:relative; }
+.status-time { font-size:15px; font-weight:800; letter-spacing:-0.5px; color:var(--text); font-variant-numeric:tabular-nums; }
+.status-icons { font-size:11px; color:var(--text2); display:flex; align-items:center; gap:5px; }
+
+/* screens */
+.screen { display:none; padding-bottom:112px; }
+.screen.active { display:block; }
+.screen-scroll { height:668px; overflow-y:auto; scrollbar-width:none; }
+.screen-scroll::-webkit-scrollbar { display:none; }
+
+/* header */
+.screen-header { padding:16px 22px 8px; }
+.eyebrow { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:1.8px; color:var(--text3); margin-bottom:5px; }
+.screen-title { font-size:32px; font-weight:800; letter-spacing:-1.4px; line-height:1.05; color:var(--text); }
+
+/* hero dark card */
+.hero-card {
+  margin:10px 16px;
+  padding:22px 22px 20px;
+  background:var(--text);
+  border-radius:28px;
+  position:relative; overflow:hidden;
+}
+.hero-glow { position:absolute;top:-60px;right:-40px;width:220px;height:220px;background:radial-gradient(circle,rgba(168,231,22,0.22) 0%,transparent 65%);pointer-events:none; }
+.hero-eyebrow { font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,0.38);margin-bottom:8px; }
+.hero-value { color:#fff; }
+.hero-value .currency { font-size:20px; color:rgba(255,255,255,0.5); vertical-align:super; line-height:0; }
+.hero-sub { font-size:12px; color:rgba(255,255,255,0.35); margin-top:8px; line-height:1.5; }
+.hero-pills { display:flex; gap:7px; margin-top:16px; }
+.hero-pill {
+  padding:6px 14px; border-radius:var(--r-pill);
+  background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.1);
+  font-size:11px; font-weight:700; color:rgba(255,255,255,0.5);
+  letter-spacing:0.3px;
+}
+.hero-pill.active { background:var(--lime); border-color:var(--lime); color:#1a2600; }
+
+/* month nav */
+.month-nav {
+  margin:10px 16px;
+  padding:12px 18px;
+  background:var(--white);
+  border:1px solid var(--border-soft);
+  border-radius:18px;
+  display:flex; align-items:center; justify-content:space-between;
+  box-shadow:0 1px 3px rgba(0,0,0,0.05);
+}
+.month-btn { font-size:18px; color:var(--text3); padding:0 4px; line-height:1; }
+.month-name-text { font-size:15px; font-weight:800; letter-spacing:-0.4px; color:var(--text); }
+.month-badge { display:inline-block; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--lime-dark); background:var(--lime-bg); border-radius:var(--r-pill); padding:2px 8px; margin-top:3px; }
+.month-dots { display:flex; gap:3px; justify-content:center; margin-top:7px; }
+.month-dots span { width:5px; height:5px; border-radius:50%; background:var(--bg2); }
+.month-dots span.cur { width:14px; border-radius:3px; background:var(--lime); }
+
+/* kpi row */
+.kpi-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; padding:0 16px; margin:10px 0; }
+.kpi {
+  padding:12px 10px; background:var(--white); border:1px solid var(--border-soft);
+  border-radius:18px; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,0.04);
+}
+.kpi-label { font-size:8px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:var(--text3); margin-bottom:5px; }
+.kpi-val   { font-size:14px; }
+
+/* block */
+.block { margin:10px 16px; }
+.block-hd {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 16px;
+  background:var(--white);
+  border:1px solid var(--border-soft);
+  border-radius:var(--r-card);
+  cursor:pointer;
+  box-shadow:0 1px 4px rgba(0,0,0,0.05);
+  transition:box-shadow 0.15s;
+}
+.block-hd.open { border-radius:var(--r-card) var(--r-card) 0 0; border-bottom:1px solid var(--border-soft); box-shadow:none; }
+.block-hd-left { display:flex; flex-direction:column; gap:2px; }
+.block-hd-title { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:1.3px; color:var(--text2); }
+.block-hd-count { font-size:10px; color:var(--text3); font-weight:500; }
+.block-hd-right { display:flex; align-items:center; gap:10px; }
+.block-total { font-size:16px; }
+.block-chevron { font-size:9px; color:var(--text3); }
+
+.block-body {
+  background:var(--white);
+  border:1px solid var(--border-soft);
+  border-top:none;
+  border-radius:0 0 var(--r-card) var(--r-card);
+  overflow:hidden;
+  box-shadow:0 4px 14px rgba(0,0,0,0.06);
+}
+
+/* bars */
+.bars-area {
+  padding:14px 16px;
+  background:#fafafa;
+  border-bottom:1px solid var(--border-soft);
+  display:flex; flex-direction:column; gap:12px;
+}
+.bar-row {}
+.bar-meta { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+.bar-meta-left { display:flex; align-items:center; gap:7px; }
+.bar-lbl { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--text2); }
+.bar-pct {
+  font-size:9px; font-weight:700; letter-spacing:0.3px;
+  color:var(--lime-dark); background:var(--lime-bg);
+  border:1px solid rgba(122,184,0,0.2); border-radius:var(--r-pill);
+  padding:2px 8px;
+}
+.bar-val { font-size:11px; font-weight:700; font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1; }
+.bar-track { height:5px; background:var(--bg2); border-radius:3px; overflow:hidden; box-shadow:inset 0 1px 2px rgba(0,0,0,0.06); }
+.bar-fill { height:100%; border-radius:3px; }
+
+/* item */
+.item-row {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 16px;
+  border-bottom:1px solid var(--border-soft);
+}
+.item-row:last-child { border-bottom:none; }
+.item-left { display:flex; align-items:center; gap:12px; }
+
+/* Icon container — thin line only, no fill */
+.icon-wrap {
+  width:36px; height:36px; border-radius:11px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  background:var(--bg);
+  border:1px solid var(--border-soft);
+}
+.icon-wrap i { font-size:18px; color:var(--text2); }
+.icon-wrap.lime { background:var(--lime-bg); border-color:rgba(122,184,0,0.2); }
+.icon-wrap.lime i { color:var(--lime-dark); }
+.icon-wrap.purple { background:#f4f0ff; border-color:rgba(139,92,246,0.15); }
+.icon-wrap.purple i { color:#7c3aed; }
+.icon-wrap.red { background:#fff0f0; border-color:rgba(255,59,48,0.15); }
+.icon-wrap.red i { color:var(--red); }
+.icon-wrap.blue { background:#f0f4ff; border-color:rgba(0,122,255,0.15); }
+.icon-wrap.blue i { color:var(--blue); }
+
+.item-name  { font-size:13px; font-weight:600; color:var(--text); }
+.item-sub   { font-size:10px; color:var(--text3); margin-top:1px; font-weight:500; }
+.item-right { display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
+.item-val   { font-size:14px; }
+.badge {
+  font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;
+  padding:2px 8px; border-radius:var(--r-pill);
+}
+
+/* 3D lime button */
+.btn-3d {
+  display:flex; align-items:center; justify-content:center; gap:7px;
+  width:calc(100% - 32px); margin:12px 16px;
+  padding:15px 20px; border-radius:var(--r-pill);
+  font-size:12px; font-weight:800; letter-spacing:0.4px;
+  text-transform:uppercase; font-family:inherit;
+  color:#182200; border:none; cursor:pointer;
+  background:linear-gradient(180deg, #c5f23a 0%, #a2d800 50%, #8cc400 100%);
+  box-shadow:
+    0 5px 16px rgba(130,192,0,0.45),
+    0 1px 4px rgba(0,0,0,0.14),
+    inset 0 1px 0 rgba(255,255,255,0.5),
+    inset 0 -2px 0 rgba(0,0,0,0.1);
+  transition:transform 0.12s, box-shadow 0.12s;
+}
+.btn-3d:active { transform:scale(0.97); box-shadow:0 2px 8px rgba(130,192,0,0.35),inset 0 1px 0 rgba(255,255,255,0.4),inset 0 -1px 0 rgba(0,0,0,0.08); }
+.btn-3d i { font-size:16px; }
+
+/* bottom nav */
+.bottom-nav {
+  position:absolute; bottom:0; left:0; right:0;
+  background:rgba(245,245,247,0.94);
+  border-top:0.5px solid rgba(0,0,0,0.12);
+  backdrop-filter:blur(30px) saturate(1.8);
+  display:flex; justify-content:space-around; align-items:flex-end;
+  padding:10px 0 30px;
+}
+.nav-item { display:flex; flex-direction:column; align-items:center; gap:3px; padding:5px 12px; border-radius:14px; cursor:pointer; }
+.nav-icon-wrap { width:28px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:9px; }
+.nav-item i { font-size:20px; color:var(--text3); }
+.nav-item.active i { color:var(--lime-dark); }
+.nav-item.active .nav-icon-wrap { background:var(--lime-bg); }
+.nav-label { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text3); }
+.nav-item.active .nav-label { color:var(--lime-dark); }
+
+/* AI fab */
+.ai-fab {
+  position:absolute; bottom:90px; right:18px; z-index:10;
+  width:46px; height:46px; border-radius:16px;
+  background:linear-gradient(145deg,#c5f23a,#8cc400);
+  box-shadow:0 6px 20px rgba(130,192,0,0.5),0 2px 6px rgba(0,0,0,0.12),inset 0 1px 0 rgba(255,255,255,0.5);
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+}
+.ai-fab i { font-size:20px; color:#182200; }
+
+/* ════ TETO ════ */
+.teto-hero {
+  margin:10px 16px; padding:22px 22px 20px;
+  background:var(--text); border-radius:28px;
+  position:relative; overflow:hidden;
+}
+.teto-glow { position:absolute;top:-50px;right:-30px;width:200px;height:200px;background:radial-gradient(circle,rgba(168,231,22,0.2) 0%,transparent 65%);pointer-events:none; }
+.teto-eyebrow { font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,0.38);margin-bottom:8px; }
+.teto-value { color:#fff; }
+.teto-value em { color:var(--lime);font-style:normal; }
+.teto-sub { font-size:12px;color:rgba(255,255,255,0.35);margin-top:8px; }
+.teto-bar-track { margin-top:14px;height:4px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden; }
+.teto-bar-fill { height:100%;width:58%;background:linear-gradient(90deg,var(--lime),var(--lime-dark));border-radius:2px; }
+
+.section-lbl { margin:16px 16px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.8px;color:var(--text3); }
+.card-list { margin:0 16px;background:var(--white);border:1px solid var(--border-soft);border-radius:var(--r-card);overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.05); }
+.card-row-item { display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border-soft); }
+.card-row-item:last-child { border-bottom:none; }
+.card-icon-wrap { width:40px;height:40px;border-radius:13px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border-soft);background:var(--bg); }
+.card-icon-wrap i { font-size:20px;color:var(--text2); }
+.card-name { font-size:14px;font-weight:700;color:var(--text); }
+.card-meta { font-size:10px;color:var(--text3);margin-top:2px; }
+.card-right { margin-left:auto; text-align:right; }
+.card-amount { font-size:16px; }
+.card-of { font-size:10px;color:var(--text3);margin-top:2px; }
+
+/* ════ METAS ════ */
+.meta-hero { margin:10px 16px;padding:20px;background:var(--white);border:1px solid var(--border-soft);border-radius:28px;box-shadow:0 2px 8px rgba(0,0,0,0.05);display:flex;align-items:center;gap:18px; }
+.ring-wrap { position:relative;width:76px;height:76px;flex-shrink:0; }
+.ring-wrap svg { transform:rotate(-90deg); }
+.ring-center { position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center; }
+.ring-pct { font-size:18px;font-weight:800;color:var(--lime-dark);font-variant-numeric:tabular-nums; }
+.ring-sub { font-size:8px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px; }
+.meta-info .mi-title { font-size:17px;font-weight:800;letter-spacing:-0.4px;color:var(--text); }
+.meta-info .mi-sub { font-size:12px;color:var(--text2);margin-top:2px; }
+.meta-info .mi-val { font-size:13px;font-weight:800;color:var(--lime-dark);margin-top:6px;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1; }
+.meta-card { margin:0 16px 10px;padding:16px 18px;background:var(--white);border:1px solid var(--border-soft);border-radius:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04); }
+.meta-card-header { display:flex;align-items:center;gap:10px;margin-bottom:12px; }
+.meta-card-title { font-size:14px;font-weight:700;color:var(--text); }
+.meta-bar-track { height:5px;background:var(--bg2);border-radius:3px;overflow:hidden;margin-bottom:8px;box-shadow:inset 0 1px 2px rgba(0,0,0,0.05); }
+.meta-bar-fill { height:100%;border-radius:3px; }
+.meta-amounts { display:flex;justify-content:space-between;font-size:11px;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1; }
+.meta-curr { font-weight:800; }
+.meta-target { color:var(--text3); }
+
+/* ════ DESEMPENHO ════ */
+.score-hero { margin:10px 16px;padding:22px 20px;background:var(--text);border-radius:28px;position:relative;overflow:hidden;display:flex;justify-content:space-between;align-items:center; }
+.score-hero::before { content:'';position:absolute;top:-60px;left:-40px;width:220px;height:220px;background:radial-gradient(circle,rgba(168,231,22,0.15) 0%,transparent 65%);pointer-events:none; }
+.score-left .score-eyebrow { font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,0.35);margin-bottom:8px; }
+.score-left .score-desc { font-size:14px;font-weight:600;color:rgba(255,255,255,0.65);line-height:1.5; }
+.score-right { display:flex;flex-direction:column;align-items:flex-end;gap:10px; }
+.score-num { font-size:58px;font-weight:800;letter-spacing:-3px;line-height:1;color:#fff;font-variant-numeric:tabular-nums; }
+.score-num .dec { font-size:30px;color:rgba(255,255,255,0.35); }
+.score-grade {
+  width:48px;height:48px;border-radius:15px;
+  background:var(--lime);
+  box-shadow:0 4px 16px rgba(168,231,22,0.45),inset 0 1px 0 rgba(255,255,255,0.5);
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;font-weight:900;color:#182200;
+}
+
+.chart-section { margin:12px 16px; }
+.chart-lbl { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.8px;color:var(--text3);margin-bottom:10px; }
+.chart-wrap { background:var(--white);border:1px solid var(--border-soft);border-radius:20px;padding:16px 14px 12px;box-shadow:0 1px 4px rgba(0,0,0,0.04); }
+.chart-bars { display:flex;align-items:flex-end;gap:5px;height:72px; }
+.chart-bar-col { flex:1;display:flex;flex-direction:column;align-items:center;gap:5px; }
+.chart-bar { width:100%;border-radius:5px 5px 2px 2px; }
+.chart-month { font-size:8px;color:var(--text3);font-weight:700;text-transform:uppercase; }
+
+.perf-grid { display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 16px; }
+.perf-cell { padding:14px;background:var(--white);border:1px solid var(--border-soft);border-radius:18px;box-shadow:0 1px 3px rgba(0,0,0,0.04); }
+.pc-lbl { font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-bottom:4px; }
+.pc-val { font-size:20px;font-weight:800;letter-spacing:-0.5px;font-variant-numeric:tabular-nums; }
+.pc-sub { font-size:10px;color:var(--text3);margin-top:2px; }
+</style>
+</head>
+<body>
+
+<div class="page-label">Kashim — Premium Final</div>
+<p class="page-sub">Inter tabular · Phosphor thin icons · Apple light</p>
+
+<div class="tab-nav">
+  <button class="tab-btn active" onclick="go('plano')">Plano</button>
+  <button class="tab-btn" onclick="go('teto')">Gastos</button>
+  <button class="tab-btn" onclick="go('metas')">Metas</button>
+  <button class="tab-btn" onclick="go('score')">Score</button>
+</div>
+
+<div class="phone">
+  <div class="notch"></div>
+  <div class="status-bar">
+    <span class="status-time">9:41</span>
+    <div class="status-icons">
+      <i class="ph-thin ph-cell-signal-full" style="font-size:14px"></i>
+      <i class="ph-thin ph-wifi-high" style="font-size:14px"></i>
+      <i class="ph-thin ph-battery-full" style="font-size:14px"></i>
+    </div>
+  </div>
+
+  <div class="screen-scroll">
+
+    <!-- ══════════════════ PLANO ══════════════════ -->
+    <div id="tab-plano" class="screen active">
+
+      <div class="screen-header">
+        <div class="eyebrow">Kashim · Maio 2026</div>
+        <div class="screen-title">Plano<br>Financeiro</div>
+      </div>
+
+      <!-- hero -->
+      <div class="hero-card">
+        <div class="hero-glow"></div>
+        <div class="hero-eyebrow">Sobra estimada · Maio</div>
+        <div class="hero-value num num-hero">
+          <span class="currency">R$</span> 4.300
+        </div>
+        <div class="hero-sub">Entradas R$ 12.500 &nbsp;·&nbsp; Gastos R$ 8.200</div>
+        <div class="hero-pills">
+          <div class="hero-pill active">Mai</div>
+          <div class="hero-pill">Jun</div>
+          <div class="hero-pill">Jul</div>
+          <div class="hero-pill">Ago</div>
+        </div>
+      </div>
+
+      <!-- kpis -->
+      <div class="kpi-row">
+        <div class="kpi">
+          <div class="kpi-label">Entradas</div>
+          <div class="kpi-val num" style="color:#34c759">12,5k</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Gastos</div>
+          <div class="kpi-val num" style="color:var(--red)">8,2k</div>
+        </div>
+        <div class="kpi" style="background:var(--lime-bg);border-color:rgba(122,184,0,0.2)">
+          <div class="kpi-label" style="color:var(--lime-dark)">Sobra</div>
+          <div class="kpi-val num" style="color:var(--lime-dark)">4,3k</div>
+        </div>
+      </div>
+
+      <!-- month nav -->
+      <div class="month-nav">
+        <div class="month-btn">‹</div>
+        <div style="text-align:center">
+          <div class="month-name-text">MAIO 2026</div>
+          <div style="text-align:center;margin-top:3px"><span class="month-badge">Mês atual</span></div>
+          <div class="month-dots" style="justify-content:center;margin-top:8px">
+            <span class="cur"></span><span></span><span></span><span></span><span></span><span></span>
+          </div>
+        </div>
+        <div class="month-btn">›</div>
+      </div>
+
+      <!-- CONTAS FIXAS -->
+      <div class="block">
+        <div class="block-hd open">
+          <div class="block-hd-left">
+            <div class="block-hd-title">Contas Fixas</div>
+            <div class="block-hd-count">8 itens recorrentes</div>
+          </div>
+          <div class="block-hd-right">
+            <span class="block-total num num-md" style="color:var(--red)">R$ 6.850</span>
+            <span class="block-chevron">▲</span>
+          </div>
+        </div>
+        <div class="block-body">
+          <div class="bars-area">
+            <div class="bar-row">
+              <div class="bar-meta">
+                <div class="bar-meta-left">
+                  <span class="bar-lbl">Ideal</span>
+                  <span class="bar-pct">55%</span>
+                </div>
+                <span class="bar-val" style="color:var(--lime-dark)">R$ 6.875</span>
+              </div>
+              <div class="bar-track">
+                <div class="bar-fill" style="width:55%;background:linear-gradient(90deg,var(--lime),var(--lime-dark))"></div>
+              </div>
+            </div>
+            <div class="bar-row">
+              <div class="bar-meta">
+                <div class="bar-meta-left"><span class="bar-lbl">Definido</span></div>
+                <span class="bar-val" style="color:var(--blue)">R$ 6.850</span>
+              </div>
+              <div class="bar-track">
+                <div class="bar-fill" style="width:54.8%;background:var(--blue)"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="item-row">
+            <div class="item-left">
+              <div class="icon-wrap"><i class="ph-thin ph-house"></i></div>
+              <div><div class="item-name">Aluguel</div><div class="item-sub">Recorrente · débito</div></div>
+            </div>
+            <div class="item-right">
+              <span class="item-val num num-md">R$ 3.200</span>
+              <span class="badge" style="background:var(--lime-bg);color:var(--lime-dark)">Pago</span>
+            </div>
+          </div>
+
+          <div class="item-row">
+            <div class="item-left">
+              <div class="icon-wrap"><i class="ph-thin ph-wifi-high"></i></div>
+              <div><div class="item-name">Internet</div><div class="item-sub">Recorrente · vence dia 15</div></div>
+            </div>
+            <div class="item-right">
+              <span class="item-val num num-md">R$ 180</span>
+              <span class="badge" style="background:#fff0f0;color:var(--red)">Pendente</span>
+            </div>
+          </div>
+
+          <div class="item-row">
+            <div class="item-left">
+              <div class="icon-wrap"><i class="ph-thin ph-barbell"></i></div>
+              <div><div class="item-name">Academia</div><div class="item-sub">Recorrente · Nubank</div></div>
+            </div>
+            <div class="item-right">
+              <span class="item-val num num-md">R$ 250</span>
+              <span class="badge" style="background:var(--lime-bg);color:var(--lime-dark)">Pago</span>
+            </div>
+          </div>
+
+          <button class="btn-3d">
+            <i class="ph-thin ph-plus-circle"></i>
+            Adicionar Conta Fixa
+          </button>
+        </div>
+      </div>
+
+      <!-- LAZER -->
+      <div class="block">
+        <div class="block-hd open">
+          <div class="block-hd-left">
+            <div class="block-hd-title">Lazer & Pessoal</div>
+            <div class="block-hd-count">3 itens · mai 2026</div>
+          </div>
+          <div class="block-hd-right">
+            <span class="block-total num num-md" style="color:#7c3aed">R$ 1.320</span>
+            <span class="block-chevron">▲</span>
+          </div>
+        </div>
+        <div class="block-body">
+          <div class="bars-area">
+            <div class="bar-row">
+              <div class="bar-meta">
+                <div class="bar-meta-left">
+                  <span class="bar-lbl">Ideal</span>
+                  <span class="bar-pct">15%</span>
+                </div>
+                <span class="bar-val" style="color:var(--lime-dark)">R$ 1.875</span>
+              </div>
+              <div class="bar-track">
+                <div class="bar-fill" style="width:15%;background:linear-gradient(90deg,var(--lime),var(--lime-dark))"></div>
+              </div>
+            </div>
+            <div class="bar-row">
+              <div class="bar-meta">
+                <div class="bar-meta-left"><span class="bar-lbl">Definido</span></div>
+                <span class="bar-val" style="color:var(--blue)">R$ 1.320</span>
+              </div>
+              <div class="bar-track">
+                <div class="bar-fill" style="width:10.5%;background:var(--blue)"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="item-row">
+            <div class="item-left">
+              <div class="icon-wrap purple"><i class="ph-thin ph-gift"></i></div>
+              <div><div class="item-name">Presente da mãe</div><div class="item-sub">Crédito · fatura junho</div></div>
+            </div>
+            <div class="item-right">
+              <span class="item-val num num-md" style="color:#7c3aed">R$ 420</span>
+            </div>
+          </div>
+
+          <div class="item-row">
+            <div class="item-left">
+              <div class="icon-wrap purple"><i class="ph-thin ph-couch"></i></div>
+              <div><div class="item-name">Tapete 1/4</div><div class="item-sub">Crédito parcelado · mai</div></div>
+            </div>
+            <div class="item-right">
+              <span class="item-val num num-md" style="color:#7c3aed">R$ 350</span>
+              <span class="badge" style="background:#f4f0ff;color:#7c3aed">1 / 4</span>
+            </div>
+          </div>
+
+          <button class="btn-3d">
+            <i class="ph-thin ph-plus-circle"></i>
+            Lançar Gasto de Lazer
+          </button>
+        </div>
+      </div>
+
+      <!-- VARIÁVEIS collapsed -->
+      <div class="block">
+        <div class="block-hd">
+          <div class="block-hd-left">
+            <div class="block-hd-title">Contas Variáveis</div>
+            <div class="block-hd-count">2 itens</div>
+          </div>
+          <div class="block-hd-right">
+            <span class="block-total num num-md" style="color:#34c759">R$ 610</span>
+            <span class="block-chevron">▼</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ══════════════════ TETO ══════════════════ -->
+    <div id="tab-teto" class="screen">
+
+      <div class="screen-header">
+        <div class="eyebrow">Fatura · Junho 2026</div>
+        <div class="screen-title">Teto de<br>Gastos</div>
+      </div>
+
+      <div class="teto-hero">
+        <div class="teto-glow"></div>
+        <div class="teto-eyebrow">Total comprometido</div>
+        <div class="teto-value num num-hero">R$ <em>4.820</em></div>
+        <div class="teto-sub">Faltam <strong style="color:var(--lime)">R$ 3.180</strong> do limite de R$ 8.000</div>
+        <div class="teto-bar-track"><div class="teto-bar-fill"></div></div>
+      </div>
+
+      <div class="section-lbl">Cartões de Crédito</div>
+      <div class="card-list">
+        <div class="card-row-item">
+          <div class="card-icon-wrap blue"><i class="ph-thin ph-credit-card"></i></div>
+          <div>
+            <div class="card-name">Nubank</div>
+            <div class="card-meta">Fecha dia 10 · Vence 17</div>
+          </div>
+          <div class="card-right">
+            <div class="card-amount num num-md" style="color:var(--red)">R$ 3.420</div>
+            <div class="card-of">de R$ 5.000</div>
+          </div>
+        </div>
+        <div class="card-row-item">
+          <div class="card-icon-wrap lime"><i class="ph-thin ph-credit-card"></i></div>
+          <div>
+            <div class="card-name">Itaú Visa</div>
+            <div class="card-meta">Fecha dia 15 · Vence 22</div>
+          </div>
+          <div class="card-right">
+            <div class="card-amount num num-md" style="color:var(--lime-dark)">R$ 1.400</div>
+            <div class="card-of">de R$ 3.000</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-lbl">Rastreado em Maio</div>
+      <div class="card-list">
+        <div class="card-row-item">
+          <div class="card-icon-wrap purple"><i class="ph-thin ph-couch"></i></div>
+          <div><div class="card-name">Tapete (4×)</div><div class="card-meta">Lazer · parcelado</div></div>
+          <div class="card-right">
+            <div class="card-amount num num-md" style="color:#7c3aed">R$ 1.400</div>
+            <div class="card-of">→ fatura jun</div>
+          </div>
+        </div>
+        <div class="card-row-item">
+          <div class="card-icon-wrap red"><i class="ph-thin ph-wrench"></i></div>
+          <div><div class="card-name">Bateria do carro</div><div class="card-meta">Variável · 2×</div></div>
+          <div class="card-right">
+            <div class="card-amount num num-md">R$ 410</div>
+            <div class="card-of">→ fatura jun</div>
+          </div>
+        </div>
+        <div class="card-row-item">
+          <div class="card-icon-wrap purple"><i class="ph-thin ph-gift"></i></div>
+          <div><div class="card-name">Presente da mãe</div><div class="card-meta">Lazer · à vista</div></div>
+          <div class="card-right">
+            <div class="card-amount num num-md">R$ 420</div>
+            <div class="card-of">→ fatura jun</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ══════════════════ METAS ══════════════════ -->
+    <div id="tab-metas" class="screen">
+
+      <div class="screen-header">
+        <div class="eyebrow">3 ativas · 1 concluída</div>
+        <div class="screen-title">Suas<br>Metas</div>
+      </div>
+
+      <div class="meta-hero">
+        <div class="ring-wrap">
+          <svg width="76" height="76" viewBox="0 0 76 76">
+            <circle cx="38" cy="38" r="30" fill="none" stroke="var(--bg2)" stroke-width="5"/>
+            <circle cx="38" cy="38" r="30" fill="none" stroke="var(--lime)" stroke-width="5"
+              stroke-dasharray="188" stroke-dashoffset="56" stroke-linecap="round"/>
+          </svg>
+          <div class="ring-center">
+            <div class="ring-pct">70%</div>
+            <div class="ring-sub">geral</div>
+          </div>
+        </div>
+        <div class="meta-info">
+          <div class="mi-title">Reserva de Emergência</div>
+          <div class="mi-sub">Meta principal · em andamento</div>
+          <div class="mi-val">R$ 14.000 / R$ 20.000</div>
+        </div>
+      </div>
+
+      <div class="meta-card">
+        <div class="meta-card-header">
+          <div class="icon-wrap lime" style="width:30px;height:30px;border-radius:9px"><i class="ph-thin ph-buildings" style="font-size:15px"></i></div>
+          <div class="meta-card-title">Entrada do Apartamento</div>
+        </div>
+        <div class="meta-bar-track"><div class="meta-bar-fill" style="width:45%;background:linear-gradient(90deg,var(--lime),var(--lime-dark))"></div></div>
+        <div class="meta-amounts">
+          <span class="meta-curr" style="color:var(--lime-dark)">R$ 22.500</span>
+          <span class="meta-target">/ R$ 50.000</span>
+        </div>
+      </div>
+
+      <div class="meta-card">
+        <div class="meta-card-header">
+          <div class="icon-wrap blue" style="width:30px;height:30px;border-radius:9px"><i class="ph-thin ph-airplane" style="font-size:15px"></i></div>
+          <div class="meta-card-title">Viagem Europa</div>
+        </div>
+        <div class="meta-bar-track"><div class="meta-bar-fill" style="width:28%;background:linear-gradient(90deg,#60a5fa,#3b82f6)"></div></div>
+        <div class="meta-amounts">
+          <span class="meta-curr" style="color:#3b82f6">R$ 4.200</span>
+          <span class="meta-target">/ R$ 15.000</span>
+        </div>
+      </div>
+
+      <div class="meta-card">
+        <div class="meta-card-header">
+          <div class="icon-wrap red" style="width:30px;height:30px;border-radius:9px"><i class="ph-thin ph-car" style="font-size:15px"></i></div>
+          <div class="meta-card-title">Troca do Carro</div>
+        </div>
+        <div class="meta-bar-track"><div class="meta-bar-fill" style="width:82%;background:linear-gradient(90deg,#f97316,#ea580c)"></div></div>
+        <div class="meta-amounts">
+          <span class="meta-curr" style="color:#f97316">R$ 32.800</span>
+          <span class="meta-target">/ R$ 40.000</span>
+        </div>
+      </div>
+
+      <button class="btn-3d" style="width:calc(100% - 32px);margin:10px 16px">
+        <i class="ph-thin ph-plus-circle"></i>Nova Meta
+      </button>
+
+    </div>
+
+    <!-- ══════════════════ SCORE ══════════════════ -->
+    <div id="tab-score" class="screen">
+
+      <div class="screen-header">
+        <div class="eyebrow">Saúde financeira</div>
+        <div class="screen-title">Seu<br>Desempenho</div>
+      </div>
+
+      <div class="score-hero">
+        <div class="score-left">
+          <div class="score-eyebrow">Score · Mai 2026</div>
+          <div class="score-desc">Ótimo controle<br>sobre os gastos</div>
+        </div>
+        <div class="score-right">
+          <div class="score-num num">8<span class="dec">.4</span></div>
+          <div class="score-grade">A</div>
+        </div>
+      </div>
+
+      <div class="chart-section">
+        <div class="chart-lbl">Sobra Mensal</div>
+        <div class="chart-wrap">
+          <div class="chart-bars">
+            <div class="chart-bar-col"><div class="chart-bar" style="height:35px;background:var(--bg2)"></div><div class="chart-month">Dez</div></div>
+            <div class="chart-bar-col"><div class="chart-bar" style="height:48px;background:var(--bg2)"></div><div class="chart-month">Jan</div></div>
+            <div class="chart-bar-col"><div class="chart-bar" style="height:28px;background:var(--bg2)"></div><div class="chart-month">Fev</div></div>
+            <div class="chart-bar-col"><div class="chart-bar" style="height:55px;background:var(--bg2)"></div><div class="chart-month">Mar</div></div>
+            <div class="chart-bar-col"><div class="chart-bar" style="height:42px;background:var(--bg2)"></div><div class="chart-month">Abr</div></div>
+            <div class="chart-bar-col">
+              <div class="chart-bar" style="height:64px;background:linear-gradient(180deg,var(--lime) 0%,var(--lime-dark) 100%);box-shadow:0 4px 12px rgba(130,192,0,0.38)"></div>
+              <div class="chart-month" style="color:var(--lime-dark);font-weight:800">Mai</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="perf-grid">
+        <div class="perf-cell">
+          <div class="pc-lbl">Melhor Mês</div>
+          <div class="pc-val" style="color:var(--lime-dark)">Março</div>
+          <div class="pc-sub">R$ 5.500 de sobra</div>
+        </div>
+        <div class="perf-cell">
+          <div class="pc-lbl">Média Mensal</div>
+          <div class="pc-val num">R$ 4,1k</div>
+          <div class="pc-sub">últimos 6 meses</div>
+        </div>
+        <div class="perf-cell">
+          <div class="pc-lbl">Meses no verde</div>
+          <div class="pc-val num" style="color:var(--lime-dark)">5/6</div>
+          <div class="pc-sub">consecutivos</div>
+        </div>
+        <div class="perf-cell">
+          <div class="pc-lbl">Acumulado</div>
+          <div class="pc-val num" style="color:var(--lime-dark)">24k</div>
+          <div class="pc-sub">em 6 meses</div>
+        </div>
+      </div>
+
+    </div>
+
+  </div><!-- /scroll -->
+
+  <!-- AI FAB -->
+  <div class="ai-fab"><i class="ph-thin ph-sparkle"></i></div>
+
+  <!-- Bottom Nav -->
+  <div class="bottom-nav">
+    <div class="nav-item active" id="nav-plano" onclick="go('plano')">
+      <div class="nav-icon-wrap"><i class="ph-thin ph-layout"></i></div>
+      <div class="nav-label">Plano</div>
+    </div>
+    <div class="nav-item" id="nav-teto" onclick="go('teto')">
+      <div class="nav-icon-wrap"><i class="ph-thin ph-wallet"></i></div>
+      <div class="nav-label">Gastos</div>
+    </div>
+    <div class="nav-item" id="nav-metas" onclick="go('metas')">
+      <div class="nav-icon-wrap"><i class="ph-thin ph-target"></i></div>
+      <div class="nav-label">Metas</div>
+    </div>
+    <div class="nav-item" id="nav-score" onclick="go('score')">
+      <div class="nav-icon-wrap"><i class="ph-thin ph-chart-bar"></i></div>
+      <div class="nav-label">Score</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function go(name) {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  document.getElementById('nav-'+name).classList.add('active');
+  const idx=['plano','teto','metas','score'].indexOf(name);
+  document.querySelectorAll('.tab-btn')[idx].classList.add('active');
+  try{fetch('/event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:'click',choice:name,text:name})})}catch(e){}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kashim — Mockup Glass+Motion</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  background: #07070f;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+  color: #fff;
+  min-height: 100vh;
+  padding: 24px 16px 40px;
+}
+
+h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 4px; }
+.sub { font-size: 13px; color: #555; margin-bottom: 28px; }
+
+/* ── Tab switcher ── */
+.tab-nav {
+  display: flex; gap: 6px; margin-bottom: 28px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 16px;
+  padding: 5px;
+}
+.tab-btn {
+  flex: 1; padding: 9px 4px; border-radius: 11px;
+  background: none; border: none; cursor: pointer;
+  font-size: 11px; font-weight: 700; color: #555;
+  letter-spacing: 0.3px; text-transform: uppercase;
+  transition: all 0.2s; font-family: inherit;
+}
+.tab-btn.active { background: rgba(200,241,53,0.12); color: #c8f135; border: 1px solid rgba(200,241,53,0.2); }
+
+/* ── Phone frame ── */
+.phone {
+  width: 375px; min-height: 812px;
+  background: linear-gradient(160deg, #0d0d18 0%, #09090f 60%, #0b0b14 100%);
+  border-radius: 50px;
+  border: 1.5px solid rgba(255,255,255,0.08);
+  box-shadow: 0 40px 120px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.03), inset 0 1px 0 rgba(255,255,255,0.05);
+  overflow: hidden;
+  position: relative;
+  margin: 0 auto;
+}
+
+/* status bar */
+.status-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 28px 0;
+  font-size: 12px; font-weight: 700; color: rgba(255,255,255,0.6);
+}
+.status-bar .time { font-size: 15px; font-weight: 800; letter-spacing: -0.3px; }
+.status-icons { display: flex; gap: 5px; align-items: center; font-size: 10px; }
+
+/* notch */
+.notch {
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 130px; height: 34px;
+  background: #07070f;
+  border-radius: 0 0 22px 22px;
+}
+
+/* glow orb */
+.glow-orb {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* ── Scroll content ── */
+.screen { padding: 10px 0 100px; display: none; }
+.screen.active { display: block; }
+
+/* ── Glass card ── */
+.glass {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 24px;
+  backdrop-filter: blur(20px);
+}
+.glass-green {
+  background: rgba(200,241,53,0.06);
+  border: 1px solid rgba(200,241,53,0.15);
+  border-radius: 24px;
+}
+
+/* ── Header ── */
+.screen-header { padding: 16px 20px 10px; }
+.screen-title { font-size: 28px; font-weight: 800; letter-spacing: -1px; }
+.screen-sub { font-size: 13px; color: rgba(255,255,255,0.35); margin-top: 2px; font-weight: 500; }
+
+/* ── Month selector ── */
+.month-sel {
+  display: flex; align-items: center; justify-content: space-between;
+  margin: 8px 20px; padding: 12px 16px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 18px;
+}
+.month-sel .m-name { font-size: 15px; font-weight: 800; letter-spacing: -0.3px; }
+.month-sel .m-year { font-size: 10px; color: rgba(255,255,255,0.3); font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+.month-sel .m-btn { color: rgba(255,255,255,0.3); font-size: 12px; padding: 4px 8px; }
+.month-dots { display: flex; gap: 4px; justify-content: center; margin-top: 8px; }
+.month-dots span { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.15); }
+.month-dots span.cur { width: 16px; border-radius: 3px; background: #c8f135; }
+
+/* ── Mini KPIs ── */
+.kpi-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 0 16px; margin: 12px 0; }
+.kpi {
+  padding: 12px 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 18px;
+  text-align: center;
+}
+.kpi .kpi-label { font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.3); margin-bottom: 4px; }
+.kpi .kpi-val { font-size: 13px; font-weight: 800; font-family: 'SF Mono', 'Menlo', monospace; letter-spacing: -0.3px; }
+
+/* ── Section block ── */
+.block { margin: 10px 16px; }
+.block-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 20px 20px 0 0;
+  cursor: pointer;
+}
+.block-header.open { border-radius: 20px 20px 0 0; border-bottom: none; }
+.block-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.5); }
+.block-total { font-size: 13px; font-weight: 800; font-family: monospace; }
+.block-chevron { font-size: 10px; color: rgba(255,255,255,0.3); transition: transform 0.2s; }
+.block-chevron.open { transform: rotate(180deg); }
+
+.block-body {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-top: none;
+  border-radius: 0 0 20px 20px;
+  overflow: hidden;
+}
+
+/* 2 bars */
+.bars-area {
+  padding: 14px 16px;
+  background: rgba(0,0,0,0.3);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.bar-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.bar-row:last-child { margin-bottom: 0; }
+.bar-meta { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.bar-meta-left { display: flex; align-items: center; gap: 6px; }
+.bar-label-text { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.2px; }
+.bar-pct-badge { font-size: 8px; font-weight: 800; color: #c8f135; background: rgba(200,241,53,0.12); border: 1px solid rgba(200,241,53,0.2); border-radius: 20px; padding: 2px 6px; }
+.bar-value { font-size: 10px; font-weight: 800; font-family: monospace; }
+.bar-track { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+
+/* Item row */
+.item-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 11px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.item-row:last-child { border-bottom: none; }
+.item-left { display: flex; align-items: center; gap: 10px; }
+.item-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.item-name { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.8); }
+.item-sub { font-size: 9px; color: rgba(255,255,255,0.25); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 1px; }
+.item-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.item-val { font-size: 13px; font-weight: 800; font-family: monospace; }
+.item-badge { font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; padding: 2px 7px; border-radius: 20px; }
+.add-btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: calc(100% - 32px); margin: 10px 16px;
+  padding: 12px;
+  background: rgba(200,241,53,0.06);
+  border: 1px dashed rgba(200,241,53,0.2);
+  border-radius: 14px;
+  font-size: 11px; font-weight: 800; color: rgba(200,241,53,0.6);
+  text-transform: uppercase; letter-spacing: 1px;
+  cursor: pointer;
+}
+
+/* ── BOTTOM NAV ── */
+.bottom-nav {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  background: rgba(10,10,18,0.95);
+  border-top: 1px solid rgba(255,255,255,0.06);
+  backdrop-filter: blur(30px);
+  display: flex; align-items: flex-end; justify-content: space-around;
+  padding: 10px 0 26px;
+}
+.nav-item {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 6px 14px;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.nav-item .ni-icon { font-size: 18px; color: rgba(255,255,255,0.25); }
+.nav-item .ni-label { font-size: 9px; font-weight: 700; color: rgba(255,255,255,0.25); letter-spacing: 0.5px; text-transform: uppercase; }
+.nav-item.active .ni-icon { color: #c8f135; }
+.nav-item.active .ni-label { color: #c8f135; }
+.nav-item.active { background: rgba(200,241,53,0.06); }
+
+/* ── TETO TAB ── */
+.teto-hero {
+  margin: 8px 16px 16px;
+  padding: 22px 20px;
+  background: rgba(200,241,53,0.06);
+  border: 1px solid rgba(200,241,53,0.15);
+  border-radius: 28px;
+  position: relative; overflow: hidden;
+}
+.teto-glow {
+  position: absolute; top: -40px; right: -30px;
+  width: 160px; height: 160px;
+  background: radial-gradient(circle, rgba(200,241,53,0.15) 0%, transparent 70%);
+  border-radius: 50%;
+}
+.teto-tag { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; color: rgba(200,241,53,0.6); margin-bottom: 6px; }
+.teto-value { font-size: 42px; font-weight: 800; letter-spacing: -2px; line-height: 1; }
+.teto-value span { color: #c8f135; }
+.teto-sub { font-size: 12px; color: rgba(255,255,255,0.35); margin-top: 6px; }
+
+.card-item {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.card-item:last-child { border-bottom: none; }
+.card-icon {
+  width: 38px; height: 38px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+}
+.card-info { flex: 1; }
+.card-name { font-size: 13px; font-weight: 700; }
+.card-meta { font-size: 10px; color: rgba(255,255,255,0.3); margin-top: 1px; }
+.card-amount { text-align: right; }
+.card-val { font-size: 15px; font-weight: 800; font-family: monospace; }
+.card-limit { font-size: 9px; color: rgba(255,255,255,0.3); margin-top: 1px; text-align: right; }
+
+/* ── METAS TAB ── */
+.meta-hero {
+  margin: 8px 16px 16px;
+  padding: 20px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 28px;
+}
+.meta-progress-ring { display: flex; align-items: center; gap: 20px; }
+.ring-wrap { position: relative; width: 80px; height: 80px; flex-shrink: 0; }
+.ring-wrap svg { transform: rotate(-90deg); }
+.ring-center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.ring-pct { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; }
+.ring-label { font-size: 8px; color: rgba(255,255,255,0.3); font-weight: 700; text-transform: uppercase; }
+.meta-right .meta-title { font-size: 18px; font-weight: 800; letter-spacing: -0.3px; }
+.meta-right .meta-sub { font-size: 12px; color: rgba(255,255,255,0.35); margin-top: 3px; }
+.meta-right .meta-amount { font-size: 14px; font-weight: 800; color: #c8f135; margin-top: 6px; font-family: monospace; }
+
+.meta-card {
+  margin: 0 16px 10px;
+  padding: 16px 18px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 20px;
+}
+.meta-name { font-size: 14px; font-weight: 700; margin-bottom: 10px; }
+.meta-bar-track { height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
+.meta-bar-fill { height: 100%; border-radius: 3px; }
+.meta-amounts { display: flex; justify-content: space-between; font-size: 11px; }
+.meta-curr { font-weight: 800; font-family: monospace; }
+.meta-goal { color: rgba(255,255,255,0.3); font-family: monospace; }
+
+/* ── DESEMPENHO TAB ── */
+.perf-hero {
+  margin: 8px 16px 16px;
+  padding: 20px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 28px;
+}
+.perf-score-row { display: flex; align-items: center; justify-content: space-between; }
+.perf-score { font-size: 56px; font-weight: 800; letter-spacing: -3px; line-height: 1; }
+.perf-score .decimal { font-size: 28px; color: rgba(255,255,255,0.4); }
+.perf-grade {
+  width: 52px; height: 52px; border-radius: 16px;
+  background: rgba(200,241,53,0.12); border: 1px solid rgba(200,241,53,0.25);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; font-weight: 900; color: #c8f135; letter-spacing: -1px;
+}
+.perf-label { font-size: 12px; color: rgba(255,255,255,0.3); margin-top: 6px; }
+
+.perf-chart { margin: 0 16px 12px; }
+.perf-chart-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.3); margin-bottom: 12px; }
+.chart-bars { display: flex; align-items: flex-end; gap: 6px; height: 70px; }
+.chart-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.chart-bar { width: 100%; border-radius: 6px 6px 2px 2px; }
+.chart-month { font-size: 8px; color: rgba(255,255,255,0.2); font-weight: 700; text-transform: uppercase; }
+
+.perf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 16px 12px; }
+.perf-cell {
+  padding: 14px 14px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 18px;
+}
+.perf-cell .pc-label { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.3); margin-bottom: 4px; }
+.perf-cell .pc-val { font-size: 20px; font-weight: 800; letter-spacing: -0.5px; }
+.perf-cell .pc-sub { font-size: 10px; color: rgba(255,255,255,0.25); margin-top: 2px; }
+
+/* ── AI Coach FAB ── */
+.ai-fab {
+  position: absolute; bottom: 86px; right: 20px;
+  width: 50px; height: 50px;
+  background: linear-gradient(135deg, #c8f135, #9ee600);
+  border-radius: 18px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 8px 24px rgba(200,241,53,0.35), 0 2px 8px rgba(0,0,0,0.4);
+  font-size: 20px;
+  cursor: pointer;
+  z-index: 10;
+}
+
+/* scrollable inner */
+.screen-scroll {
+  height: 650px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.screen-scroll::-webkit-scrollbar { display: none; }
+</style>
+</head>
+<body>
+
+<h1>Kashim — Glass+Motion</h1>
+<p class="sub">Mockup real das 4 abas. Clique nas abas do celular para navegar.</p>
+
+<div class="tab-nav">
+  <button class="tab-btn active" onclick="showTab('plano')">Plano</button>
+  <button class="tab-btn" onclick="showTab('teto')">Gastos</button>
+  <button class="tab-btn" onclick="showTab('metas')">Metas</button>
+  <button class="tab-btn" onclick="showTab('desempenho')">Desempenho</button>
+</div>
+
+<div class="phone">
+  <div class="notch"></div>
+  <div class="status-bar">
+    <span class="time">9:41</span>
+    <div class="status-icons">
+      <span>●●●</span>
+      <span>WiFi</span>
+      <span>🔋</span>
+    </div>
+  </div>
+
+  <div class="screen-scroll">
+
+    <!-- ═══════════════════ PLANO ═══════════════════ -->
+    <div id="tab-plano" class="screen active">
+      <div style="position:absolute;top:-60px;left:-40px;width:300px;height:300px;background:radial-gradient(circle,rgba(200,241,53,0.06) 0%,transparent 70%);border-radius:50%;pointer-events:none;"></div>
+
+      <div class="screen-header">
+        <div class="screen-title">Plano Financeiro</div>
+        <div class="screen-sub">Mai 2026 · Olá, David 👋</div>
+      </div>
+
+      <div class="month-sel">
+        <button class="m-btn">‹</button>
+        <div style="text-align:center">
+          <div class="m-name">MAIO 2026</div>
+          <div class="m-year">Mês Atual</div>
+          <div class="month-dots" style="justify-content:center;margin-top:6px">
+            <span class="cur"></span><span></span><span></span><span></span><span></span><span></span>
+          </div>
+        </div>
+        <button class="m-btn">›</button>
+      </div>
+
+      <div class="kpi-row">
+        <div class="kpi"><div class="kpi-label">Entradas</div><div class="kpi-val" style="color:#c8f135">R$ 12.500</div></div>
+        <div class="kpi"><div class="kpi-label">Gastos</div><div class="kpi-val" style="color:#f87171">R$ 8.200</div></div>
+        <div class="kpi" style="background:rgba(200,241,53,0.06);border-color:rgba(200,241,53,0.15)">
+          <div class="kpi-label" style="color:rgba(200,241,53,0.5)">Sobra</div>
+          <div class="kpi-val" style="color:#c8f135">R$ 4.300</div>
+        </div>
+      </div>
+
+      <!-- CONTAS FIXAS block -->
+      <div class="block">
+        <div class="block-header open">
+          <div>
+            <div class="block-title">Contas Fixas</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="block-total" style="color:#f87171">R$ 6.850</span>
+            <span class="block-chevron open">▲</span>
+          </div>
+        </div>
+        <div class="block-body">
+          <div class="bars-area">
+            <div class="bar-row">
+              <div class="bar-meta">
+                <div class="bar-meta-left">
+                  <span class="bar-label-text" style="color:rgba(255,255,255,0.4)">Ideal</span>
+                  <span class="bar-pct-badge">55%</span>
+                </div>
+                <span class="bar-value" style="color:rgba(255,255,255,0.4)">R$ 6.875</span>
+              </div>
+              <div class="bar-track"><div class="bar-fill" style="width:55%;background:rgba(200,241,53,0.5)"></div></div>
+            </div>
+            <div class="bar-row">
+              <div class="bar-meta">
+                <div class="bar-meta-left"><span class="bar-label-text" style="color:#60a5fa">Definido</span></div>
+                <span class="bar-value" style="color:#60a5fa">R$ 6.850</span>
+              </div>
+              <div class="bar-track"><div class="bar-fill" style="width:54.8%;background:#60a5fa"></div></div>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-left">
+              <div class="item-dot" style="background:#60a5fa"></div>
+              <div><div class="item-name">Aluguel</div><div class="item-sub">Recorrente</div></div>
+            </div>
+            <div class="item-right">
+              <span class="item-val">R$ 3.200</span>
+              <span class="item-badge" style="background:rgba(34,197,94,0.1);color:#4ade80">PG</span>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-left">
+              <div class="item-dot" style="background:#60a5fa"></div>
+              <div><div class="item-name">Internet</div><div class="item-sub">Recorrente</div></div>
+            </div>
+            <div class="item-right">
+              <span class="item-val">R$ 180</span>
+              <span class="item-badge" style="background:rgba(248,113,113,0.1);color:#f87171">Pendente</span>
+            </div>
+          </div>
+          <div class="add-btn">+ Adicionar conta fixa</div>
+        </div>
+      </div>
+
+      <!-- LAZER block -->
+      <div class="block">
+        <div class="block-header open">
+          <div><div class="block-title">Lazer & Pessoal</div></div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="block-total" style="color:#c084fc">R$ 1.320</span>
+            <span class="block-chevron open">▲</span>
+          </div>
+        </div>
+        <div class="block-body">
+          <div class="bars-area">
+            <div class="bar-row">
+              <div class="bar-meta">
+                <div class="bar-meta-left">
+                  <span class="bar-label-text" style="color:rgba(255,255,255,0.4)">Ideal</span>
+                  <span class="bar-pct-badge">15%</span>
+                </div>
+                <span class="bar-value" style="color:rgba(255,255,255,0.4)">R$ 1.875</span>
+              </div>
+              <div class="bar-track"><div class="bar-fill" style="width:15%;background:rgba(200,241,53,0.5)"></div></div>
+            </div>
+            <div class="bar-row">
+              <div class="bar-meta">
+                <div class="bar-meta-left"><span class="bar-label-text" style="color:#60a5fa">Definido</span></div>
+                <span class="bar-value" style="color:#60a5fa">R$ 1.320</span>
+              </div>
+              <div class="bar-track"><div class="bar-fill" style="width:10.5%;background:#60a5fa"></div></div>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-left">
+              <div class="item-dot" style="background:#c084fc"></div>
+              <div><div class="item-name">Presente da mãe</div><div class="item-sub">Crédito · Fatura Jun</div></div>
+            </div>
+            <div class="item-right">
+              <span class="item-val" style="color:#c084fc">R$ 420</span>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-left">
+              <div class="item-dot" style="background:#c084fc"></div>
+              <div><div class="item-name">Tapete 1/4</div><div class="item-sub">Crédito Parcelado</div></div>
+            </div>
+            <div class="item-right">
+              <span class="item-val" style="color:#c084fc">R$ 350</span>
+              <span class="item-badge" style="background:rgba(192,132,252,0.1);color:#c084fc">Mai</span>
+            </div>
+          </div>
+          <div class="add-btn">+ Lançar gasto de lazer</div>
+        </div>
+      </div>
+
+      <!-- VARIÁVEIS block -->
+      <div class="block">
+        <div class="block-header">
+          <div><div class="block-title">Contas Variáveis</div></div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="block-total" style="color:#34d399">R$ 610</span>
+            <span class="block-chevron">▼</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ═══════════════════ TETO (GASTOS) ═══════════════════ -->
+    <div id="tab-teto" class="screen">
+      <div class="screen-header">
+        <div class="screen-title">Teto de Gastos</div>
+        <div class="screen-sub">Fatura de Junho 2026</div>
+      </div>
+
+      <div class="teto-hero">
+        <div class="teto-glow"></div>
+        <div class="teto-tag">Total na fatura de junho</div>
+        <div class="teto-value">R$ <span>4.820</span></div>
+        <div class="teto-sub">Limite restante: <strong style="color:#c8f135">R$ 3.180</strong> de R$ 8.000</div>
+        <div style="margin-top:12px;height:4px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden">
+          <div style="height:100%;width:60%;background:linear-gradient(90deg,#c8f135,#9ee600);border-radius:2px"></div>
+        </div>
+      </div>
+
+      <div style="margin:0 16px 6px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,0.3)">Cartões</div>
+
+      <div class="block" style="margin-top:0">
+        <div class="block-body" style="border-radius:20px;border:1px solid rgba(255,255,255,0.07)">
+          <div class="card-item">
+            <div class="card-icon" style="background:rgba(96,165,250,0.12);border:1px solid rgba(96,165,250,0.2)">💳</div>
+            <div class="card-info">
+              <div class="card-name">Nubank</div>
+              <div class="card-meta">Fecha dia 10 · Vence dia 17</div>
+            </div>
+            <div class="card-amount">
+              <div class="card-val" style="color:#f87171">R$ 3.420</div>
+              <div class="card-limit">de R$ 5.000</div>
+            </div>
+          </div>
+          <div class="card-item">
+            <div class="card-icon" style="background:rgba(200,241,53,0.08);border:1px solid rgba(200,241,53,0.15)">💳</div>
+            <div class="card-info">
+              <div class="card-name">Itaú Visa</div>
+              <div class="card-meta">Fecha dia 15 · Vence dia 22</div>
+            </div>
+            <div class="card-amount">
+              <div class="card-val" style="color:#c8f135">R$ 1.400</div>
+              <div class="card-limit">de R$ 3.000</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin:16px 16px 6px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,0.3)">Gastos rastreados · Maio</div>
+
+      <div class="block" style="margin-top:0">
+        <div class="block-body" style="border-radius:20px;border:1px solid rgba(255,255,255,0.07)">
+          <div class="item-row">
+            <div class="item-left">
+              <div class="item-dot" style="background:#c084fc"></div>
+              <div><div class="item-name">Tapete (4x)</div><div class="item-sub">Lazer · Parcelado</div></div>
+            </div>
+            <div class="item-right"><span class="item-val" style="color:#c084fc">R$ 1.400</span><span style="font-size:9px;color:rgba(255,255,255,0.2)">→ fatura jun</span></div>
+          </div>
+          <div class="item-row">
+            <div class="item-left">
+              <div class="item-dot" style="background:#60a5fa"></div>
+              <div><div class="item-name">Bateria do carro</div><div class="item-sub">Variável · 2x</div></div>
+            </div>
+            <div class="item-right"><span class="item-val">R$ 410</span><span style="font-size:9px;color:rgba(255,255,255,0.2)">→ fatura jun</span></div>
+          </div>
+          <div class="item-row">
+            <div class="item-left">
+              <div class="item-dot" style="background:#c084fc"></div>
+              <div><div class="item-name">Presente da mãe</div><div class="item-sub">Lazer · À vista</div></div>
+            </div>
+            <div class="item-right"><span class="item-val">R$ 420</span><span style="font-size:9px;color:rgba(255,255,255,0.2)">→ fatura jun</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ METAS ═══════════════════ -->
+    <div id="tab-metas" class="screen">
+      <div class="screen-header">
+        <div class="screen-title">Metas</div>
+        <div class="screen-sub">3 metas ativas · 1 concluída</div>
+      </div>
+
+      <div class="meta-hero">
+        <div class="meta-progress-ring">
+          <div class="ring-wrap">
+            <svg width="80" height="80" viewBox="0 0 80 80">
+              <circle cx="40" cy="40" r="32" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="6"/>
+              <circle cx="40" cy="40" r="32" fill="none" stroke="#c8f135" stroke-width="6"
+                stroke-dasharray="201" stroke-dashoffset="60" stroke-linecap="round"/>
+            </svg>
+            <div class="ring-center">
+              <div class="ring-pct" style="color:#c8f135">70%</div>
+              <div class="ring-label">geral</div>
+            </div>
+          </div>
+          <div class="meta-right">
+            <div class="meta-title">Reserva de Emergência</div>
+            <div class="meta-sub">Meta principal · 70% concluída</div>
+            <div class="meta-amount">R$ 14.000 / R$ 20.000</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="meta-card">
+        <div class="meta-name">🏠 Entrada do Apartamento</div>
+        <div class="meta-bar-track"><div class="meta-bar-fill" style="width:45%;background:linear-gradient(90deg,#c8f135,#9ee600)"></div></div>
+        <div class="meta-amounts">
+          <span class="meta-curr" style="color:#c8f135">R$ 22.500</span>
+          <span class="meta-goal">meta R$ 50.000</span>
+        </div>
+      </div>
+
+      <div class="meta-card">
+        <div class="meta-name">✈️ Viagem Europa</div>
+        <div class="meta-bar-track"><div class="meta-bar-fill" style="width:28%;background:linear-gradient(90deg,#60a5fa,#818cf8)"></div></div>
+        <div class="meta-amounts">
+          <span class="meta-curr" style="color:#60a5fa">R$ 4.200</span>
+          <span class="meta-goal">meta R$ 15.000</span>
+        </div>
+      </div>
+
+      <div class="meta-card">
+        <div class="meta-name">🚗 Troca do Carro</div>
+        <div class="meta-bar-track"><div class="meta-bar-fill" style="width:82%;background:linear-gradient(90deg,#f97316,#fbbf24)"></div></div>
+        <div class="meta-amounts">
+          <span class="meta-curr" style="color:#f97316">R$ 32.800</span>
+          <span class="meta-goal">meta R$ 40.000</span>
+        </div>
+      </div>
+
+      <div class="add-btn" style="margin:10px 16px">+ Nova meta</div>
+    </div>
+
+    <!-- ═══════════════════ DESEMPENHO ═══════════════════ -->
+    <div id="tab-desempenho" class="screen">
+      <div class="screen-header">
+        <div class="screen-title">Desempenho</div>
+        <div class="screen-sub">Últimos 6 meses</div>
+      </div>
+
+      <div class="perf-hero">
+        <div class="perf-score-row">
+          <div>
+            <div class="perf-score">8<span class="decimal">.4</span></div>
+            <div class="perf-label">Saúde financeira · Mai 2026</div>
+          </div>
+          <div class="perf-grade">A</div>
+        </div>
+      </div>
+
+      <div class="perf-chart">
+        <div class="perf-chart-title">Sobra mensal (R$)</div>
+        <div class="chart-bars">
+          <div class="chart-bar-wrap">
+            <div class="chart-bar" style="height:35px;background:rgba(200,241,53,0.2)"></div>
+            <div class="chart-month">Dez</div>
+          </div>
+          <div class="chart-bar-wrap">
+            <div class="chart-bar" style="height:48px;background:rgba(200,241,53,0.25)"></div>
+            <div class="chart-month">Jan</div>
+          </div>
+          <div class="chart-bar-wrap">
+            <div class="chart-bar" style="height:28px;background:rgba(200,241,53,0.2)"></div>
+            <div class="chart-month">Fev</div>
+          </div>
+          <div class="chart-bar-wrap">
+            <div class="chart-bar" style="height:55px;background:rgba(200,241,53,0.3)"></div>
+            <div class="chart-month">Mar</div>
+          </div>
+          <div class="chart-bar-wrap">
+            <div class="chart-bar" style="height:42px;background:rgba(200,241,53,0.25)"></div>
+            <div class="chart-month">Abr</div>
+          </div>
+          <div class="chart-bar-wrap">
+            <div class="chart-bar" style="height:60px;background:#c8f135;box-shadow:0 0 12px rgba(200,241,53,0.4)"></div>
+            <div class="chart-month" style="color:#c8f135">Mai</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="perf-grid">
+        <div class="perf-cell">
+          <div class="pc-label">Melhor Mês</div>
+          <div class="pc-val" style="color:#c8f135">Março</div>
+          <div class="pc-sub">R$ 5.500 de sobra</div>
+        </div>
+        <div class="perf-cell">
+          <div class="pc-label">Média Mensal</div>
+          <div class="pc-val">R$ 4.1k</div>
+          <div class="pc-sub">sobra acumulada</div>
+        </div>
+        <div class="perf-cell">
+          <div class="pc-label">Meta atingida</div>
+          <div class="pc-val" style="color:#c8f135">5/6</div>
+          <div class="pc-sub">meses no verde</div>
+        </div>
+        <div class="perf-cell">
+          <div class="pc-label">Acumulado</div>
+          <div class="pc-val" style="color:#c8f135">R$ 24k</div>
+          <div class="pc-sub">nos últimos 6 m</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /screen-scroll -->
+
+  <!-- AI FAB -->
+  <div class="ai-fab">✦</div>
+
+  <!-- Bottom Nav -->
+  <div class="bottom-nav">
+    <div class="nav-item active" id="nav-plano" onclick="showTab('plano')">
+      <span class="ni-icon">◉</span>
+      <span class="ni-label">Plano</span>
+    </div>
+    <div class="nav-item" id="nav-teto" onclick="showTab('teto')">
+      <span class="ni-icon">◈</span>
+      <span class="ni-label">Gastos</span>
+    </div>
+    <div class="nav-item" id="nav-metas" onclick="showTab('metas')">
+      <span class="ni-icon">◎</span>
+      <span class="ni-label">Metas</span>
+    </div>
+    <div class="nav-item" id="nav-desempenho" onclick="showTab('desempenho')">
+      <span class="ni-icon">◇</span>
+      <span class="ni-label">Score</span>
+    </div>
+  </div>
+
+</div><!-- /phone -->
+
+<script>
+function showTab(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+  document.getElementById('tab-' + name).classList.add('active');
+  document.getElementById('nav-' + name).classList.add('active');
+
+  const tabs = ['plano','teto','metas','desempenho'];
+  const idx = tabs.indexOf(name);
+  document.querySelectorAll('.tab-btn')[idx].classList.add('active');
+
+  try {
+    fetch('/event', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ type:'click', choice: name, text: 'Tab: ' + name })
+    });
+  } catch(e) {}
+}
+</script>
+</body>
+</html>
