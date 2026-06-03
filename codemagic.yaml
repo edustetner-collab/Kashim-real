@@ -53,9 +53,12 @@ workflows:
           keychain add-certificates
           xcode-project use-profiles
 
-      - name: Set build number
+      - name: Set build number and iPhone-only
         script: |
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" ios/App/App/Info.plist
+          # iPhone-only: remove iPad requirement so App Store doesn't ask for iPad screenshots
+          sed -i '' 's/TARGETED_DEVICE_FAMILY = "1,2"/TARGETED_DEVICE_FAMILY = 1/g' ios/App/App.xcodeproj/project.pbxproj
+          sed -i '' 's/TARGETED_DEVICE_FAMILY = 1,2/TARGETED_DEVICE_FAMILY = 1/g' ios/App/App.xcodeproj/project.pbxproj
 
       - name: Build iOS
         script: |
