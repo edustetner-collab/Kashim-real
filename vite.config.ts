@@ -30,9 +30,16 @@ export default defineConfig(({ mode }) => {
             ]
           },
           workbox: {
-            globPatterns: ['**/*.{js,css,html,svg}'],
-            navigateFallback: '/index.html',
+            // Não faz precache do HTML — sempre busca do servidor para garantir headers HTTP atualizados (CSP, etc.)
+            globPatterns: ['**/*.{js,css,svg}'],
+            navigateFallback: null,
             runtimeCaching: [
+              {
+                // HTML: sempre busca do servidor (NetworkFirst) — garante CSP e headers atualizados
+                urlPattern: ({ request }: { request: Request }) => request.mode === 'navigate',
+                handler: 'NetworkFirst',
+                options: { cacheName: 'html-cache', networkTimeoutSeconds: 5 },
+              },
               {
                 urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com/,
                 handler: 'CacheFirst',
@@ -40,6 +47,11 @@ export default defineConfig(({ mode }) => {
               },
               {
                 urlPattern: /^https:\/\/cdnjs\.cloudflare\.com/,
+                handler: 'CacheFirst',
+                options: { cacheName: 'cdn-assets', expiration: { maxEntries: 30, maxAgeSeconds: 60 * 60 * 24 * 30 } }
+              },
+              {
+                urlPattern: /^https:\/\/cdn\.jsdelivr\.net/,
                 handler: 'CacheFirst',
                 options: { cacheName: 'cdn-assets', expiration: { maxEntries: 30, maxAgeSeconds: 60 * 60 * 24 * 30 } }
               }
