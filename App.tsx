@@ -1168,11 +1168,11 @@ const App: React.FC = () => {
             <div id="diagnosis" className="hidden lg:block"><Diagnosis summary={monthlySummaries[0]} monthName={months[0].monthName} /></div>
 
             {/* ── MOBILE SUMMARY CARDS ──────────────────────────────── */}
-            {/* Hero dark card — Acumulado Rico */}
+            {/* Hero dark card — Acumulado */}
             <div className="lg:hidden px-3 mb-3">
               <div className="bg-[#1d1d1f] rounded-[24px] p-5 relative overflow-hidden">
                 <div className="absolute top-[-50px] right-[-30px] w-[180px] h-[180px] rounded-full pointer-events-none" style={{background:'radial-gradient(circle,rgba(168,231,22,0.18) 0%,transparent 65%)'}}></div>
-                <div className="text-[10px] font-bold uppercase tracking-[2px] text-white/40 mb-1">Acumulado Rico</div>
+                <div className="text-[10px] font-bold uppercase tracking-[2px] text-white/40 mb-1">Acumulado</div>
                 <div className="text-white font-black k-num" style={{fontSize:'36px',letterSpacing:'-0.04em',lineHeight:1}}>
                   {formatCurrency(monthlySummaries[mobileMonthIdx].accumulated)}
                 </div>
@@ -1295,7 +1295,7 @@ const App: React.FC = () => {
                       ))}
                     </tr>
                     <tr className="bg-green-500/5">
-                      <td className="p-6 font-black text-green-400 uppercase italic text-base">ACUMULADO RICO</td>
+                      <td className="p-6 font-black text-green-400 uppercase italic text-base">ACUMULADO</td>
                       {monthlySummaries.map((s, i) => <td key={i} className="p-6 text-center font-black font-mono text-lg text-green-400 drop-shadow-lg whitespace-nowrap">{formatCurrency(s.accumulated)}</td>)}
                     </tr>
                   </tbody>

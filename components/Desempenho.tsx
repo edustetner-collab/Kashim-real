@@ -47,22 +47,19 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
 
   const poupanca = Math.max(0, balance);
   const poupancaPct = (poupanca / totalIncome) * 100;
-  const fixosPct = ((totalFixed + totalCreditCard) / totalIncome) * 100;
-  const variaveisPct = (totalVariable / totalIncome) * 100;
+  const fixosPct = (totalFixed / totalIncome) * 100;
   const lazerPct = (totalLeisure / totalIncome) * 100;
 
   const categories: Category[] = [
-    { label: 'Fixos + Cartão', icon: 'fa-home', actual: fixosPct, ideal: 55, color: 'bg-red-500', idealColor: 'text-red-400', description: 'Moradia, contas fixas e faturas' },
+    { label: 'Contas Fixas', icon: 'fa-home', actual: fixosPct, ideal: 55, color: 'bg-red-500', idealColor: 'text-red-400', description: 'Moradia, contas e despesas fixas' },
     { label: 'Poupança', icon: 'fa-piggy-bank', actual: poupancaPct, ideal: 20, color: 'bg-green-500', idealColor: 'text-green-400', description: 'O que sobra depois de tudo' },
     { label: 'Lazer', icon: 'fa-star', actual: lazerPct, ideal: 15, color: 'bg-purple-500', idealColor: 'text-purple-400', description: 'Gastos pessoais e entretenimento' },
-    { label: 'Variáveis', icon: 'fa-receipt', actual: variaveisPct, ideal: 10, color: 'bg-cyan-500', idealColor: 'text-cyan-400', description: 'Despesas variáveis do mês' },
   ];
 
   const suggestions: string[] = [];
   const idealFixos = totalIncome * 0.55;
-  const actualFixos = totalFixed + totalCreditCard;
-  if (actualFixos > idealFixos) {
-    suggestions.push(`Seus custos fixos e cartões estão ${formatCurrency(actualFixos - idealFixos)} acima do ideal. Reveja assinaturas ou parcelas que podem ser eliminadas.`);
+  if (totalFixed > idealFixos) {
+    suggestions.push(`Suas contas fixas estão ${formatCurrency(totalFixed - idealFixos)} acima do ideal. Reveja assinaturas ou despesas que podem ser reduzidas.`);
   }
   const idealLazer = totalIncome * 0.15;
   if (totalLeisure > idealLazer) {
