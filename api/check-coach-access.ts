@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
+import { rateLimit } from './_rateLimit';
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL!,
@@ -23,6 +24,11 @@ function getUserId(authHeader?: string): string | null {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+
+  const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0] ?? 'unknown';
+  if (!rateLimit(`check-coach:${ip}`, 30, 60_000)) {
+    return res.status(429).json({ error: 'Too many requests' });
+  }
 
   const userId = getUserId(req.headers.authorization as string);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
