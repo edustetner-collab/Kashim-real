@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
-import { rateLimit } from '../lib/rateLimit';
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL!,
@@ -14,7 +13,7 @@ function getUserId(authHeader?: string): string | null {
   try {
     const parts = token.split('.');
     if (parts.length !== 3) return null;
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as { sub?: string; exp?: number };
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8')) as { sub?: string; exp?: number };
     if (!payload.sub) return null;
     if (payload.exp && payload.exp < Date.now() / 1000) return null;
     return payload.sub;
@@ -143,11 +142,6 @@ function buildPartnerEmail(inviterName: string, inviteUrl: string): string {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
-  const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0] ?? 'unknown';
-  if (!rateLimit(`invite-partner:${ip}`, 5, 60_000)) {
-    return res.status(429).json({ error: 'Too many requests' });
-  }
 
   const userId = getUserId(req.headers.authorization as string);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
