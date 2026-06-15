@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
-import { rateLimit } from './_rateLimit';
+import { rateLimit } from '../lib/rateLimit';
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL!,
