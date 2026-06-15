@@ -606,7 +606,7 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
                 householdId={householdId}
                 currentUserId={user?.id ?? ''}
                 inviterName={`${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || 'Seu parceiro(a)'}
-                getToken={() => getToken({ template: 'supabase' })}
+                getToken={() => getToken()}
               />
             </div>
           </div>
