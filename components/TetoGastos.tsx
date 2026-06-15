@@ -572,21 +572,21 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                             : 'bg-[#f5f5f7] border-[#e8e8ed] placeholder:text-[#aeaeb2]'
                         } text-[#1d1d1f]`}
                       />
-                      <div className="flex items-center">
+                      <div className="flex items-center pr-4">
                         <div className="pl-3 text-[#aeaeb2] text-[10px] font-bold shrink-0">R$</div>
                         <input
                           ref={el => { valueInputRefs.current[col.id] = el; }}
                           type="number"
                           inputMode="decimal"
                           placeholder="Valor..."
-                          className="flex-1 py-3 pl-2 pr-2 text-sm outline-none bg-transparent focus:bg-[#f0fad0]/30 font-black text-[#1d1d1f] transition-all placeholder:text-[#d2d2d7] placeholder:font-normal placeholder:text-xs k-num"
+                          className="flex-1 min-w-0 py-3 pl-2 pr-2 text-sm outline-none bg-transparent focus:bg-[#f0fad0]/30 font-black text-[#1d1d1f] transition-all placeholder:text-[#d2d2d7] placeholder:font-normal placeholder:text-xs k-num"
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') handleSubmitEntry(col.id, col.linkedItemId, e.currentTarget.value);
                           }}
                         />
                         <button
                           onClick={() => handleSubmitEntry(col.id, col.linkedItemId, valueInputRefs.current[col.id]?.value ?? '')}
-                          className="mr-3 shrink-0 k-btn-lime text-[10px] px-3 py-1.5"
+                          className="ml-2 shrink-0 k-btn-lime text-[10px] px-3 py-1.5"
                         >
                           OK
                         </button>
