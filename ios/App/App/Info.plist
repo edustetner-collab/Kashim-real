@@ -53,5 +53,7 @@
 	<string>O Kashim usa reconhecimento de voz para transcrever seus comandos ao Stets, seu mentor financeiro.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>O Kashim usa a câmera para você fotografar comprovantes e lançar gastos automaticamente.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>
