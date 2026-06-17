@@ -46,6 +46,24 @@ const BlockSection: React.FC<BlockSectionProps> = ({
   const itemsRef = useRef<FinanceItem[]>(items);
   useEffect(() => { itemsRef.current = items; }, [items]);
 
+  const hiddenStorageKey = `kashim_hidden_rows_${category}`;
+  const [hiddenItemIds, setHiddenItemIds] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem(`kashim_hidden_rows_${category}`);
+      return saved ? new Set(JSON.parse(saved)) : new Set<string>();
+    } catch { return new Set<string>(); }
+  });
+  const [showHidden, setShowHidden] = useState(false);
+
+  function toggleHideRow(id: string) {
+    setHiddenItemIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) { next.delete(id); } else { next.add(id); }
+      localStorage.setItem(hiddenStorageKey, JSON.stringify([...next]));
+      return next;
+    });
+  }
+
   const PAID_MESSAGES = [
     'Menos uma conta! Você está no caminho certo.',
     'Parabéns! Cada conta paga é um passo para a liberdade.',
@@ -754,17 +772,20 @@ const BlockSection: React.FC<BlockSectionProps> = ({
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => (
-              <tr key={item.id} className="border-b hover:bg-gray-50 transition-colors">
+            {items.filter(item => showHidden || !hiddenItemIds.has(item.id)).map((item) => (
+              <tr key={item.id} className={`border-b transition-colors ${hiddenItemIds.has(item.id) ? 'opacity-35 bg-gray-50' : 'hover:bg-gray-50'}`}>
                 <td className="p-2 text-center">
                   <div className="flex flex-col items-center gap-0.5">
-                    {onMoveItem && (
+                    {onMoveItem && !hiddenItemIds.has(item.id) && (
                       <button onClick={() => onMoveItem(item.id, 'up')} className="text-gray-300 hover:text-green-400 transition-colors px-1" title="Mover para cima">
                         <i className="fas fa-chevron-up text-[9px]"></i>
                       </button>
                     )}
                     <button onClick={() => onRemoveItem(item.id)} className="text-red-400/50 hover:text-red-500 transition-colors p-1"><i className="fas fa-trash-alt text-xs"></i></button>
-                    {onMoveItem && (
+                    <button onClick={() => toggleHideRow(item.id)} className={`transition-colors p-1 ${hiddenItemIds.has(item.id) ? 'text-green-500 hover:text-green-400' : 'text-gray-300 hover:text-gray-500'}`} title={hiddenItemIds.has(item.id) ? 'Reexibir linha' : 'Ocultar linha'}>
+                      <i className={`fas ${hiddenItemIds.has(item.id) ? 'fa-eye' : 'fa-eye-slash'} text-xs`}></i>
+                    </button>
+                    {onMoveItem && !hiddenItemIds.has(item.id) && (
                       <button onClick={() => onMoveItem(item.id, 'down')} className="text-gray-300 hover:text-green-400 transition-colors px-1" title="Mover para baixo">
                         <i className="fas fa-chevron-down text-[9px]"></i>
                       </button>
@@ -1008,6 +1029,27 @@ const BlockSection: React.FC<BlockSectionProps> = ({
               </td>
             </tr>
           </tbody>
+          {(() => {
+            const hiddenCount = items.filter(i => hiddenItemIds.has(i.id)).length;
+            if (hiddenCount === 0) return null;
+            return (
+              <tfoot>
+                <tr className="bg-gray-50 border-t border-dashed border-gray-300">
+                  <td colSpan={months.length + 2} className="px-5 py-2">
+                    <button
+                      onClick={() => setShowHidden(v => !v)}
+                      className="text-[11px] text-gray-400 hover:text-green-500 transition-colors flex items-center gap-2 font-medium"
+                    >
+                      <i className={`fas ${showHidden ? 'fa-eye-slash' : 'fa-eye'} text-[10px]`}></i>
+                      {showHidden
+                        ? `Ocultar ${hiddenCount} linha${hiddenCount > 1 ? 's' : ''} oculta${hiddenCount > 1 ? 's' : ''}`
+                        : `${hiddenCount} linha${hiddenCount > 1 ? 's' : ''} oculta${hiddenCount > 1 ? 's' : ''} — clique para ver`}
+                    </button>
+                  </td>
+                </tr>
+              </tfoot>
+            );
+          })()}
           {category === CategoryType.CREDIT_CARD && items.length > 0 && (
             <tfoot>
               <tr className="bg-orange-50/60 border-t-2 border-orange-200">
