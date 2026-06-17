@@ -27,6 +27,8 @@ const DEFAULT_PREFS: NotificationPrefs = {
   recurringReminderDay: 20,
 };
 
+const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
+
 const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClose, summary, currentMonthIdx, currentYear, subscriptionStatus }) => {
   const { user } = useUser();
   const { signOut } = useClerk();
@@ -325,7 +327,7 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
 
         {/* Tabs */}
         <div className="flex gap-1 mb-5 bg-zinc-900 p-1 rounded-xl border border-zinc-800">
-          {([['conta','Conta','fa-user'],['notificacoes','Avisos','fa-bell'],['parceiro','Casal','fa-heart'],['assinatura','Plano','fa-crown']] as const).map(([key, label, icon]) => (
+          {(([['conta','Conta','fa-user'],['notificacoes','Avisos','fa-bell'],['parceiro','Casal','fa-heart'],['assinatura','Plano','fa-crown']] as const).filter(([key]) => !(isNativeApp && key === 'assinatura'))).map(([key, label, icon]) => (
             <button
               key={key}
               onClick={() => setTab(key)}

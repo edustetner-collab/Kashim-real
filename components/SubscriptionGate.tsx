@@ -6,6 +6,16 @@ interface SubscriptionGateProps {
   onClose: () => void;
 }
 
+const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
+
+const FEATURES = [
+  'Planejamento completo dos 12 meses',
+  'Diagnóstico financeiro em tempo real',
+  'Gastos frequentes e cartões',
+  'Conta compartilhada (casal)',
+  'Suporte prioritário',
+];
+
 const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onClose }) => {
   const { getToken } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -15,7 +25,7 @@ const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onClose }) => {
     setLoading(true);
     setError('');
     try {
-      const token = await getToken({ template: 'supabase' });
+      const token = await getToken();
       const res = await fetch('/api/create-checkout', {
         method: 'POST',
         headers: {
@@ -48,22 +58,11 @@ const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onClose }) => {
         </h2>
 
         <p className="text-zinc-400 text-sm leading-relaxed mb-6">
-          Seu período gratuito de acompanhamento encerrou. Para continuar usando o RICO nessa vida e manter sua organização financeira, assine por apenas:
+          Seu período gratuito de acompanhamento encerrou. Para continuar usando o Kashim e manter sua organização financeira, assine o plano completo.
         </p>
 
-        <div className="bg-green-500/10 border border-green-500/30 rounded-2xl p-5 mb-6 text-center">
-          <p className="text-green-400 text-4xl font-black">R$9,99</p>
-          <p className="text-zinc-500 text-xs uppercase tracking-widest mt-1">por mês · cancele quando quiser</p>
-        </div>
-
         <ul className="space-y-2 mb-8">
-          {[
-            'Planejamento completo dos 12 meses',
-            'Diagnóstico financeiro em tempo real',
-            'Gastos frequentes e cartões',
-            'Conta compartilhada (casal)',
-            'Suporte prioritário',
-          ].map((item) => (
+          {FEATURES.map((item) => (
             <li key={item} className="flex items-center gap-3 text-zinc-300 text-sm">
               <i className="fas fa-check text-green-400 text-xs w-4"></i>
               {item}
@@ -71,15 +70,29 @@ const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onClose }) => {
           ))}
         </ul>
 
-        {error && <p className="text-red-400 text-xs mb-4 text-center">{error}</p>}
-
-        <button
-          onClick={handleSubscribe}
-          disabled={loading}
-          className="w-full bg-green-500 hover:bg-green-400 disabled:opacity-50 text-black font-black py-4 rounded-2xl transition-all shadow-lg uppercase text-sm tracking-widest mb-3"
-        >
-          {loading ? <i className="fas fa-circle-notch animate-spin"></i> : 'Assinar agora — R$9,99/mês'}
-        </button>
+        {isNativeApp ? (
+          /* iOS / native: Apple guidelines prohibit in-app purchase via external payment */
+          <div className="bg-zinc-800 border border-zinc-700 rounded-2xl p-5 text-center mb-3">
+            <i className="fas fa-globe text-green-400 text-2xl mb-3 block"></i>
+            <p className="text-white font-bold text-sm mb-1">Assine pelo navegador</p>
+            <p className="text-zinc-400 text-xs leading-relaxed">
+              Para assinar o Kashim, acesse{' '}
+              <span className="text-green-400 font-bold">app.kashim.com.br</span>{' '}
+              no navegador do seu celular.
+            </p>
+          </div>
+        ) : (
+          <>
+            {error && <p className="text-red-400 text-xs mb-4 text-center">{error}</p>}
+            <button
+              onClick={handleSubscribe}
+              disabled={loading}
+              className="w-full bg-green-500 hover:bg-green-400 disabled:opacity-50 text-black font-black py-4 rounded-2xl transition-all shadow-lg uppercase text-sm tracking-widest mb-3"
+            >
+              {loading ? <i className="fas fa-circle-notch animate-spin"></i> : 'Assinar agora'}
+            </button>
+          </>
+        )}
 
         <button
           onClick={onClose}
