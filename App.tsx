@@ -19,6 +19,8 @@ import SubscriptionGate from './components/SubscriptionGate';
 import OnboardingWizard, { WizardResult } from './components/OnboardingWizard';
 import Desempenho from './components/Desempenho';
 import Metas from './components/Metas';
+import MondayQuote from './components/MondayQuote';
+import { Quote, getQuoteForUser, getMondayKey } from './lib/quotes';
 
 const ADMIN_IDS = (import.meta.env.VITE_ADMIN_USER_IDS ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
 
@@ -48,6 +50,7 @@ const App: React.FC = () => {
     return isNativeApp && localStorage.getItem('web_notice_dismissed') !== 'true';
   });
   const [householdId, setHouseholdId] = useState<string | null>(null);
+  const [mondayQuote, setMondayQuote] = useState<Quote | null>(null);
   const [dbLoading, setDbLoading] = useState(false);
   const [showInvitePanel, setShowInvitePanel] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -259,6 +262,14 @@ const App: React.FC = () => {
 
   // Keep refs in sync with state so we can capture snapshots synchronously
   useEffect(() => { currentHouseholdIdRef.current = householdId; }, [householdId]);
+
+  useEffect(() => {
+    if (!householdId) return;
+    if (new Date().getDay() !== 1) return; // only Mondays
+    const seenKey = `kashim_quote_shown_${householdId}_${getMondayKey()}`;
+    if (localStorage.getItem(seenKey)) return;
+    setMondayQuote(getQuoteForUser(householdId));
+  }, [householdId]);
   useEffect(() => { currentItemsRef.current = items; }, [items]);
   useEffect(() => { currentStartMonthRef.current = startMonth; }, [startMonth]);
   useEffect(() => { currentStartYearRef.current = startYear; }, [startYear]);
@@ -943,6 +954,16 @@ const App: React.FC = () => {
       )}
 
       {!showOnboarding && showTutorial && <OnboardingTutorial onComplete={handleCompleteTutorial} />}
+
+      {mondayQuote && (
+        <MondayQuote
+          quote={mondayQuote}
+          onClose={() => {
+            if (householdId) localStorage.setItem(`kashim_quote_shown_${householdId}_${getMondayKey()}`, '1');
+            setMondayQuote(null);
+          }}
+        />
+      )}
 
       {showWebNotice && (
         <div className="fixed bottom-20 left-3 right-3 z-[90] animate-in slide-in-from-bottom-4 fade-in duration-300">
