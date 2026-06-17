@@ -368,12 +368,8 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
               )}
 
               {/* PDF Export */}
-              <button onClick={handleExportPDF} className="w-full mb-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white font-black py-3 rounded-2xl text-sm uppercase tracking-widest flex items-center justify-center gap-2 transition-all">
+              <button onClick={handleExportPDF} className="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white font-black py-3 rounded-2xl text-sm uppercase tracking-widest flex items-center justify-center gap-2 transition-all">
                 <i className="fas fa-file-pdf text-red-400"></i> Exportar relatório (PDF)
-              </button>
-
-              <button onClick={() => signOut()} className="w-full bg-red-500/10 border border-red-500/20 active:bg-red-500/20 text-red-400 font-black py-3 rounded-2xl transition-all text-sm uppercase flex items-center justify-center gap-2">
-                <i className="fas fa-sign-out-alt"></i> Sair da conta
               </button>
             </div>
 
@@ -502,6 +498,13 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Sign out — kept small and discreet at the bottom */}
+            <div className="flex justify-center pt-2 pb-1">
+              <button onClick={() => signOut()} className="text-zinc-600 hover:text-red-400 active:text-red-500 text-xs transition-colors flex items-center gap-1.5">
+                <i className="fas fa-sign-out-alt text-[10px]"></i> Sair da conta
+              </button>
             </div>
           </>
         )}
