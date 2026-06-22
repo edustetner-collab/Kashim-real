@@ -23,6 +23,7 @@ import MondayQuote from './components/MondayQuote';
 import { Quote, getQuoteForUser, getMondayKey } from './lib/quotes';
 
 const ADMIN_IDS = (import.meta.env.VITE_ADMIN_USER_IDS ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
+const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
 
 const DEFAULT_FIXED_EXPENSES = [
   'Moradia', 'Condominio', 'Telefone fixo', 'Internet', 'Celular',
@@ -190,7 +191,7 @@ const App: React.FC = () => {
         const coachExpired = coachAccessRes?.expired ?? false;
         const hasCoach = coachAccessRes?.hasCoach ?? false;
 
-        if (coachExpired && status !== 'active') {
+        if (coachExpired && status !== 'active' && !isNativeApp) {
           setShowSubscriptionGate(true);
         }
 
@@ -913,6 +914,10 @@ const App: React.FC = () => {
               elements: {
                 headerTitle: 'hidden',
                 headerSubtitle: 'hidden',
+                ...(isNativeApp ? {
+                  socialButtonsBlock: { display: 'none' },
+                  dividerRow: { display: 'none' },
+                } : {}),
               }
             }} />
           ) : (
@@ -920,6 +925,10 @@ const App: React.FC = () => {
               elements: {
                 headerTitle: 'hidden',
                 headerSubtitle: 'hidden',
+                ...(isNativeApp ? {
+                  socialButtonsBlock: { display: 'none' },
+                  dividerRow: { display: 'none' },
+                } : {}),
               }
             }} />
           )}
@@ -982,7 +991,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {showSubscriptionGate && (
+      {showSubscriptionGate && !isNativeApp && (
         <SubscriptionGate onClose={() => setShowSubscriptionGate(false)} />
       )}
 

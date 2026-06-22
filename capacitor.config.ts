@@ -8,6 +8,12 @@ const config: CapacitorConfig = {
   server: {
     url: 'https://app.kashim.com.br',
     cleartext: false,
+    allowNavigation: [
+      '*.kashim.com.br',
+      'accounts.google.com',
+      '*.google.com',
+      'appleid.apple.com',
+    ],
   },
   plugins: {
     SplashScreen: {
