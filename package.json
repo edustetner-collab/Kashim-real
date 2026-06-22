@@ -24,6 +24,7 @@
     "@clerk/localizations": "^4.4.0",
     "@sentry/react": "^10.56.0",
     "@supabase/supabase-js": "^2.103.0",
+    "html2canvas": "^1.4.1",
     "jsonwebtoken": "^9.0.3",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",

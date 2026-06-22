@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import html2canvas from 'html2canvas';
 import { Quote } from '../lib/quotes';
 
 interface MondayQuoteProps {
@@ -18,214 +19,37 @@ const CATEGORY_COLOR: Record<Quote['categoria'], string> = {
   instrucao: '#facc15',
 };
 
-function loadImg(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src + '?t=' + Date.now();
-  });
-}
-
-function rr(
-  ctx: CanvasRenderingContext2D,
-  x: number, y: number, w: number, h: number, r: number
-) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.arcTo(x + w, y, x + w, y + r, r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-  ctx.lineTo(x + r, y + h);
-  ctx.arcTo(x, y + h, x, y + h - r, r);
-  ctx.lineTo(x, y + r);
-  ctx.arcTo(x, y, x + r, y, r);
-  ctx.closePath();
-}
-
-function wrapText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  maxWidth: number,
-  lineH: number
-): number {
-  const words = text.split(' ');
-  let line = '';
-  let count = 0;
-  for (const word of words) {
-    const test = line + word + ' ';
-    if (ctx.measureText(test).width > maxWidth && line) {
-      ctx.fillText(line.trim(), x, y + count * lineH);
-      line = word + ' ';
-      count++;
-    } else {
-      line = test;
-    }
-  }
-  ctx.fillText(line.trim(), x, y + count * lineH);
-  return count + 1;
-}
-
-async function generateCard(quote: Quote): Promise<Blob> {
-  const S = 1080;
-  const canvas = document.createElement('canvas');
-  canvas.width = S;
-  canvas.height = S;
-  const ctx = canvas.getContext('2d')!;
-  const SANS = '"Helvetica Neue", Helvetica, Arial, sans-serif';
-
-  // Outer background
-  ctx.fillStyle = '#050505';
-  ctx.fillRect(0, 0, S, S);
-
-  // Card dimensions — matches the modal card look
-  const PAD = 68;
-  const CW = S - PAD * 2;
-  const CH = S - PAD * 2;
-  const CX = PAD;
-  const CY = PAD;
-  const CR = 56;
-
-  // Card shadow glow
-  ctx.save();
-  ctx.shadowColor = 'rgba(34,197,94,0.18)';
-  ctx.shadowBlur = 70;
-  const cardBg = ctx.createLinearGradient(CX, CY, CX, CY + CH);
-  cardBg.addColorStop(0, '#0a110a');
-  cardBg.addColorStop(1, '#060d06');
-  ctx.fillStyle = cardBg;
-  rr(ctx, CX, CY, CW, CH, CR);
-  ctx.fill();
-  ctx.restore();
-
-  // Card border
-  ctx.strokeStyle = 'rgba(34,197,94,0.22)';
-  ctx.lineWidth = 2;
-  rr(ctx, CX, CY, CW, CH, CR);
-  ctx.stroke();
-
-  // Green top bar (clipped to card top corners)
-  ctx.save();
-  rr(ctx, CX, CY, CW, CH, CR);
-  ctx.clip();
-  const barGrad = ctx.createLinearGradient(CX, 0, CX + CW, 0);
-  barGrad.addColorStop(0, '#16a34a');
-  barGrad.addColorStop(0.5, '#4ade80');
-  barGrad.addColorStop(1, '#16a34a');
-  ctx.fillStyle = barGrad;
-  ctx.fillRect(CX, CY, CW, 10);
-  ctx.restore();
-
-  // ── Content ──────────────────────────────────────────
-  let y = CY + 62;
-
-  // Kashim icon
-  const iconSize = 116;
-  const iconX = (S - iconSize) / 2;
-  try {
-    const img = await loadImg('/kashim-icon.png');
-    ctx.save();
-    rr(ctx, iconX, y, iconSize, iconSize, 24);
-    ctx.clip();
-    ctx.drawImage(img, iconX, y, iconSize, iconSize);
-    ctx.restore();
-  } catch {
-    ctx.fillStyle = '#16a34a';
-    rr(ctx, iconX, y, iconSize, iconSize, 24);
-    ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.font = `900 68px ${SANS}`;
-    ctx.textAlign = 'center';
-    ctx.fillText('K', S / 2, y + 84);
-  }
-  y += iconSize + 32;
-
-  // KASHIM
-  ctx.fillStyle = '#ffffff';
-  ctx.font = `900 42px ${SANS}`;
-  ctx.textAlign = 'center';
-  ctx.fillText('K A S H I M', S / 2, y);
-  y += 44;
-
-  // Separator
-  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(CX + 70, y);
-  ctx.lineTo(CX + CW - 70, y);
-  ctx.stroke();
-  y += 34;
-
-  // Category label
-  ctx.fillStyle = CATEGORY_COLOR[quote.categoria] || '#4ade80';
-  ctx.font = `700 20px ${SANS}`;
-  ctx.textAlign = 'center';
-  ctx.fillText(
-    `♥  ${(CATEGORY_LABEL[quote.categoria] || 'Motivação').toUpperCase()} DA SEMANA`,
-    S / 2,
-    y
-  );
-  y += 52;
-
-  // Decorative quote mark
-  ctx.fillStyle = 'rgba(34,197,94,0.13)';
-  ctx.font = '900 130px Georgia, serif';
-  ctx.textAlign = 'left';
-  ctx.fillText('“', CX + 44, y + 10);
-
-  // Quote text — Helvetica Neue semibold
-  const fLen = quote.frase.length;
-  const fontSize = fLen > 170 ? 28 : fLen > 120 ? 33 : 38;
-  const lineH = Math.round(fontSize * 1.56);
-  ctx.fillStyle = 'rgba(244,244,245,0.96)';
-  ctx.font = `600 ${fontSize}px ${SANS}`;
-  ctx.textAlign = 'center';
-  const lines = wrapText(ctx, quote.frase, S / 2, y, 780, lineH);
-  y += lines * lineH + 44;
-
-  // Separator
-  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(CX + 70, y);
-  ctx.lineTo(CX + CW - 70, y);
-  ctx.stroke();
-  y += 38;
-
-  // Tagline
-  ctx.fillStyle = 'rgba(161,161,170,0.72)';
-  ctx.font = `400 22px ${SANS}`;
-  ctx.textAlign = 'center';
-  ctx.fillText('Organize · Invista · Evolua', S / 2, y);
-  y += 32;
-
-  // URL
-  ctx.fillStyle = 'rgba(74,222,128,0.85)';
-  ctx.font = `700 20px ${SANS}`;
-  ctx.fillText('app.kashim.com.br', S / 2, y);
-
-  return new Promise<Blob>((res, rej) =>
-    canvas.toBlob(b => (b ? res(b) : rej(new Error('toBlob failed'))), 'image/png', 0.95)
-  );
-}
-
 const MondayQuote: React.FC<MondayQuoteProps> = ({ quote, onClose }) => {
+  const captureRef = useRef<HTMLDivElement>(null);
   const [sharing, setSharing] = useState(false);
   const [done, setDone] = useState(false);
 
+  const catColor = CATEGORY_COLOR[quote.categoria];
+  const catLabel = CATEGORY_LABEL[quote.categoria];
+
   async function handleShare() {
+    if (!captureRef.current) return;
     setSharing(true);
     try {
-      const blob = await generateCard(quote);
+      const canvas = await html2canvas(captureRef.current, {
+        scale: 3,
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: '#050505',
+        logging: false,
+      });
+
+      const blob = await new Promise<Blob | null>(res =>
+        canvas.toBlob(res, 'image/png', 0.95)
+      );
+      if (!blob) return;
+
       const file = new File([blob], 'kashim-reflexao.png', { type: 'image/png' });
       const canShareFiles =
         typeof navigator.share === 'function' &&
         typeof navigator.canShare === 'function' &&
         navigator.canShare({ files: [file] });
+
       if (canShareFiles) {
         await navigator.share({ files: [file], title: 'Reflexão financeira da semana — Kashim' });
       } else {
@@ -238,64 +62,70 @@ const MondayQuote: React.FC<MondayQuoteProps> = ({ quote, onClose }) => {
       }
       setDone(true);
     } catch {
-      // user cancelled or error — silently ignore
+      // user cancelled or error
     } finally {
       setSharing(false);
     }
   }
 
-  const catColor = CATEGORY_COLOR[quote.categoria];
-  const catLabel = CATEGORY_LABEL[quote.categoria];
+  // Inline styles matching the modal card exactly — used for both display and capture
+  const cardStyle: React.CSSProperties = {
+    background: 'linear-gradient(150deg,#0a0f0a 0%,#060d06 100%)',
+    border: '1px solid rgba(34,197,94,0.18)',
+    borderRadius: '32px',
+    overflow: 'hidden',
+    width: '100%',
+  };
+
+  const innerStyle: React.CSSProperties = {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    padding: '32px 32px 28px',
+    gap: '20px',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif',
+  };
 
   return (
     <div
       className="fixed inset-0 z-[500] flex items-center justify-center p-5 bg-black/85 backdrop-blur-md"
       onClick={onClose}
     >
+      {/* ── Visible modal card ── */}
       <div
-        className="relative w-full max-w-sm rounded-[32px] overflow-hidden shadow-2xl"
-        style={{ background: 'linear-gradient(150deg,#0a0f0a 0%,#060d06 100%)', border: '1px solid rgba(34,197,94,0.18)' }}
+        className="relative w-full max-w-sm shadow-2xl"
+        style={cardStyle}
         onClick={e => e.stopPropagation()}
       >
-        {/* Top accent bar */}
         <div className="h-1.5 w-full" style={{ background: 'linear-gradient(90deg,#16a34a,#4ade80,#16a34a)' }} />
+        <div style={innerStyle}>
 
-        <div className="flex flex-col items-center px-8 pt-8 pb-7 gap-5">
-
-          {/* Icon + name */}
-          <div className="flex flex-col items-center gap-2">
-            <img src="/kashim-icon.png" alt="Kashim" className="w-16 h-16 rounded-2xl shadow-xl" style={{ boxShadow: '0 0 32px rgba(34,197,94,0.25)' }} />
-            <p className="text-white font-black text-sm uppercase tracking-[0.28em]">Kashim</p>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+            <img src="/kashim-icon.png" alt="Kashim" style={{ width: '64px', height: '64px', borderRadius: '16px', boxShadow: '0 0 32px rgba(34,197,94,0.25)' }} />
+            <p style={{ margin: 0, color: '#fff', fontWeight: 900, fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.28em' }}>Kashim</p>
           </div>
 
-          {/* Category */}
-          <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: catColor }} />
-            <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: catColor }}>
-              {catLabel} da semana
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: catColor, display: 'inline-block' }} />
+            <span style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', color: catColor }}>{catLabel} da semana</span>
           </div>
 
-          {/* Divider */}
-          <div className="w-full h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
+          <div style={{ width: '100%', height: '1px', background: 'rgba(255,255,255,0.06)' }} />
 
-          {/* Quote */}
-          <div className="relative w-full">
-            <span className="absolute -top-2 -left-2 text-5xl font-black leading-none select-none" style={{ color: 'rgba(34,197,94,0.18)', fontFamily: 'Georgia, serif' }}>&ldquo;</span>
-            <p className="text-center px-3 pt-3" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif', fontSize: '15px', fontWeight: 600, lineHeight: '1.65', color: 'rgba(244,244,245,0.95)', letterSpacing: '-0.01em' }}>
+          <div style={{ position: 'relative', width: '100%' }}>
+            <span style={{ position: 'absolute', top: '-8px', left: '-8px', fontSize: '48px', fontWeight: 900, lineHeight: 1, color: 'rgba(34,197,94,0.18)', fontFamily: 'Georgia, serif', userSelect: 'none' }}>&ldquo;</span>
+            <p style={{ margin: 0, paddingTop: '12px', paddingLeft: '12px', paddingRight: '12px', textAlign: 'center', fontSize: '15px', fontWeight: 600, lineHeight: 1.65, color: 'rgba(244,244,245,0.95)', letterSpacing: '-0.01em' }}>
               {quote.frase}
             </p>
           </div>
 
-          {/* Divider */}
-          <div className="w-full h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
+          <div style={{ width: '100%', height: '1px', background: 'rgba(255,255,255,0.06)' }} />
 
-          {/* Footer brand */}
-          <p className="text-[9px] font-bold uppercase tracking-[0.3em]" style={{ color: 'rgba(113,113,122,0.8)' }}>
+          <p style={{ margin: 0, fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.3em', color: 'rgba(113,113,122,0.8)' }}>
             Organize · Invista · Evolua
           </p>
 
-          {/* Share button — no icon, just text */}
+          {/* Share button — only in visible modal, not in capture */}
           <button
             onClick={handleShare}
             disabled={sharing}
@@ -308,6 +138,54 @@ const MondayQuote: React.FC<MondayQuoteProps> = ({ quote, onClose }) => {
           <button onClick={onClose} className="text-zinc-600 hover:text-zinc-500 text-xs transition-colors">
             Fechar
           </button>
+        </div>
+      </div>
+
+      {/* ── Hidden capture target — identical card but with #kashimapp instead of button ── */}
+      <div
+        ref={captureRef}
+        style={{
+          ...cardStyle,
+          position: 'fixed',
+          left: '-9999px',
+          top: 0,
+          width: '360px',
+          borderRadius: '32px',
+        }}
+      >
+        <div style={{ height: '6px', width: '100%', background: 'linear-gradient(90deg,#16a34a,#4ade80,#16a34a)' }} />
+        <div style={innerStyle}>
+
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+            <img src="/kashim-icon.png" alt="Kashim" crossOrigin="anonymous" style={{ width: '64px', height: '64px', borderRadius: '16px' }} />
+            <p style={{ margin: 0, color: '#fff', fontWeight: 900, fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.28em' }}>Kashim</p>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: catColor, display: 'inline-block' }} />
+            <span style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', color: catColor }}>{catLabel} da semana</span>
+          </div>
+
+          <div style={{ width: '100%', height: '1px', background: 'rgba(255,255,255,0.06)' }} />
+
+          <div style={{ position: 'relative', width: '100%' }}>
+            <span style={{ position: 'absolute', top: '-8px', left: '-8px', fontSize: '48px', fontWeight: 900, lineHeight: 1, color: 'rgba(34,197,94,0.18)', fontFamily: 'Georgia, serif' }}>&ldquo;</span>
+            <p style={{ margin: 0, paddingTop: '12px', paddingLeft: '12px', paddingRight: '12px', textAlign: 'center', fontSize: '15px', fontWeight: 600, lineHeight: 1.65, color: 'rgba(244,244,245,0.95)', letterSpacing: '-0.01em' }}>
+              {quote.frase}
+            </p>
+          </div>
+
+          <div style={{ width: '100%', height: '1px', background: 'rgba(255,255,255,0.06)' }} />
+
+          <p style={{ margin: 0, fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.3em', color: 'rgba(113,113,122,0.8)' }}>
+            Organize · Invista · Evolua
+          </p>
+
+          {/* Hashtag replaces the button in the shared image */}
+          <p style={{ margin: 0, fontSize: '18px', fontWeight: 900, color: '#22c55e', letterSpacing: '0.04em' }}>
+            #kashimapp
+          </p>
+
         </div>
       </div>
     </div>
