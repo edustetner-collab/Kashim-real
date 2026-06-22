@@ -28,6 +28,23 @@ function loadImg(src: string): Promise<HTMLImageElement> {
   });
 }
 
+function rr(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number, r: number
+) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
 function wrapText(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -59,119 +76,137 @@ async function generateCard(quote: Quote): Promise<Blob> {
   canvas.width = S;
   canvas.height = S;
   const ctx = canvas.getContext('2d')!;
+  const SANS = '"Helvetica Neue", Helvetica, Arial, sans-serif';
 
-  // Dark background
+  // Outer background
   ctx.fillStyle = '#050505';
   ctx.fillRect(0, 0, S, S);
 
-  // Subtle green glow
-  const glow = ctx.createRadialGradient(S / 2, 380, 0, S / 2, 380, 600);
-  glow.addColorStop(0, 'rgba(34,197,94,0.09)');
-  glow.addColorStop(1, 'rgba(5,5,5,0)');
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, S, S);
+  // Card dimensions — matches the modal card look
+  const PAD = 68;
+  const CW = S - PAD * 2;
+  const CH = S - PAD * 2;
+  const CX = PAD;
+  const CY = PAD;
+  const CR = 56;
 
-  // Top gradient bar
-  const bar = ctx.createLinearGradient(0, 0, S, 0);
-  bar.addColorStop(0, '#16a34a');
-  bar.addColorStop(0.5, '#4ade80');
-  bar.addColorStop(1, '#16a34a');
-  ctx.fillStyle = bar;
-  ctx.fillRect(0, 0, S, 10);
+  // Card shadow glow
+  ctx.save();
+  ctx.shadowColor = 'rgba(34,197,94,0.18)';
+  ctx.shadowBlur = 70;
+  const cardBg = ctx.createLinearGradient(CX, CY, CX, CY + CH);
+  cardBg.addColorStop(0, '#0a110a');
+  cardBg.addColorStop(1, '#060d06');
+  ctx.fillStyle = cardBg;
+  rr(ctx, CX, CY, CW, CH, CR);
+  ctx.fill();
+  ctx.restore();
+
+  // Card border
+  ctx.strokeStyle = 'rgba(34,197,94,0.22)';
+  ctx.lineWidth = 2;
+  rr(ctx, CX, CY, CW, CH, CR);
+  ctx.stroke();
+
+  // Green top bar (clipped to card top corners)
+  ctx.save();
+  rr(ctx, CX, CY, CW, CH, CR);
+  ctx.clip();
+  const barGrad = ctx.createLinearGradient(CX, 0, CX + CW, 0);
+  barGrad.addColorStop(0, '#16a34a');
+  barGrad.addColorStop(0.5, '#4ade80');
+  barGrad.addColorStop(1, '#16a34a');
+  ctx.fillStyle = barGrad;
+  ctx.fillRect(CX, CY, CW, 10);
+  ctx.restore();
+
+  // ── Content ──────────────────────────────────────────
+  let y = CY + 62;
 
   // Kashim icon
-  const iconSize = 128;
+  const iconSize = 116;
   const iconX = (S - iconSize) / 2;
-  const iconY = 72;
   try {
     const img = await loadImg('/kashim-icon.png');
     ctx.save();
-    ctx.beginPath();
-    const r = 28;
-    ctx.moveTo(iconX + r, iconY);
-    ctx.lineTo(iconX + iconSize - r, iconY);
-    ctx.arcTo(iconX + iconSize, iconY, iconX + iconSize, iconY + r, r);
-    ctx.lineTo(iconX + iconSize, iconY + iconSize - r);
-    ctx.arcTo(iconX + iconSize, iconY + iconSize, iconX + iconSize - r, iconY + iconSize, r);
-    ctx.lineTo(iconX + r, iconY + iconSize);
-    ctx.arcTo(iconX, iconY + iconSize, iconX, iconY + iconSize - r, r);
-    ctx.lineTo(iconX, iconY + r);
-    ctx.arcTo(iconX, iconY, iconX + r, iconY, r);
-    ctx.closePath();
+    rr(ctx, iconX, y, iconSize, iconSize, 24);
     ctx.clip();
-    ctx.drawImage(img, iconX, iconY, iconSize, iconSize);
+    ctx.drawImage(img, iconX, y, iconSize, iconSize);
     ctx.restore();
   } catch {
-    // Fallback: green square with K
     ctx.fillStyle = '#16a34a';
-    ctx.beginPath();
-    ctx.roundRect(iconX, iconY, iconSize, iconSize, 28);
+    rr(ctx, iconX, y, iconSize, iconSize, 24);
     ctx.fill();
     ctx.fillStyle = '#fff';
-    ctx.font = '900 72px -apple-system, Helvetica, sans-serif';
+    ctx.font = `900 68px ${SANS}`;
     ctx.textAlign = 'center';
-    ctx.fillText('K', S / 2, iconY + 92);
+    ctx.fillText('K', S / 2, y + 84);
   }
+  y += iconSize + 32;
 
-  // KASHIM title
+  // KASHIM
   ctx.fillStyle = '#ffffff';
-  ctx.font = '900 46px -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif';
+  ctx.font = `900 42px ${SANS}`;
   ctx.textAlign = 'center';
-  ctx.fillText('K A S H I M', S / 2, iconY + iconSize + 56);
+  ctx.fillText('K A S H I M', S / 2, y);
+  y += 44;
 
-  // Thin separator
+  // Separator
   ctx.strokeStyle = 'rgba(255,255,255,0.07)';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(130, iconY + iconSize + 80);
-  ctx.lineTo(S - 130, iconY + iconSize + 80);
+  ctx.moveTo(CX + 70, y);
+  ctx.lineTo(CX + CW - 70, y);
   ctx.stroke();
+  y += 34;
 
   // Category label
   ctx.fillStyle = CATEGORY_COLOR[quote.categoria] || '#4ade80';
-  ctx.font = '700 22px -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif';
+  ctx.font = `700 20px ${SANS}`;
   ctx.textAlign = 'center';
   ctx.fillText(
     `♥  ${(CATEGORY_LABEL[quote.categoria] || 'Motivação').toUpperCase()} DA SEMANA`,
     S / 2,
-    iconY + iconSize + 130
+    y
   );
+  y += 52;
 
-  // Decorative opening quote
-  ctx.fillStyle = 'rgba(34,197,94,0.14)';
-  ctx.font = '900 160px Georgia, "Times New Roman", serif';
+  // Decorative quote mark
+  ctx.fillStyle = 'rgba(34,197,94,0.13)';
+  ctx.font = '900 130px Georgia, serif';
   ctx.textAlign = 'left';
-  ctx.fillText('“', 68, iconY + iconSize + 256);
+  ctx.fillText('“', CX + 44, y + 10);
 
-  // Quote text
+  // Quote text — Helvetica Neue semibold
   const fLen = quote.frase.length;
-  const fontSize = fLen > 170 ? 30 : fLen > 120 ? 36 : 42;
-  const lineH = Math.round(fontSize * 1.52);
-  ctx.fillStyle = '#f0f0f2';
-  ctx.font = `500 ${fontSize}px Georgia, "Times New Roman", serif`;
+  const fontSize = fLen > 170 ? 28 : fLen > 120 ? 33 : 38;
+  const lineH = Math.round(fontSize * 1.56);
+  ctx.fillStyle = 'rgba(244,244,245,0.96)';
+  ctx.font = `600 ${fontSize}px ${SANS}`;
   ctx.textAlign = 'center';
-  const quoteY = iconY + iconSize + 270;
-  const lines = wrapText(ctx, quote.frase, S / 2, quoteY, 830, lineH);
+  const lines = wrapText(ctx, quote.frase, S / 2, y, 780, lineH);
+  y += lines * lineH + 44;
 
-  // Bottom separator
-  const divY = quoteY + lines * lineH + 56;
+  // Separator
   ctx.strokeStyle = 'rgba(255,255,255,0.07)';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(130, divY);
-  ctx.lineTo(S - 130, divY);
+  ctx.moveTo(CX + 70, y);
+  ctx.lineTo(CX + CW - 70, y);
   ctx.stroke();
+  y += 38;
 
   // Tagline
-  ctx.fillStyle = 'rgba(161,161,170,0.75)';
-  ctx.font = '400 24px -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif';
+  ctx.fillStyle = 'rgba(161,161,170,0.72)';
+  ctx.font = `400 22px ${SANS}`;
   ctx.textAlign = 'center';
-  ctx.fillText('Organize · Invista · Evolua', S / 2, divY + 50);
+  ctx.fillText('Organize · Invista · Evolua', S / 2, y);
+  y += 32;
 
   // URL
-  ctx.fillStyle = 'rgba(74,222,128,0.80)';
-  ctx.font = '700 21px -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif';
-  ctx.fillText('app.kashim.com.br', S / 2, divY + 88);
+  ctx.fillStyle = 'rgba(74,222,128,0.85)';
+  ctx.font = `700 20px ${SANS}`;
+  ctx.fillText('app.kashim.com.br', S / 2, y);
 
   return new Promise<Blob>((res, rej) =>
     canvas.toBlob(b => (b ? res(b) : rej(new Error('toBlob failed'))), 'image/png', 0.95)
@@ -260,20 +295,14 @@ const MondayQuote: React.FC<MondayQuoteProps> = ({ quote, onClose }) => {
             Organize · Invista · Evolua
           </p>
 
-          {/* Share button */}
+          {/* Share button — no icon, just text */}
           <button
             onClick={handleShare}
             disabled={sharing}
-            className="w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70"
+            className="w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all active:scale-95 disabled:opacity-70"
             style={{ background: 'linear-gradient(135deg,#22c55e,#16a34a)', color: '#000' }}
           >
-            {sharing ? (
-              <><i className="fas fa-circle-notch animate-spin" /> Gerando imagem...</>
-            ) : done ? (
-              <><i className="fas fa-check" /> Imagem gerada!</>
-            ) : (
-              <><i className="fas fa-image" /> Gerar card para Instagram</>
-            )}
+            {sharing ? 'Gerando imagem...' : done ? 'Imagem gerada!' : 'Gerar card para Instagram'}
           </button>
 
           <button onClick={onClose} className="text-zinc-600 hover:text-zinc-500 text-xs transition-colors">
