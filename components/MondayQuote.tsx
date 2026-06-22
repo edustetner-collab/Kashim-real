@@ -247,7 +247,7 @@ const MondayQuote: React.FC<MondayQuoteProps> = ({ quote, onClose }) => {
           {/* Quote */}
           <div className="relative w-full">
             <span className="absolute -top-2 -left-2 text-5xl font-black leading-none select-none" style={{ color: 'rgba(34,197,94,0.18)', fontFamily: 'Georgia, serif' }}>&ldquo;</span>
-            <p className="text-white/88 text-sm leading-relaxed text-center px-3 pt-3" style={{ fontFamily: 'Georgia,"Times New Roman",serif', color: 'rgba(244,244,245,0.9)' }}>
+            <p className="text-center px-3 pt-3" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif', fontSize: '15px', fontWeight: 600, lineHeight: '1.65', color: 'rgba(244,244,245,0.95)', letterSpacing: '-0.01em' }}>
               {quote.frase}
             </p>
           </div>
