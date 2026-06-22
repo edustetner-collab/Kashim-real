@@ -51,7 +51,8 @@ const App: React.FC = () => {
     return isNativeApp && localStorage.getItem('web_notice_dismissed') !== 'true';
   });
   const [householdId, setHouseholdId] = useState<string | null>(null);
-  const [mondayQuote, setMondayQuote] = useState<Quote | null>(null);
+  const [currentWeekQuote, setCurrentWeekQuote] = useState<Quote | null>(null);
+  const [showQuoteModal, setShowQuoteModal] = useState(false);
   const [dbLoading, setDbLoading] = useState(false);
   const [showInvitePanel, setShowInvitePanel] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -266,10 +267,13 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!householdId) return;
-    if (new Date().getDay() !== 1) return; // only Mondays
+    const quote = getQuoteForUser(householdId);
+    setCurrentWeekQuote(quote);
+    // Auto-show modal only on Mondays and if not yet seen this week
+    if (new Date().getDay() !== 1) return;
     const seenKey = `kashim_quote_shown_${householdId}_${getMondayKey()}`;
     if (localStorage.getItem(seenKey)) return;
-    setMondayQuote(getQuoteForUser(householdId));
+    setShowQuoteModal(true);
   }, [householdId]);
   useEffect(() => { currentItemsRef.current = items; }, [items]);
   useEffect(() => { currentStartMonthRef.current = startMonth; }, [startMonth]);
@@ -964,14 +968,37 @@ const App: React.FC = () => {
 
       {!showOnboarding && showTutorial && <OnboardingTutorial onComplete={handleCompleteTutorial} />}
 
-      {mondayQuote && (
+      {showQuoteModal && currentWeekQuote && (
         <MondayQuote
-          quote={mondayQuote}
+          quote={currentWeekQuote}
           onClose={() => {
             if (householdId) localStorage.setItem(`kashim_quote_shown_${householdId}_${getMondayKey()}`, '1');
-            setMondayQuote(null);
+            setShowQuoteModal(false);
           }}
         />
+      )}
+
+      {/* Persistent weekly quote pill — visible all week, opens modal on tap */}
+      {currentWeekQuote && !showQuoteModal && (
+        <button
+          onClick={() => setShowQuoteModal(true)}
+          className="lg:hidden fixed z-40 flex items-center gap-2 active:scale-95 transition-all"
+          style={{
+            bottom: '72px',
+            right: '12px',
+            background: 'rgba(10,10,10,0.92)',
+            border: '1px solid rgba(34,197,94,0.25)',
+            borderRadius: '20px',
+            padding: '7px 13px',
+            backdropFilter: 'blur(16px)',
+            boxShadow: '0 4px 24px rgba(34,197,94,0.12)',
+          }}
+        >
+          <span style={{ color: '#4ade80', fontSize: '11px' }}>💚</span>
+          <span style={{ color: 'rgba(244,244,245,0.8)', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            Frase da semana
+          </span>
+        </button>
       )}
 
       {showWebNotice && (
