@@ -978,28 +978,6 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Persistent weekly quote pill — visible all week, opens modal on tap */}
-      {currentWeekQuote && !showQuoteModal && (
-        <button
-          onClick={() => setShowQuoteModal(true)}
-          className="lg:hidden fixed z-40 flex items-center gap-2 active:scale-95 transition-all"
-          style={{
-            bottom: '72px',
-            right: '12px',
-            background: 'rgba(10,10,10,0.92)',
-            border: '1px solid rgba(34,197,94,0.25)',
-            borderRadius: '20px',
-            padding: '7px 13px',
-            backdropFilter: 'blur(16px)',
-            boxShadow: '0 4px 24px rgba(34,197,94,0.12)',
-          }}
-        >
-          <span style={{ color: '#4ade80', fontSize: '11px' }}>💚</span>
-          <span style={{ color: 'rgba(244,244,245,0.8)', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-            Frase da semana
-          </span>
-        </button>
-      )}
 
       {showWebNotice && (
         <div className="fixed bottom-20 left-3 right-3 z-[90] animate-in slide-in-from-bottom-4 fade-in duration-300">
@@ -1407,6 +1385,11 @@ const App: React.FC = () => {
 
       {/* ── MOBILE BOTTOM TAB BAR ──────────────────────────────────────── */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 safe-bottom" style={{background:'rgba(245,245,247,0.92)',backdropFilter:'blur(28px) saturate(1.8)',borderTop:'0.5px solid rgba(0,0,0,0.1)'}}>
+        <div className="relative">
+        {/* Right-edge scroll hint */}
+        <div className="pointer-events-none absolute right-0 top-0 bottom-0 z-10 flex items-center pr-1" style={{width:'28px',background:'linear-gradient(to right,transparent,rgba(245,245,247,0.96))'}}>
+          <i className="fas fa-chevron-right text-[8px] text-zinc-400"></i>
+        </div>
         <div className="overflow-x-auto scrollbar-none">
           <div className="flex min-w-max">
             <button
@@ -1453,6 +1436,18 @@ const App: React.FC = () => {
               <span className="text-[9px] font-black uppercase tracking-wide">Metas</span>
             </button>
 
+            {currentWeekQuote && (
+              <button
+                onClick={() => setShowQuoteModal(true)}
+                className="min-w-[72px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 transition-colors active:scale-95 relative"
+              >
+                <div className="w-7 h-7 flex items-center justify-center rounded-[9px]" style={showQuoteModal ? {background:'rgba(34,197,94,0.12)'} : {}}>
+                  <i className="fas fa-quote-left text-lg" style={{color:'#22c55e'}}></i>
+                </div>
+                <span className="text-[9px] font-black uppercase tracking-wide" style={{color:'#22c55e'}}>Frase</span>
+              </button>
+            )}
+
             <button
               onClick={() => setActiveTab('desempenho')}
               className={`min-w-[80px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'desempenho' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
@@ -1473,6 +1468,7 @@ const App: React.FC = () => {
               <span className="text-[9px] font-black uppercase tracking-wide">Perfil</span>
             </button>
           </div>
+        </div>
         </div>
       </nav>
 
