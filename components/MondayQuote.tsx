@@ -181,9 +181,12 @@ const MondayQuote: React.FC<MondayQuoteProps> = ({ quote, onClose }) => {
             Organize · Invista · Evolua
           </p>
 
-          {/* Hashtag replaces the button in the shared image */}
+          {/* Handle + description replaces the button in the shared image */}
+          <p style={{ margin: 0, fontSize: '12px', fontWeight: 500, color: 'rgba(161,161,170,0.75)', letterSpacing: '0.04em' }}>
+            App de organização financeira
+          </p>
           <p style={{ margin: 0, fontSize: '18px', fontWeight: 900, color: '#22c55e', letterSpacing: '0.04em' }}>
-            #kashimapp
+            @kashim.app
           </p>
 
         </div>
