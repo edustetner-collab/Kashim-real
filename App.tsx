@@ -47,9 +47,8 @@ const App: React.FC = () => {
     return localStorage.getItem('tutorial_completed') !== 'true';
   });
   const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
-  const [showWebNotice, setShowWebNotice] = useState<boolean>(() => {
-    return isNativeApp && localStorage.getItem('web_notice_dismissed') !== 'true';
-  });
+  const [showWebNotice, setShowWebNotice] = useState<boolean>(false); // never show on native — Apple 3.1.1
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [householdId, setHouseholdId] = useState<string | null>(null);
   const [currentWeekQuote, setCurrentWeekQuote] = useState<Quote | null>(null);
   const [showQuoteModal, setShowQuoteModal] = useState(false);
@@ -1064,10 +1063,47 @@ const App: React.FC = () => {
             >
               <i className="fas fa-sign-out-alt"></i> Sair da conta
             </button>
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="w-full bg-transparent border border-zinc-800 active:bg-zinc-900 text-zinc-600 font-black py-3 rounded-2xl transition-all text-xs uppercase flex items-center justify-center gap-2"
+            >
+              <i className="fas fa-trash-alt"></i> Excluir minha conta
+            </button>
             <button onClick={() => setShowSettings(false)} className="w-full mt-2 text-zinc-600 font-black py-2 text-xs uppercase">Fechar</button>
           </div>
         </div>
       ) : null}
+
+      {/* Account deletion confirmation */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-black/90 backdrop-blur-sm" onClick={() => setShowDeleteConfirm(false)}>
+          <div className="w-full max-w-sm bg-zinc-900 border border-red-500/20 rounded-3xl p-7" onClick={e => e.stopPropagation()}>
+            <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mb-5 border border-red-500/20">
+              <i className="fas fa-trash-alt text-red-400 text-lg"></i>
+            </div>
+            <h3 className="text-white font-black text-lg uppercase mb-2">Excluir conta</h3>
+            <p className="text-zinc-400 text-sm leading-relaxed mb-6">
+              Todos os seus dados financeiros serão permanentemente apagados. Esta ação não pode ser desfeita.
+            </p>
+            <button
+              onClick={async () => {
+                try {
+                  await user?.delete();
+                  await signOut();
+                } catch {
+                  setShowDeleteConfirm(false);
+                }
+              }}
+              className="w-full bg-red-500 active:bg-red-600 text-white font-black py-3.5 rounded-2xl text-sm uppercase mb-3 transition-all"
+            >
+              Sim, excluir permanentemente
+            </button>
+            <button onClick={() => setShowDeleteConfirm(false)} className="w-full text-zinc-600 font-black py-2 text-xs uppercase">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       {showInvitePanel && db && householdId && user && (
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-6 bg-black/70 backdrop-blur-sm">
