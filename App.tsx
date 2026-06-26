@@ -49,6 +49,8 @@ const App: React.FC = () => {
   const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
   const [showWebNotice, setShowWebNotice] = useState<boolean>(false); // never show on native — Apple 3.1.1
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [householdId, setHouseholdId] = useState<string | null>(null);
   const [currentWeekQuote, setCurrentWeekQuote] = useState<Quote | null>(null);
   const [showQuoteModal, setShowQuoteModal] = useState(false);
@@ -1076,29 +1078,48 @@ const App: React.FC = () => {
 
       {/* Account deletion confirmation */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-black/90 backdrop-blur-sm" onClick={() => setShowDeleteConfirm(false)}>
-          <div className="w-full max-w-sm bg-zinc-900 border border-red-500/20 rounded-3xl p-7" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-black/90 backdrop-blur-sm">
+          <div className="w-full max-w-sm bg-zinc-900 border border-red-500/20 rounded-3xl p-7">
             <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mb-5 border border-red-500/20">
               <i className="fas fa-trash-alt text-red-400 text-lg"></i>
             </div>
             <h3 className="text-white font-black text-lg uppercase mb-2">Excluir conta</h3>
-            <p className="text-zinc-400 text-sm leading-relaxed mb-6">
+            <p className="text-zinc-400 text-sm leading-relaxed mb-4">
               Todos os seus dados financeiros serão permanentemente apagados. Esta ação não pode ser desfeita.
             </p>
+            {deleteError && (
+              <p className="text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-4">
+                {deleteError}
+              </p>
+            )}
             <button
+              disabled={deletingAccount}
               onClick={async () => {
+                setDeletingAccount(true);
+                setDeleteError(null);
                 try {
                   await user?.delete();
                   await signOut();
-                } catch {
-                  setShowDeleteConfirm(false);
+                } catch (err) {
+                  setDeletingAccount(false);
+                  setDeleteError(
+                    err instanceof Error
+                      ? `Erro: ${err.message}`
+                      : 'Não foi possível excluir a conta. Contate kashimappbr@gmail.com'
+                  );
                 }
               }}
-              className="w-full bg-red-500 active:bg-red-600 text-white font-black py-3.5 rounded-2xl text-sm uppercase mb-3 transition-all"
+              className="w-full bg-red-500 active:bg-red-600 disabled:opacity-60 text-white font-black py-3.5 rounded-2xl text-sm uppercase mb-3 transition-all flex items-center justify-center gap-2"
             >
-              Sim, excluir permanentemente
+              {deletingAccount
+                ? <><i className="fas fa-circle-notch animate-spin"></i> Excluindo...</>
+                : 'Sim, excluir permanentemente'}
             </button>
-            <button onClick={() => setShowDeleteConfirm(false)} className="w-full text-zinc-600 font-black py-2 text-xs uppercase">
+            <button
+              disabled={deletingAccount}
+              onClick={() => { setShowDeleteConfirm(false); setDeleteError(null); }}
+              className="w-full text-zinc-600 font-black py-2 text-xs uppercase disabled:opacity-40"
+            >
               Cancelar
             </button>
           </div>
