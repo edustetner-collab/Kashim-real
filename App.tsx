@@ -1,6 +1,6 @@
 ﻿
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useUser, useClerk, useSignIn, useAuth, SignIn, SignUp } from '@clerk/clerk-react';
+import { useUser, useClerk, useSignIn, useAuth, SignIn, SignUp, useReverification } from '@clerk/clerk-react';
 import { CategoryType, FinanceItem, SummaryData, LinkType, PartialExpense, Goal } from './types';
 import { getNext12Months, formatCurrency, MONTHS_BR } from './constants';
 import BlockSection from './components/BlockSection';
@@ -38,6 +38,7 @@ const DEFAULT_FIXED_EXPENSES = [
 const App: React.FC = () => {
   const { isSignedIn, user, isLoaded } = useUser();
   const { signOut } = useClerk();
+  const deleteUserAccount = useReverification(async () => { await user?.delete(); });
   const { signIn, setActive: setSignInActive } = useSignIn();
   const { getToken } = useAuth();
   const db = useSupabase();
@@ -1098,7 +1099,7 @@ const App: React.FC = () => {
                 setDeletingAccount(true);
                 setDeleteError(null);
                 try {
-                  await user?.delete();
+                  await deleteUserAccount();
                   await signOut();
                 } catch (err) {
                   setDeletingAccount(false);
