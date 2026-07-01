@@ -82,6 +82,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
   const [payMethod, setPayMethod] = useState<PayMethod>('');
   const [creditType, setCreditType] = useState<CreditType>('');
   const [installCount, setInstallCount] = useState('');
+  const [leisureDesc, setLeisureDesc] = useState('');
   const [showItemPicker, setShowItemPicker] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState('');
   const [purchaseDay, setPurchaseDay] = useState(() => defaultPurchaseDate?.day ?? new Date().getDate());
@@ -119,6 +120,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
       setPayMethod('');
       setCreditType('');
       setSelectedCardId('');
+      setLeisureDesc('');
       const initManual = Math.max(1, initialInstallments ?? 1);
       setInstallCount(initManual > 1 ? String(initManual) : '');
     }
@@ -137,7 +139,8 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
   const isParcelado = isCredit && creditType === 'parcelado';
 
   const hasItem = !!itemId || (category === CategoryType.VARIABLE_EXPENSE && variableDesc.trim().length > 0);
-  const canConfirm = hasItem && numericValue > 0 && payMethod !== '';
+  const needsCard = isCredit && items.filter(i => i.category === CategoryType.CREDIT_CARD).length > 0;
+  const canConfirm = hasItem && numericValue > 0 && payMethod !== '' && (!needsCard || !!selectedCardId);
 
   const pickerItems = items.filter(i => {
     if (i.category === CategoryType.INCOME || i.category === CategoryType.CREDIT_CARD) return false;
@@ -157,7 +160,8 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
     if (!canConfirm) return;
 
     let finalItemId = itemId;
-    let finalDesc = selectedItem?.description ?? variableDesc.trim();
+    const leisureSuffix = category === CategoryType.PERSONAL_LEISURE && leisureDesc.trim() ? ` — ${leisureDesc.trim()}` : '';
+    let finalDesc = (selectedItem?.description ?? variableDesc.trim()) + leisureSuffix;
 
     if (!itemId && category === CategoryType.VARIABLE_EXPENSE && variableDesc.trim() && onCreateItem) {
       finalItemId = onCreateItem(variableDesc.trim(), CategoryType.VARIABLE_EXPENSE);
@@ -196,6 +200,22 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
         </span>
         <i className="fas fa-pen text-zinc-600 text-[9px] shrink-0" />
       </button>
+
+      {/* Optional description for Lazer & Pessoal */}
+      {category === CategoryType.PERSONAL_LEISURE && (
+        <div className="px-4 py-3 bg-zinc-800 rounded-2xl border border-zinc-700 focus-within:border-green-400/40 transition-colors">
+          <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-1">
+            O que foi? <span className="text-zinc-600 normal-case font-medium">(opcional)</span>
+          </p>
+          <input
+            type="text"
+            value={leisureDesc}
+            onChange={e => setLeisureDesc(e.target.value)}
+            placeholder="Ex: restaurante, futebol, presente..."
+            className="w-full bg-transparent text-white text-sm font-medium outline-none placeholder:text-zinc-600"
+          />
+        </div>
+      )}
 
       {/* Value */}
       <div className="px-4 py-3 bg-zinc-800 rounded-2xl border border-zinc-700 focus-within:border-green-400/40 transition-colors">
@@ -285,10 +305,17 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
         </div>
       </div>
 
-      {/* Card picker — shown when credit is selected */}
+      {/* Card picker — required when credit is selected */}
       {isCredit && creditCards.length > 0 && (
         <div>
-          <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-2">Em qual cartão?</p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider">Em qual cartão?</p>
+            {!selectedCardId && (
+              <span className="text-[9px] text-amber-400 font-black uppercase tracking-wide">
+                <i className="fas fa-exclamation-circle mr-0.5" />obrigatório
+              </span>
+            )}
+          </div>
           <div className="flex flex-wrap gap-2">
             {creditCards.map(card => (
               <button
@@ -328,21 +355,30 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
         </div>
       )}
 
-      {/* Installment count */}
+      {/* Installment count — chip picker */}
       {isParcelado && (
-        <div className="px-4 py-3 bg-zinc-800 rounded-2xl border border-zinc-700 focus-within:border-green-400/40">
-          <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-1">Em quantas vezes?</p>
-          <input
-            type="number"
-            inputMode="numeric"
-            min="2"
-            max="60"
-            value={installCount}
-            onChange={e => setInstallCount(e.target.value)}
-            placeholder="Ex: 3"
-            autoFocus
-            className="w-full bg-transparent text-white text-xl font-black font-mono outline-none placeholder:text-zinc-600"
-          />
+        <div>
+          <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-2">Em quantas vezes?</p>
+          <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+            {[2,3,4,5,6,7,8,9,10,11,12,15,18,21,24].map(n => (
+              <button
+                key={n}
+                onClick={() => setInstallCount(String(n))}
+                className={`shrink-0 w-11 h-11 rounded-xl font-black text-sm transition-all active:scale-95 border ${
+                  parseInt(installCount) === n
+                    ? 'bg-green-400 text-black border-green-400'
+                    : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                }`}
+              >
+                {n}x
+              </button>
+            ))}
+          </div>
+          {numericValue > 0 && parseInt(installCount) >= 2 && (
+            <p className="text-zinc-500 text-[10px] mt-1.5 font-mono">
+              {parseInt(installCount)}x de {formatCurrency(numericValue / parseInt(installCount))}
+            </p>
+          )}
         </div>
       )}
 

@@ -278,6 +278,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   const [entryErrors, setEntryErrors] = useState<Record<string, boolean>>({});
   const [installMode, setInstallMode] = useState<Record<string, boolean>>({});
   const [installData, setInstallData] = useState<Record<string, { desc: string; total: string; qty: string }>>({});
+  const [installCardIds, setInstallCardIds] = useState<Record<string, string>>({});
   const valueInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const handleSubmitEntry = (colId: string, itemId: string, value: string) => {
@@ -310,12 +311,17 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
     const qty = parseInt(data.qty) || 2;
     if (isNaN(total) || total <= 0 || qty < 2 || qty > 24) return;
 
+    const creditCardItems = items.filter(i => i.category === CategoryType.CREDIT_CARD);
+    const selectedCardId = installCardIds[colId];
+    if (creditCardItems.length > 0 && !selectedCardId) return;
+
+    const selectedCard = selectedCardId ? items.find(i => i.id === selectedCardId) : null;
     const linkedItem = items.find(i => i.id === itemId);
-    const card = linkedItem?.linkedCardId ? items.find(i => i.id === linkedItem.linkedCardId) : null;
+    const card = selectedCard ?? (linkedItem?.linkedCardId ? items.find(i => i.id === linkedItem.linkedCardId) : null);
+    const cardLabel = card?.description ? ` (${card.description})` : '';
     const todayDay = new Date().getDate();
     const isAfterClosing = card?.closingDay ? todayDay >= card.closingDay : false;
 
-    // Absolute month index to handle year boundaries safely
     const startAbsMonth = (currentYear * 12 + currentMonthIdx) + (isAfterClosing ? 1 : 0);
     const baseValue = parseFloat((total / qty).toFixed(2));
 
@@ -323,12 +329,11 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       const absMonth = startAbsMonth + i;
       const targetMonthIdx = absMonth % 12;
       const targetYear = Math.floor(absMonth / 12);
-      // Last installment absorbs rounding remainder
       const value = i === qty - 1 ? parseFloat((total - baseValue * (qty - 1)).toFixed(2)) : baseValue;
       const expense: PartialExpense = {
         id: crypto.randomUUID(),
         date: `01/${String(targetMonthIdx + 1).padStart(2, '0')}`,
-        description: `${data.desc.trim()} ${i + 1}/${qty}`,
+        description: `${data.desc.trim()} ${i + 1}/${qty}${cardLabel}`,
         value,
       };
       onAddPartial(itemId, expense, targetYear, targetMonthIdx);
@@ -336,6 +341,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
     setInstallMode(prev => ({ ...prev, [colId]: false }));
     setInstallData(prev => ({ ...prev, [colId]: { desc: '', total: '', qty: '2' } }));
+    setInstallCardIds(prev => ({ ...prev, [colId]: '' }));
   };
 
   const updateInstall = (colId: string, field: 'desc' | 'total' | 'qty', value: string) => {
@@ -592,13 +598,18 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                         </button>
                       </div>
                       <button
-                        onClick={() => setInstallMode(prev => ({ ...prev, [col.id]: true }))}
-                        className="w-full text-center text-[9px] text-[#aeaeb2] active:text-[#7ab800] py-1.5 font-bold uppercase tracking-widest border-t border-[#e8e8ed] transition-colors"
+                        onClick={(e) => { e.stopPropagation(); setInstallMode(prev => ({ ...prev, [col.id]: true })); }}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 border-t border-[#e8e8ed] bg-[#f5f5f7] active:bg-[#e8e8ed] transition-colors"
                       >
-                        <i className="fas fa-credit-card mr-1"></i>Parcelar
+                        <i className="fas fa-credit-card text-[#7ab800] text-[10px]"></i>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-[#7ab800]">Parcelar</span>
+                        <i className="fas fa-chevron-right text-[8px] text-[#aeaeb2]"></i>
                       </button>
                     </>
-                  ) : (
+                  ) : (() => {
+                    const creditCardItems = items.filter(i => i.category === CategoryType.CREDIT_CARD);
+                    const installCardMissing = creditCardItems.length > 0 && !installCardIds[col.id];
+                    return (
                     <div className="p-3 space-y-2">
                       <p className="text-[9px] font-black uppercase text-[#aeaeb2] tracking-widest flex items-center gap-1">
                         <i className="fas fa-credit-card text-[#7ab800]"></i> Compra Parcelada
@@ -610,6 +621,18 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                         onChange={e => updateInstall(col.id, 'desc', e.target.value)}
                         className="w-full py-2 px-3 text-[11px] outline-none border border-[#e8e8ed] rounded-lg bg-[#f5f5f7] text-[#1d1d1f] placeholder:text-[#aeaeb2]"
                       />
+                      {creditCardItems.length > 0 && (
+                        <select
+                          value={installCardIds[col.id] ?? ''}
+                          onChange={e => setInstallCardIds(prev => ({ ...prev, [col.id]: e.target.value }))}
+                          className={`w-full py-2 px-3 text-xs outline-none border rounded-lg font-black text-[#1d1d1f] ${installCardMissing ? 'border-[rgba(255,59,48,0.4)] bg-[#fff8f8]' : 'border-[#e8e8ed] bg-[#f5f5f7]'}`}
+                        >
+                          <option value="">🔴 Selecionar cartão *</option>
+                          {creditCardItems.map(card => (
+                            <option key={card.id} value={card.id}>{card.description}</option>
+                          ))}
+                        </select>
+                      )}
                       <div className="flex gap-2">
                         <div className="flex-1 flex items-center border border-[#e8e8ed] rounded-lg bg-[#f5f5f7] overflow-hidden">
                           <span className="pl-2 text-[#aeaeb2] text-[10px] font-bold shrink-0">R$</span>
@@ -640,19 +663,21 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleSubmitInstallment(col.id, col.linkedItemId)}
-                          className="flex-1 k-btn-lime py-2.5"
+                          disabled={installCardMissing || !iData?.desc?.trim() || !iData?.total}
+                          className={`flex-1 py-2.5 ${(installCardMissing || !iData?.desc?.trim() || !iData?.total) ? 'bg-[#e8e8ed] text-[#aeaeb2] font-black text-[10px] rounded-lg uppercase cursor-not-allowed' : 'k-btn-lime'}`}
                         >
                           Confirmar
                         </button>
                         <button
-                          onClick={() => setInstallMode(prev => ({ ...prev, [col.id]: false }))}
+                          onClick={() => { setInstallMode(prev => ({ ...prev, [col.id]: false })); setInstallCardIds(prev => ({ ...prev, [col.id]: '' })); }}
                           className="px-3 bg-[#f5f5f7] border border-[#e8e8ed] text-[#6e6e73] font-black text-[10px] py-2.5 rounded-lg uppercase"
                         >
                           Cancelar
                         </button>
                       </div>
                     </div>
-                  )}
+                    );
+                  })()}
                 </div>
               )}
 
