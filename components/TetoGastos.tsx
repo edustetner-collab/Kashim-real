@@ -279,6 +279,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   const [installMode, setInstallMode] = useState<Record<string, boolean>>({});
   const [installData, setInstallData] = useState<Record<string, { desc: string; total: string; qty: string }>>({});
   const [installCardIds, setInstallCardIds] = useState<Record<string, string>>({});
+  const [deletePartialConfirm, setDeletePartialConfirm] = useState<{ itemId: string; expId: string; description: string; value: number } | null>(null);
   const valueInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const handleSubmitEntry = (colId: string, itemId: string, value: string) => {
@@ -690,7 +691,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                       <span className="flex-1 text-[10px] text-[#6e6e73] font-medium truncate">{p.description}</span>
                       <span className="text-xs font-black text-[#1d1d1f] k-num shrink-0">{formatCurrency(p.value)}</span>
                       <button
-                        onClick={() => onRemovePartial(col.linkedItemId, p.id)}
+                        onClick={() => setDeletePartialConfirm({ itemId: col.linkedItemId, expId: p.id, description: p.description, value: p.value })}
                         className="text-[#ff3b30]/60 active:text-[#ff3b30] p-1 shrink-0"
                       >
                         <i className="fas fa-times-circle text-xs"></i>
@@ -726,6 +727,45 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
           );
         })}
       </div>
+
+      {/* Delete expense confirmation modal */}
+      {deletePartialConfirm && (
+        <div className="fixed inset-0 z-50 flex items-end" onClick={() => setDeletePartialConfirm(null)}>
+          <div className="w-full bg-white rounded-t-3xl p-6 pb-10 border-t border-[#e8e8ed] animate-in slide-in-from-bottom-4 duration-200" onClick={e => e.stopPropagation()}>
+            <div className="w-8 h-1 bg-[#e8e8ed] rounded-full mx-auto mb-5" />
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-11 h-11 rounded-full bg-[#fff0f0] flex items-center justify-center shrink-0">
+                <i className="fas fa-trash-alt text-[#ff3b30] text-base" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[#1d1d1f] font-black text-sm">Excluir lançamento?</p>
+                <p className="text-[#6e6e73] text-xs mt-0.5 truncate">{deletePartialConfirm.description}</p>
+                <p className="text-[#ff3b30] text-xs font-black mt-0.5 k-num">{formatCurrency(deletePartialConfirm.value)}</p>
+              </div>
+            </div>
+            <div className="bg-[#fff8f0] border border-[rgba(255,149,0,0.2)] rounded-xl p-3 mb-5">
+              <p className="text-[#6e6e73] text-[11px] leading-relaxed">
+                <i className="fas fa-exclamation-triangle text-[#ff9500] mr-1.5" />
+                Esta operação <strong className="text-[#1d1d1f]">não poderá ser desfeita</strong>. Se for uma parcela, apenas esta será removida — as demais continuam.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeletePartialConfirm(null)}
+                className="flex-1 py-3.5 rounded-2xl bg-[#f5f5f7] text-[#1d1d1f] font-black text-sm border border-[#e8e8ed] active:opacity-70"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => { onRemovePartial(deletePartialConfirm.itemId, deletePartialConfirm.expId); setDeletePartialConfirm(null); }}
+                className="flex-1 py-3.5 rounded-2xl bg-[#ff3b30] text-white font-black text-sm active:opacity-80"
+              >
+                Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
