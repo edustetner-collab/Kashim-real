@@ -77,3 +77,44 @@ workflows:
         issuer_id: $APP_STORE_CONNECT_ISSUER_ID
         submit_to_testflight: true
         submit_to_app_store: false
+
+  android-release:
+    name: Kashim Android Release
+    max_build_duration: 60
+    instance_type: linux_x2
+
+    environment:
+      groups:
+        - kashim
+      node: 22
+      android_signing:
+        - kashim-android
+
+    scripts:
+      - name: Install dependencies
+        script: |
+          npm ci
+
+      - name: Build web app (Vite)
+        script: |
+          npm run build
+
+      - name: Capacitor sync Android
+        script: |
+          npx cap sync android
+
+      - name: Set version code
+        script: |
+          sed -i "s/versionCode [0-9]*/versionCode $BUILD_NUMBER/" android/app/build.gradle
+
+      - name: Build Android AAB (signed)
+        script: |
+          cd android
+          ./gradlew bundleRelease \
+            -Pandroid.injected.signing.store.file=$CM_KEYSTORE_PATH \
+            -Pandroid.injected.signing.store.password=$CM_KEYSTORE_PASSWORD \
+            -Pandroid.injected.signing.key.alias=$CM_KEY_ALIAS \
+            -Pandroid.injected.signing.key.password=$CM_KEY_PASSWORD
+
+    artifacts:
+      - android/app/build/outputs/bundle/release/app-release.aab
