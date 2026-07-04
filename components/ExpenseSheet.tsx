@@ -160,8 +160,9 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
     if (!canConfirm) return;
 
     let finalItemId = itemId;
-    const leisureSuffix = category === CategoryType.PERSONAL_LEISURE && leisureDesc.trim() ? ` — ${leisureDesc.trim()}` : '';
-    let finalDesc = (selectedItem?.description ?? variableDesc.trim()) + leisureSuffix;
+    let finalDesc = (category === CategoryType.PERSONAL_LEISURE && leisureDesc.trim())
+      ? leisureDesc.trim()
+      : (selectedItem?.description ?? variableDesc.trim());
 
     if (!itemId && category === CategoryType.VARIABLE_EXPENSE && variableDesc.trim() && onCreateItem) {
       finalItemId = onCreateItem(variableDesc.trim(), CategoryType.VARIABLE_EXPENSE);

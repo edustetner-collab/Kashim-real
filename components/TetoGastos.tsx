@@ -320,10 +320,8 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
     const linkedItem = items.find(i => i.id === itemId);
     const card = selectedCard ?? (linkedItem?.linkedCardId ? items.find(i => i.id === linkedItem.linkedCardId) : null);
     const cardLabel = card?.description ? ` (${card.description})` : '';
-    const todayDay = new Date().getDate();
-    const isAfterClosing = card?.closingDay ? todayDay >= card.closingDay : false;
 
-    const startAbsMonth = (currentYear * 12 + currentMonthIdx) + (isAfterClosing ? 1 : 0);
+    const startAbsMonth = currentYear * 12 + currentMonthIdx;
     const baseValue = parseFloat((total / qty).toFixed(2));
 
     for (let i = 0; i < qty; i++) {
