@@ -87,6 +87,7 @@ workflows:
       groups:
         - kashim
       node: 22
+      java: 21
       android_signing:
         - kashim-android
 
