@@ -29,3 +29,7 @@ dist-ssr
 .env
 .env.local
 .env.production
+
+# Android signing keys (NEVER commit)
+*.keystore
+*.jks

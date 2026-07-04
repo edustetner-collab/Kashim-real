@@ -20,6 +20,8 @@ import OnboardingWizard, { WizardResult } from './components/OnboardingWizard';
 import Desempenho from './components/Desempenho';
 import Metas from './components/Metas';
 import MondayQuote from './components/MondayQuote';
+import AmbientBackground from './components/AmbientBackground';
+import { fireConfetti } from './lib/confetti';
 import { Quote, getQuoteForUser, getMondayKey } from './lib/quotes';
 
 const ADMIN_IDS = (import.meta.env.VITE_ADMIN_USER_IDS ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
@@ -960,7 +962,8 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#f5f5f7] text-[#1d1d1f]">
+    <div className="min-h-screen bg-[#f5f5f7] text-[#1d1d1f] isolate">
+      <AmbientBackground />
       {showOnboarding && user && (
         <OnboardingWizard
           userName={user.firstName || user.emailAddresses[0]?.emailAddress.split('@')[0] || ''}
@@ -1251,7 +1254,7 @@ const App: React.FC = () => {
       </header>
 
 
-      <main className={`${activeTab === 'plan' ? 'max-w-[1600px]' : 'w-full px-2'} mx-auto px-2 lg:px-8 mt-2 lg:mt-8`} style={(activeTab === 'desempenho' || activeTab === 'metas') ? { maxWidth: '100%' } : {}}>
+      <main key={activeTab} className={`k-reveal ${activeTab === 'plan' ? 'max-w-[1600px]' : 'w-full px-2'} mx-auto px-2 lg:px-8 mt-2 lg:mt-8`} style={(activeTab === 'desempenho' || activeTab === 'metas') ? { maxWidth: '100%' } : {}}>
         {activeTab === 'desempenho' ? (
           <Desempenho summary={monthlySummaries[mobileMonthIdx]} summaries={monthlySummaries.slice(0, mobileMonthIdx + 1)} items={items} goals={goals} />
         ) : activeTab === 'metas' ? (
@@ -1455,7 +1458,7 @@ const App: React.FC = () => {
               className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'plan' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
             >
               <div className={`w-7 h-7 flex items-center justify-center rounded-[9px] transition-all ${activeTab === 'plan' ? 'bg-[#f0fad0]' : ''}`}>
-                <i className={`fas fa-chart-bar text-lg`}></i>
+                <i className={`fas fa-chart-bar text-lg ${activeTab === 'plan' ? 'k-glow-lime' : ''}`}></i>
               </div>
               <span className="text-[9px] font-black uppercase tracking-wide">Plano</span>
             </button>
@@ -1465,7 +1468,7 @@ const App: React.FC = () => {
               className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'teto' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
             >
               <div className={`w-7 h-7 flex items-center justify-center rounded-[9px] transition-all ${activeTab === 'teto' ? 'bg-[#f0fad0]' : ''}`}>
-                <i className={`fas fa-wallet text-lg`}></i>
+                <i className={`fas fa-wallet text-lg ${activeTab === 'teto' ? 'k-glow-lime' : ''}`}></i>
               </div>
               <span className="text-[9px] font-black uppercase tracking-wide">Gastos</span>
             </button>
@@ -1477,7 +1480,7 @@ const App: React.FC = () => {
                 const isNow = vm.index === currentActualMonth && vm.year === currentActualYear;
                 setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1, isCredit: false, purchaseDate: { day: isNow ? new Date().getDate() : 1, month: vm.index, year: vm.year } });
               }}
-              className="min-w-[72px] flex flex-col items-center justify-center py-1.5 gap-0.5 mx-1 rounded-xl active:scale-95 transition-all k-btn-lime"
+              className="k-sonar min-w-[72px] flex flex-col items-center justify-center py-1.5 gap-0.5 mx-1 rounded-xl active:scale-95 transition-all k-btn-lime"
               style={{background:'linear-gradient(180deg,#c5f23a 0%,#a2d800 50%,#8cc400 100%)',boxShadow:'0 4px 14px rgba(130,192,0,0.4),inset 0 1px 0 rgba(255,255,255,0.45)',borderRadius:'14px'}}
             >
               <i className="fas fa-plus text-[#182200] text-lg font-black"></i>
@@ -1489,7 +1492,7 @@ const App: React.FC = () => {
               className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'metas' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
             >
               <div className={`w-7 h-7 flex items-center justify-center rounded-[9px] transition-all ${activeTab === 'metas' ? 'bg-[#f0fad0]' : ''}`}>
-                <i className={`fas fa-bullseye text-lg`}></i>
+                <i className={`fas fa-bullseye text-lg ${activeTab === 'metas' ? 'k-glow-lime' : ''}`}></i>
               </div>
               <span className="text-[9px] font-black uppercase tracking-wide">Metas</span>
             </button>
@@ -1511,7 +1514,7 @@ const App: React.FC = () => {
               className={`min-w-[80px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'desempenho' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
             >
               <div className={`w-7 h-7 flex items-center justify-center rounded-[9px] transition-all ${activeTab === 'desempenho' ? 'bg-[#f0fad0]' : ''}`}>
-                <i className={`fas fa-chart-pie text-lg`}></i>
+                <i className={`fas fa-chart-pie text-lg ${activeTab === 'desempenho' ? 'k-glow-lime' : ''}`}></i>
               </div>
               <span className="text-[9px] font-black uppercase tracking-wide">Desempenho</span>
             </button>
@@ -1543,7 +1546,7 @@ const App: React.FC = () => {
         initialDescription={pendingExpense?.description}
         initialInstallments={pendingExpense?.installments}
         defaultPurchaseDate={pendingExpense?.purchaseDate}
-        onConfirm={handleConfirmExpense}
+        onConfirm={(data) => { if (data.itemId) fireConfetti(); handleConfirmExpense(data); }}
         onClose={() => setPendingExpense(null)}
         onCreateItem={handleCreateItem}
       />

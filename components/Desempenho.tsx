@@ -6,6 +6,8 @@ import {
   calculateScore, getLevel, getNextLevel, getLevelProgress,
   calculateStreak, checkBadges, BADGE_DEFS, LEVELS,
 } from '../lib/gamification';
+import ScoreRing from './ScoreRing';
+import { useTilt } from '../lib/useTilt';
 
 interface DesempenhoProps {
   summary: SummaryData;
@@ -26,6 +28,7 @@ interface Category {
 
 const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goals }) => {
   const { totalIncome, totalFixed, totalVariable, totalLeisure, totalCreditCard, balance } = summary;
+  const scoreTilt = useTilt(8);
 
   if (!totalIncome || totalIncome <= 0) {
     return (
@@ -77,17 +80,24 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
     <div className="max-w-2xl mx-auto px-3 pt-4 pb-28">
 
       {/* ── SCORE CARD (dark hero) ────────────────────────────────────── */}
-      <div className="relative rounded-[28px] p-5 mb-5 overflow-hidden bg-[#1d1d1f]" style={{boxShadow:'0 8px 30px rgba(0,0,0,0.18)'}}>
+      <div
+        ref={scoreTilt.ref}
+        onPointerMove={scoreTilt.onPointerMove}
+        onPointerLeave={scoreTilt.onPointerLeave}
+        className="relative rounded-[28px] p-5 mb-5 overflow-hidden bg-[#1d1d1f]"
+        style={{boxShadow:'0 8px 30px rgba(0,0,0,0.18)', transition:'transform .3s cubic-bezier(.16,1,.3,1)', willChange:'transform'}}
+      >
         <div className="absolute top-[-60px] left-[-40px] w-[200px] h-[200px] rounded-full pointer-events-none" style={{background:'radial-gradient(circle,rgba(168,231,22,0.15) 0%,transparent 65%)'}}></div>
+        {/* Pointer-following neon glow (decorative) */}
+        <div className="absolute inset-0 pointer-events-none z-0" style={{background:'radial-gradient(240px circle at var(--k-gx,50%) var(--k-gy,50%), rgba(168,231,22,0.16), transparent 60%)', transition:'background .2s'}}></div>
         <div className="absolute top-0 right-0 bottom-0 w-1/2 flex items-center justify-end pr-4 pointer-events-none">
           <span className="text-[80px] opacity-10 select-none">{level.emoji}</span>
         </div>
 
-        <div className="relative z-10 flex items-start justify-between gap-4">
-          <div>
-            <div className="text-white/35 text-[10px] font-black uppercase tracking-[2px] mb-1">Score Financeiro</div>
-            <div className="text-5xl font-black k-num leading-none text-white">{score}</div>
-            <div className="text-white/30 text-[10px] k-num mt-0.5">/1000</div>
+        <div className="relative z-10 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <ScoreRing score={score} max={1000} />
+            <div className="text-white/35 text-[10px] font-black uppercase tracking-[2px] leading-tight">Score<br/>Financeiro</div>
           </div>
 
           <div className="text-right">
@@ -106,7 +116,7 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
         {/* Level progress bar */}
         {nextLevel && (
           <div className="relative z-10 mt-4">
-            <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+            <div className="k-sweep h-1.5 bg-white/10 rounded-full overflow-hidden">
               <div
                 className="h-full rounded-full transition-all duration-700"
                 style={{ width: `${levelProgress}%`, background:'linear-gradient(90deg,#a8e716,#7ab800)' }}
@@ -124,7 +134,7 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
         {streak > 0 && (
           <div className="relative z-10 mt-3 flex items-center gap-2">
             <div className="flex items-center gap-1.5 bg-orange-500/15 border border-orange-500/25 rounded-xl px-3 py-1.5">
-              <span className="text-base">🔥</span>
+              <span className="text-base k-pulse inline-block">🔥</span>
               <span className="text-orange-400 font-black text-xs uppercase">{streak} {streak === 1 ? 'mês' : 'meses'} no verde</span>
             </div>
           </div>
