@@ -109,6 +109,7 @@ workflows:
 
       - name: Build Android AAB (signed)
         script: |
+          chmod +x android/gradlew
           cd android
           ./gradlew bundleRelease \
             -Pandroid.injected.signing.store.file=$CM_KEYSTORE_PATH \
