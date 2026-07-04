@@ -728,7 +728,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
       {/* Delete expense confirmation modal */}
       {deletePartialConfirm && (
-        <div className="fixed inset-0 z-50 flex items-end" onClick={() => setDeletePartialConfirm(null)}>
+        <div className="fixed inset-0 z-[60] flex items-end" onClick={() => setDeletePartialConfirm(null)}>
           <div className="w-full bg-white rounded-t-3xl p-6 pb-10 border-t border-[#e8e8ed] animate-in slide-in-from-bottom-4 duration-200" onClick={e => e.stopPropagation()}>
             <div className="w-8 h-1 bg-[#e8e8ed] rounded-full mx-auto mb-5" />
             <div className="flex items-center gap-3 mb-4">
