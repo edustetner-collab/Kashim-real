@@ -105,7 +105,7 @@ workflows:
 
       - name: Set version code
         script: |
-          sed -i "s/versionCode [0-9]*/versionCode $BUILD_NUMBER/" android/app/build.gradle
+          sed -i '' "s/versionCode [0-9]*/versionCode $BUILD_NUMBER/" android/app/build.gradle
 
       - name: Build Android AAB (signed)
         script: |
