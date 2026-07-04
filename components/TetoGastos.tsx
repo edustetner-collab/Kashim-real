@@ -280,6 +280,9 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   const [installData, setInstallData] = useState<Record<string, { desc: string; total: string; qty: string }>>({});
   const [installCardIds, setInstallCardIds] = useState<Record<string, string>>({});
   const [deletePartialConfirm, setDeletePartialConfirm] = useState<{ itemId: string; expId: string; description: string; value: number } | null>(null);
+  const [editPartialConfirm, setEditPartialConfirm] = useState<{ itemId: string; expId: string; description: string; value: number; date: string; monthKey: string } | null>(null);
+  const [editDesc, setEditDesc] = useState('');
+  const [editValue, setEditValue] = useState('');
   const valueInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const handleSubmitEntry = (colId: string, itemId: string, value: string) => {
@@ -686,8 +689,18 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                   {partials.map((p) => (
                     <div key={p.id} className="border-b border-[#f5f5f7] flex items-center gap-2 px-3 py-2">
                       <span className="text-[9px] text-[#aeaeb2] font-bold uppercase shrink-0">{p.date}</span>
-                      <span className="flex-1 text-[10px] text-[#6e6e73] font-medium truncate">{p.description}</span>
-                      <span className="text-xs font-black text-[#1d1d1f] k-num shrink-0">{formatCurrency(p.value)}</span>
+                      <button
+                        className="flex-1 flex items-center gap-2 min-w-0 text-left active:opacity-60"
+                        onClick={() => {
+                          if (isHistoricalView) return;
+                          setEditPartialConfirm({ itemId: col.linkedItemId, expId: p.id, description: p.description, value: p.value, date: p.date, monthKey });
+                          setEditDesc(p.description);
+                          setEditValue(String(p.value));
+                        }}
+                      >
+                        <span className="flex-1 text-[10px] text-[#6e6e73] font-medium truncate">{p.description}</span>
+                        <span className="text-xs font-black text-[#1d1d1f] k-num shrink-0">{formatCurrency(p.value)}</span>
+                      </button>
                       <button
                         onClick={() => setDeletePartialConfirm({ itemId: col.linkedItemId, expId: p.id, description: p.description, value: p.value })}
                         className="text-[#ff3b30]/60 active:text-[#ff3b30] p-1 shrink-0"
@@ -759,6 +772,73 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                 className="flex-1 py-3.5 rounded-2xl bg-[#ff3b30] text-white font-black text-sm active:opacity-80"
               >
                 Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {editPartialConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-end" onClick={() => setEditPartialConfirm(null)}>
+          <div className="w-full bg-white rounded-t-3xl p-6 pb-10 border-t border-[#e8e8ed] animate-in slide-in-from-bottom-4 duration-200" onClick={e => e.stopPropagation()}>
+            <div className="w-8 h-1 bg-[#e8e8ed] rounded-full mx-auto mb-5" />
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-11 h-11 rounded-full bg-[#f0fad0] flex items-center justify-center shrink-0">
+                <i className="fas fa-pen text-[#7ab800] text-base" />
+              </div>
+              <div>
+                <p className="text-[#1d1d1f] font-black text-sm">Editar lançamento</p>
+                <p className="text-[#6e6e73] text-xs mt-0.5">Altere a descrição ou o valor</p>
+              </div>
+            </div>
+            <div className="space-y-3 mb-5">
+              <div>
+                <p className="text-[9px] text-[#aeaeb2] font-black uppercase tracking-widest mb-1.5">Descrição</p>
+                <input
+                  type="text"
+                  value={editDesc}
+                  onChange={e => setEditDesc(e.target.value)}
+                  className="w-full py-2.5 px-3 text-sm border border-[#e8e8ed] rounded-xl bg-[#f5f5f7] text-[#1d1d1f] outline-none focus:border-[#7ab800]"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <p className="text-[9px] text-[#aeaeb2] font-black uppercase tracking-widest mb-1.5">Valor</p>
+                <div className="flex items-center border border-[#e8e8ed] rounded-xl bg-[#f5f5f7] overflow-hidden">
+                  <span className="pl-3 text-[#aeaeb2] text-sm font-bold shrink-0">R$</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={editValue}
+                    onChange={e => setEditValue(e.target.value)}
+                    className="flex-1 pl-2 pr-3 py-2.5 text-sm bg-transparent text-[#1d1d1f] font-black outline-none k-num"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setEditPartialConfirm(null)}
+                className="flex-1 py-3.5 rounded-2xl bg-[#f5f5f7] text-[#1d1d1f] font-black text-sm border border-[#e8e8ed] active:opacity-70"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  const newValue = parseFloat(editValue.replace(',', '.'));
+                  if (!editDesc.trim() || isNaN(newValue) || newValue <= 0) return;
+                  const [targetYear, targetMonthIdx] = editPartialConfirm.monthKey.split('-').map(Number);
+                  onRemovePartial(editPartialConfirm.itemId, editPartialConfirm.expId);
+                  onAddPartial(editPartialConfirm.itemId, {
+                    id: crypto.randomUUID(),
+                    date: editPartialConfirm.date,
+                    description: editDesc.trim(),
+                    value: newValue,
+                  }, targetYear, targetMonthIdx);
+                  setEditPartialConfirm(null);
+                }}
+                className="flex-[2] py-3.5 rounded-2xl bg-[#7ab800] text-white font-black text-sm active:opacity-80"
+              >
+                Salvar
               </button>
             </div>
           </div>
