@@ -176,19 +176,21 @@
       }
       @keyframes k-sweep { to { transform: translateX(120%); } }
 
-      /* ---- Sonar ring (LANÇAR button) ---- */
-      .k-sonar { position: relative; }
-      .k-sonar::before, .k-sonar::after {
-        content: ""; position: absolute; inset: 0; border-radius: inherit;
-        border: 2px solid rgba(168,231,22,0.55);
-        animation: k-sonar 2.4s var(--ease-out) infinite;
-        pointer-events: none;
-      }
-      .k-sonar::after { animation-delay: 1.2s; }
-      @keyframes k-sonar {
-        0%   { transform: scale(1);   opacity: calc(var(--glow) * 0.9); }
-        70%  { opacity: 0; }
-        100% { transform: scale(1.9); opacity: 0; }
+      /* ---- Glowing halo (LANÇAR button) ----
+         Pulses via box-shadow only — no scaled pseudo-elements, so it never
+         adds layout/scroll overflow to the horizontally-scrolling tab bar. ---- */
+      .k-halo { animation: k-halo 2.6s ease-in-out infinite; }
+      @keyframes k-halo {
+        0%, 100% {
+          box-shadow: 0 4px 14px rgba(130,192,0,0.40),
+            inset 0 1px 0 rgba(255,255,255,0.45),
+            0 0 0 0 rgba(168,231,22,0.0);
+        }
+        50% {
+          box-shadow: 0 4px 20px rgba(130,192,0,0.55),
+            inset 0 1px 0 rgba(255,255,255,0.45),
+            0 0 16px 3px rgba(168,231,22, calc(var(--glow) * 0.7));
+        }
       }
 
       /* ---- Fire / streak pulse ---- */
@@ -217,7 +219,7 @@
       /* ---- Respect reduced motion: kill all decorative motion ---- */
       @media (prefers-reduced-motion: reduce) {
         .k-aurora, .k-reveal, .k-stagger > *, .k-sweep::after,
-        .k-sonar::before, .k-sonar::after, .k-pulse, .k-confetti-piece {
+        .k-halo, .k-pulse, .k-confetti-piece {
           animation: none !important;
         }
         .k-reveal, .k-stagger > * { opacity: 1 !important; transform: none !important; }

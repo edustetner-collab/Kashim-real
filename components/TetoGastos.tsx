@@ -425,6 +425,19 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       )}
 
       <div ref={columnsScrollRef} onScroll={handleContainerScroll} className="flex gap-3 items-start overflow-x-auto pb-6 pt-1 px-1 snap-x snap-mandatory scrollbar-none">
+        {/* Loading skeleton — avoids a blank screen while columns load from the DB */}
+        {!columnsLoaded && displayColumns.length === 0 && [0, 1].map(i => (
+          <div key={`sk-${i}`} className="w-[calc(100vw-48px)] lg:w-64 flex-shrink-0 snap-start rounded-2xl border border-[#e8e8ed] overflow-hidden bg-white">
+            <div className="h-11 bg-[#f0fad0] animate-pulse"></div>
+            <div className="p-4 space-y-3">
+              <div className="h-3 w-2/3 bg-[#f5f5f7] rounded animate-pulse"></div>
+              <div className="h-2 w-full bg-[#f5f5f7] rounded-full animate-pulse"></div>
+              <div className="h-9 w-full bg-[#f5f5f7] rounded-xl animate-pulse"></div>
+              <div className="h-3 w-1/2 bg-[#f5f5f7] rounded animate-pulse"></div>
+              <div className="h-3 w-3/4 bg-[#f5f5f7] rounded animate-pulse"></div>
+            </div>
+          </div>
+        ))}
         {displayColumns.map((col, colIdx) => {
           const linkedItem = items.find(i => i.id === col.linkedItemId);
           const teto = linkedItem ? (linkedItem.values[currentMonthIdx] || 0) : 0;

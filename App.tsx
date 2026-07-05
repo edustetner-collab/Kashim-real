@@ -21,7 +21,9 @@ import Desempenho from './components/Desempenho';
 import Metas from './components/Metas';
 import MondayQuote from './components/MondayQuote';
 import AmbientBackground from './components/AmbientBackground';
+import MoneyCountUp from './components/MoneyCountUp';
 import { fireConfetti } from './lib/confetti';
+import { useTilt } from './lib/useTilt';
 import { Quote, getQuoteForUser, getMondayKey } from './lib/quotes';
 
 const ADMIN_IDS = (import.meta.env.VITE_ADMIN_USER_IDS ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
@@ -110,6 +112,7 @@ const App: React.FC = () => {
     try { return JSON.parse(localStorage.getItem('kashim_goals') || '[]'); } catch { return []; }
   });
   const [mobileMonthIdx, setMobileMonthIdx] = useState(0);
+  const acumTilt = useTilt(6); // decorative 3D tilt for the Acumulado hero card
 
   const [startMonth, setStartMonth] = useState<number>(() => {
     const cached = localStorage.getItem('kashim_startMonth');
@@ -1267,29 +1270,39 @@ const App: React.FC = () => {
             {/* ── MOBILE SUMMARY CARDS ──────────────────────────────── */}
             {/* Hero dark card — Acumulado */}
             <div className="lg:hidden px-3 mb-3">
-              <div className="bg-[#1d1d1f] rounded-[24px] p-5 relative overflow-hidden">
+              <div
+                ref={acumTilt.ref}
+                onPointerMove={acumTilt.onPointerMove}
+                onPointerLeave={acumTilt.onPointerLeave}
+                className="bg-[#1d1d1f] rounded-[24px] p-5 relative overflow-hidden"
+                style={{transition:'transform .3s cubic-bezier(.16,1,.3,1)', willChange:'transform'}}
+              >
                 <div className="absolute top-[-50px] right-[-30px] w-[180px] h-[180px] rounded-full pointer-events-none" style={{background:'radial-gradient(circle,rgba(168,231,22,0.18) 0%,transparent 65%)'}}></div>
-                <div className="text-[10px] font-bold uppercase tracking-[2px] text-white/40 mb-1">Acumulado</div>
-                <div className="text-white font-black k-num" style={{fontSize:'36px',letterSpacing:'-0.04em',lineHeight:1}}>
-                  {formatCurrency(monthlySummaries[mobileMonthIdx].accumulated)}
-                </div>
-                <div className="text-white/30 text-[11px] mt-2">
-                  {months[mobileMonthIdx].monthName} {months[mobileMonthIdx].year}
+                {/* Pointer-following neon glow (decorative) */}
+                <div className="absolute inset-0 pointer-events-none z-0" style={{background:'radial-gradient(240px circle at var(--k-gx,50%) var(--k-gy,50%), rgba(168,231,22,0.16), transparent 60%)', transition:'background .2s'}}></div>
+                <div className="relative z-10">
+                  <div className="text-[10px] font-bold uppercase tracking-[2px] text-white/40 mb-1">Acumulado</div>
+                  <div className="text-white font-black k-num" style={{fontSize:'36px',letterSpacing:'-0.04em',lineHeight:1}}>
+                    <MoneyCountUp value={monthlySummaries[mobileMonthIdx].accumulated} />
+                  </div>
+                  <div className="text-white/30 text-[11px] mt-2">
+                    {months[mobileMonthIdx].monthName} {months[mobileMonthIdx].year}
+                  </div>
                 </div>
               </div>
             </div>
-            <div className="lg:hidden grid grid-cols-3 gap-2 px-3 mb-3">
+            <div className="lg:hidden k-stagger grid grid-cols-3 gap-2 px-3 mb-3">
               <div className="bg-white border border-[#e8e8ed] rounded-[18px] p-3 overflow-hidden shadow-sm">
                 <div className="text-[7px] font-black uppercase text-[#aeaeb2] tracking-widest mb-1">Entradas</div>
-                <div className="text-[#34c759] font-black k-num text-xs leading-tight truncate">{formatCurrency(monthlySummaries[mobileMonthIdx].totalIncome)}</div>
+                <div className="text-[#34c759] font-black k-num text-xs leading-tight truncate"><MoneyCountUp value={monthlySummaries[mobileMonthIdx].totalIncome} duration={900} /></div>
               </div>
               <div className="bg-white border border-[#e8e8ed] rounded-[18px] p-3 overflow-hidden shadow-sm">
                 <div className="text-[7px] font-black uppercase text-[#aeaeb2] tracking-widest mb-1">Gastos</div>
-                <div className="text-[#ff3b30] font-black k-num text-xs leading-tight truncate">{formatCurrency(monthlySummaries[mobileMonthIdx].totalCost)}</div>
+                <div className="text-[#ff3b30] font-black k-num text-xs leading-tight truncate"><MoneyCountUp value={monthlySummaries[mobileMonthIdx].totalCost} duration={900} /></div>
               </div>
               <div className={`border rounded-[18px] p-3 overflow-hidden shadow-sm ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'bg-[#f0fad0] border-[rgba(122,184,0,0.25)]' : 'bg-[#fff0f0] border-[rgba(255,59,48,0.2)]'}`}>
                 <div className="text-[7px] font-black uppercase tracking-widest mb-1 text-[#aeaeb2]">Sobra/Falta</div>
-                <div className={`font-black k-num text-xs leading-tight truncate ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'text-[#7ab800]' : 'text-[#ff3b30] animate-pulse'}`}>{formatCurrency(monthlySummaries[mobileMonthIdx].balance)}</div>
+                <div className={`font-black k-num text-xs leading-tight truncate ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'text-[#7ab800]' : 'text-[#ff3b30] animate-pulse'}`}><MoneyCountUp value={monthlySummaries[mobileMonthIdx].balance} duration={900} /></div>
               </div>
             </div>
 
@@ -1314,7 +1327,7 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div id="blocks">
+            <div id="blocks" className="k-stagger">
               {[
                 { title: "ENTRADAS (Rendas)", type: CategoryType.INCOME },
                 { title: "FATURAS DE CARTÃO", type: CategoryType.CREDIT_CARD },
@@ -1480,7 +1493,7 @@ const App: React.FC = () => {
                 const isNow = vm.index === currentActualMonth && vm.year === currentActualYear;
                 setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1, isCredit: false, purchaseDate: { day: isNow ? new Date().getDate() : 1, month: vm.index, year: vm.year } });
               }}
-              className="k-sonar min-w-[72px] flex flex-col items-center justify-center py-1.5 gap-0.5 mx-1 rounded-xl active:scale-95 transition-all k-btn-lime"
+              className="k-halo min-w-[72px] flex flex-col items-center justify-center py-1.5 gap-0.5 mx-1 rounded-xl active:scale-95 transition-all k-btn-lime"
               style={{background:'linear-gradient(180deg,#c5f23a 0%,#a2d800 50%,#8cc400 100%)',boxShadow:'0 4px 14px rgba(130,192,0,0.4),inset 0 1px 0 rgba(255,255,255,0.45)',borderRadius:'14px'}}
             >
               <i className="fas fa-plus text-[#182200] text-lg font-black"></i>
