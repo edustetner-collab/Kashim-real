@@ -25,7 +25,7 @@ const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onClose }) => {
     setLoading(true);
     setError('');
     try {
-      const token = await getToken();
+      const token = await getToken({ template: 'supabase' });
       const res = await fetch('/api/create-checkout', {
         method: 'POST',
         headers: {

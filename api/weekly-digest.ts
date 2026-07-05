@@ -1,10 +1,17 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { Resend } from 'resend';
+import { verifyAuthToken } from './_verifyToken';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).end();
+
+  // Exige usuário autenticado — sem isso, qualquer um dispararia e-mails
+  // com a marca Kashim para endereços arbitrários (phishing/spam).
+  if (!verifyAuthToken(req.headers.authorization as string | undefined)) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
 
   const { email, name, balance, totalIncome, totalCost, accumulated, monthName } = req.body;
   if (!email) return res.status(400).json({ error: 'Missing email' });

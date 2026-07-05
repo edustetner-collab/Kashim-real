@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { verifyAuthToken } from './_verifyToken';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -23,18 +24,7 @@ function buildUserParts(userMessage?: string, imageData?: string, imageMimeType?
 }
 
 function verifyClerkToken(authHeader: string): boolean {
-  const token = (authHeader ?? '').replace('Bearer ', '').trim();
-  if (!token) return false;
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return false;
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
-    if (!payload.sub) return false;
-    if (payload.exp && payload.exp < Date.now() / 1000) return false;
-    return true;
-  } catch {
-    return false;
-  }
+  return verifyAuthToken(authHeader) !== null;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

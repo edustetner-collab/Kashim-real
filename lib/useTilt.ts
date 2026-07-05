@@ -1,8 +1,8 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, type RefObject, type PointerEvent } from 'react';
 
 interface TiltHandlers {
-  ref: React.RefObject<HTMLDivElement>;
-  onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => void;
+  ref: RefObject<HTMLDivElement>;
+  onPointerMove: (e: PointerEvent<HTMLDivElement>) => void;
   onPointerLeave: () => void;
 }
 
@@ -17,7 +17,7 @@ interface TiltHandlers {
 export function useTilt(maxDeg = 8): TiltHandlers {
   const ref = useRef<HTMLDivElement>(null);
 
-  const onPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+  const onPointerMove = useCallback((e: PointerEvent<HTMLDivElement>) => {
     const el = ref.current;
     if (!el) return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;

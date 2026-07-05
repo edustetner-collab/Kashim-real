@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
+import { verifyAuthToken } from './_verifyToken';
 
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY!;
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL!;
@@ -7,16 +8,7 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!;
 const ADMIN_IDS = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean);
 
 function getUserId(authHeader: string): string | null {
-  const token = (authHeader ?? '').replace('Bearer ', '').trim();
-  if (!token) return null;
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
-    return payload.sub ?? null;
-  } catch {
-    return null;
-  }
+  return verifyAuthToken(authHeader)?.sub ?? null;
 }
 
 async function getClerkEmail(userId: string): Promise<string | null> {

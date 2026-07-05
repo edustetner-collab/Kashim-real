@@ -105,7 +105,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
   };
 
   const callStets = async (userMessage: string, imageData?: string, imageMimeType?: string) => {
-    const token = await getToken();
+    const token = await getToken({ template: 'supabase' });
     const res = await fetch('/api/stets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },

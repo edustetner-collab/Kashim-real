@@ -269,9 +269,10 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
     setDigestSending(true);
     try {
       const monthName = currentMonthIdx !== undefined ? MONTHS_BR[currentMonthIdx] : undefined;
+      const digestToken = await getToken({ template: 'supabase' });
       await fetch('/api/weekly-digest', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${digestToken}` },
         body: JSON.stringify({
           email,
           name: user.firstName || email.split('@')[0],
@@ -611,7 +612,7 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
                 householdId={householdId}
                 currentUserId={user?.id ?? ''}
                 inviterName={`${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || 'Seu parceiro(a)'}
-                getToken={() => getToken()}
+                getToken={() => getToken({ template: 'supabase' })}
               />
             </div>
           </div>

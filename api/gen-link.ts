@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
+import { verifyAdminToken } from './_verifyToken';
 
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY!;
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL!;
@@ -19,18 +20,7 @@ async function shortenUrl(longUrl: string): Promise<string> {
 }
 
 function getAdminId(authHeader: string): string | null {
-  const token = (authHeader ?? '').replace('Bearer ', '').trim();
-  if (!token) return null;
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
-    const userId: string = payload.sub;
-    if (!userId || !ADMIN_IDS.includes(userId)) return null;
-    return userId;
-  } catch {
-    return null;
-  }
+  return verifyAdminToken(authHeader);
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

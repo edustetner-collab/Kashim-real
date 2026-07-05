@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
+import { verifyAuthToken } from './_verifyToken';
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL!,
@@ -7,18 +8,8 @@ const supabase = createClient(
 );
 
 function verifyToken(authHeader?: string): { sub: string } | null {
-  const token = (authHeader ?? '').replace('Bearer ', '').trim();
-  if (!token) return null;
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as { sub?: string; exp?: number };
-    if (!payload.sub) return null;
-    if (payload.exp && payload.exp < Date.now() / 1000) return null;
-    return { sub: payload.sub };
-  } catch {
-    return null;
-  }
+  const claims = verifyAuthToken(authHeader);
+  return claims ? { sub: claims.sub } : null;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
