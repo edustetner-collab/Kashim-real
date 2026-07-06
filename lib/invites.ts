@@ -1,65 +1,33 @@
+// Processa um token de convite presente na URL, aceitando-o via endpoint
+// server-side (/api/accept-invite). A validação (convite pendente, e-mail
+// correto, limite de membros) e a inserção acontecem no servidor com a
+// service key — o cliente NÃO insere em household_members diretamente.
 
-import { SupabaseClient } from '@supabase/supabase-js';
-
-// Verifica se há um token de convite na URL e processa
-export async function processInviteFromUrl(
-  db: SupabaseClient,
-  clerkUserId: string
-): Promise<string | null> {
+export async function processInviteFromUrl(authToken: string | null): Promise<string | null> {
   const params = new URLSearchParams(window.location.search);
   const token = params.get('invite');
   if (!token) return null;
 
   try {
-    // Busca o convite
-    const { data: invite, error } = await db
-      .from('household_invites')
-      .select('*')
-      .eq('token', token)
-      .eq('status', 'pending')
-      .single();
-
-    if (error || !invite) return null;
-
-    // Verifica se já não é membro de outro household
-    const { data: existing } = await db
-      .from('household_members')
-      .select('household_id')
-      .eq('clerk_user_id', clerkUserId)
-      .maybeSingle();
-
-    if (existing) {
-      // Já tem household — remove o token da URL sem processar
-      cleanInviteFromUrl();
-      return existing.household_id;
-    }
-
-    // Verifica se o household já tem 2 membros
-    const { count } = await db
-      .from('household_members')
-      .select('*', { count: 'exact', head: true })
-      .eq('household_id', invite.household_id);
-
-    if ((count ?? 0) >= 2) {
+    if (!authToken) {
       cleanInviteFromUrl();
       return null;
     }
 
-    // Aceita o convite — entra no household
-    await db.from('household_members').insert({
-      household_id: invite.household_id,
-      clerk_user_id: clerkUserId,
-      role: 'member',
+    const res = await fetch('/api/accept-invite', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({ token }),
     });
 
-    // Marca convite como aceito
-    await db
-      .from('household_invites')
-      .update({ status: 'accepted', accepted_at: new Date().toISOString() })
-      .eq('id', invite.id);
-
     cleanInviteFromUrl();
-    return invite.household_id;
+
+    if (!res.ok) return null;
+    const data = (await res.json()) as { householdId?: string };
+    return data.householdId ?? null;
   } catch (e) {
     console.error('Erro ao processar convite:', e);
     cleanInviteFromUrl();

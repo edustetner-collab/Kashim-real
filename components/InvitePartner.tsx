@@ -67,8 +67,8 @@ const InvitePartner: React.FC<InvitePartnerProps> = ({ db, householdId, currentU
     setMessage(null);
 
     try {
-      // Gera token único para o convite
-      const token = Math.random().toString(36).substr(2, 16) + Date.now().toString(36);
+      // Gera token único e imprevisível para o convite
+      const token = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
 
       const { error } = await db.from('household_invites').insert({
         household_id: householdId,
