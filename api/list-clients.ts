@@ -1,6 +1,28 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import { verifyAuthToken } from '../lib/verifyToken';
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET ?? '';
+function verifyAuthToken(authHeader?: string): { sub: string; [k: string]: unknown } | null {
+  if (!SUPABASE_JWT_SECRET) return null;
+  const token = (authHeader ?? '').replace('Bearer ', '').trim();
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const [h, p, s] = parts;
+    const header = JSON.parse(Buffer.from(h, 'base64url').toString('utf8'));
+    if (header.alg !== 'HS256') return null;
+    const expected = createHmac('sha256', SUPABASE_JWT_SECRET).update(`${h}.${p}`).digest();
+    const provided = Buffer.from(s, 'base64url');
+    if (expected.length !== provided.length || !timingSafeEqual(expected, provided)) return null;
+    const claims = JSON.parse(Buffer.from(p, 'base64url').toString('utf8'));
+    if (!claims.sub) return null;
+    if (typeof claims.exp === 'number' && claims.exp < Math.floor(Date.now() / 1000)) return null;
+    return claims;
+  } catch {
+    return null;
+  }
+}
 
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY!;
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL!;
