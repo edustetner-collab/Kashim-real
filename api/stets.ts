@@ -58,6 +58,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).end();
 
   if (!verifyClerkToken(req.headers.authorization ?? '')) {
+    // DIAGNÓSTICO TEMPORÁRIO — não loga segredo nem token, só metadados
+    try {
+      const t = (req.headers.authorization ?? '').replace('Bearer ', '').trim();
+      const parts = t.split('.');
+      let alg = 'no-token';
+      let sigOk = false;
+      let hasSub = false;
+      let expOk = false;
+      if (parts.length === 3) {
+        alg = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8')).alg ?? 'unknown';
+        if (SUPABASE_JWT_SECRET) {
+          const exp = createHmac('sha256', SUPABASE_JWT_SECRET).update(`${parts[0]}.${parts[1]}`).digest();
+          const prov = Buffer.from(parts[2], 'base64url');
+          sigOk = exp.length === prov.length && timingSafeEqual(exp, prov);
+        }
+        const claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+        hasSub = !!claims.sub;
+        expOk = !claims.exp || claims.exp >= Math.floor(Date.now() / 1000);
+      }
+      console.log(`STETS_AUTH_DEBUG alg=${alg} hasSecret=${!!SUPABASE_JWT_SECRET} parts=${parts.length} sigOk=${sigOk} hasSub=${hasSub} expOk=${expOk}`);
+    } catch (e) {
+      console.log('STETS_AUTH_DEBUG_ERR', String(e));
+    }
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
