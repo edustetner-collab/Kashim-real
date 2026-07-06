@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { verifyAuthToken } from './_verifyToken';
+import { verifyAuthToken } from '../lib/verifyToken';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 

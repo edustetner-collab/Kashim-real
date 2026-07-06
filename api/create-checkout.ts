@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import { verifyAuthToken } from './_verifyToken';
+import { verifyAuthToken } from '../lib/verifyToken';
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL!,
