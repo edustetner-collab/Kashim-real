@@ -162,7 +162,7 @@ const App: React.FC = () => {
         // Processa convite da URL antes de criar/buscar household (aceite server-side)
         const inviteAuthToken = await getToken({ template: 'supabase' });
         const inviteHouseholdId = await processInviteFromUrl(inviteAuthToken);
-        const hId = inviteHouseholdId ?? await getOrCreateHousehold(db!, user!.id);
+        const hId = inviteHouseholdId ?? await getOrCreateHousehold(inviteAuthToken);
         setHouseholdId(hId);
 
         const [household, dbItems, dbCols] = await Promise.all([

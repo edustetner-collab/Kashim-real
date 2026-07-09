@@ -3,41 +3,20 @@ import { FinanceItem, CategoryType, LinkType, PartialExpense, Goal, Notification
 
 // ─── HOUSEHOLD ────────────────────────────────────────────────────────────────
 
-export async function getOrCreateHousehold(
-  db: SupabaseClient,
-  clerkUserId: string
-): Promise<string> {
-  // Verifica se já é membro de algum household
-  const { data: membership } = await db
-    .from('household_members')
-    .select('household_id')
-    .eq('clerk_user_id', clerkUserId)
-    .maybeSingle();
-
-  if (membership) return membership.household_id;
-
-  // Cria um novo household
-  const { data: household, error: hhError } = await db
-    .from('households')
-    .insert({
-      start_month: new Date().getMonth(),
-      start_year: new Date().getFullYear(),
-    })
-    .select('id')
-    .single();
-
-  if (hhError || !household) throw new Error(`households.insert → ${hhError?.message ?? 'sem dados'} [code ${hhError?.code ?? '?'}]`);
-
-  // Associa o usuário como owner
-  const { error: memberError } = await db.from('household_members').insert({
-    household_id: household.id,
-    clerk_user_id: clerkUserId,
-    role: 'owner',
+// Cria (ou retorna) o household do usuário via endpoint server-side, que usa a
+// service key e ignora o RLS. O cliente não tem permissão de INSERT em
+// households — por isso a criação precisa ser no servidor.
+export async function getOrCreateHousehold(authToken: string): Promise<string> {
+  const res = await fetch('/api/ensure-household', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${authToken}` },
   });
-
-  if (memberError) throw new Error(`household_members.insert → ${memberError.message} [code ${memberError.code}]`);
-
-  return household.id;
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(`ensure-household [${res.status}]: ${body.error ?? 'erro'}`);
+  }
+  const data = (await res.json()) as { householdId: string };
+  return data.householdId;
 }
 
 export async function getHousehold(db: SupabaseClient, householdId: string) {
