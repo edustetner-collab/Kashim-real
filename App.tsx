@@ -8,7 +8,7 @@ import ExpenseSheet, { DetectedExpense } from './components/ExpenseSheet';
 import Diagnosis from './components/Diagnosis';
 import TetoGastos from './components/TetoGastos';
 import AICoach from './components/AICoach';
-import OnboardingTutorial from './components/OnboardingTutorial';
+import OnboardingManager from './components/onboarding/OnboardingManager';
 import { useSupabase } from './lib/useSupabase';
 import { getOrCreateHousehold, getHousehold, loadFinanceItems, saveFinanceItem, deleteFinanceItem, addPartialExpense, deletePartialExpense, updateHouseholdPlan, loadGoals, loadTetoColumns, saveTetoColumns } from './lib/db';
 import { processInviteFromUrl } from './lib/invites';
@@ -49,9 +49,6 @@ const App: React.FC = () => {
   const db = useSupabase();
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [clerkTimeout, setClerkTimeout] = useState(false);
-  const [showTutorial, setShowTutorial] = useState<boolean>(() => {
-    return localStorage.getItem('tutorial_completed') !== 'true';
-  });
   const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
   const [showWebNotice, setShowWebNotice] = useState<boolean>(false); // never show on native — Apple 3.1.1
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -254,11 +251,12 @@ const App: React.FC = () => {
           if (g.length > 0) { setGoals(g); localStorage.setItem('kashim_goals', JSON.stringify(g)); }
         }).catch(() => {});
 
-        // Detecta se é cliente sem coach que precisa do wizard de onboarding
+        // Wizard de coleta de dados: qualquer cliente sem dados ainda, com ou
+        // sem coach, em qualquer plataforma (web e app nativo)
         const onboardingKey = `onboarding_done_${user!.id}`;
         if (localStorage.getItem(onboardingKey) !== 'true') {
           const hasData = dbItems.some(i => i.values.some(v => v > 0));
-          if (!hasCoach && !hasData) {
+          if (!hasData) {
             setShowOnboarding(true);
           } else {
             localStorage.setItem(onboardingKey, 'true');
@@ -404,9 +402,13 @@ const App: React.FC = () => {
       .catch((err) => console.error('Erro ao autenticar com link mágico:', err));
   }, [signIn, setSignInActive, isSignedIn]);
 
-  const handleCompleteTutorial = () => {
-    localStorage.setItem('tutorial_completed', 'true');
-    setShowTutorial(false);
+  // Oferta de IA do tour: leva o usuário ao Stets (aba Plano) com o prompt pronto
+  const handleTourAiPrompt = (prompt: string) => {
+    setActiveTab('plan');
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('kashim:stets-prefill', { detail: { prompt } }));
+      document.getElementById('stets')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 450);
   };
 
   const resetFactory = () => {
@@ -553,8 +555,6 @@ const App: React.FC = () => {
     }
 
     localStorage.setItem(`onboarding_done_${user!.id}`, 'true');
-    localStorage.setItem('tutorial_completed', 'true');
-    setShowTutorial(false);
     setShowOnboarding(false);
   };
 
@@ -989,7 +989,17 @@ const App: React.FC = () => {
         />
       )}
 
-      {!showOnboarding && showTutorial && <OnboardingTutorial onComplete={handleCompleteTutorial} />}
+      {/* Onboarding interativo: auto-inicia no 1º acesso de cada tela + botão de ajuda global */}
+      {user && !isAdmin && (
+        <OnboardingManager
+          screen={activeTab}
+          db={db}
+          userId={user.id}
+          active={!showOnboarding && !showSubscriptionGate && !coachViewHouseholdId && !dbLoading}
+          onRequestScreen={setActiveTab}
+          onAiPrompt={handleTourAiPrompt}
+        />
+      )}
 
       {showQuoteModal && currentWeekQuote && (
         <MondayQuote
@@ -1307,7 +1317,7 @@ const App: React.FC = () => {
 
             {/* ── MOBILE SUMMARY CARDS ──────────────────────────────── */}
             {/* Hero dark card — Acumulado */}
-            <div className="lg:hidden px-3 mb-3">
+            <div id="summary-mobile" className="lg:hidden px-3 mb-3">
               <div
                 ref={acumTilt.ref}
                 onPointerMove={acumTilt.onPointerMove}
@@ -1345,7 +1355,7 @@ const App: React.FC = () => {
             </div>
 
             {/* ── MOBILE MONTH NAVIGATOR ── */}
-            <div className="lg:hidden bg-white border border-[#e8e8ed] rounded-[18px] mx-3 mb-3 shadow-sm">
+            <div id="month-navigator" className="lg:hidden bg-white border border-[#e8e8ed] rounded-[18px] mx-3 mb-3 shadow-sm">
               <div className="flex items-center justify-between px-3 py-3">
                 <button onClick={() => setMobileMonthIdx(i => Math.max(0, i - 1))} disabled={mobileMonthIdx === 0} className="w-10 h-10 flex items-center justify-center text-[#aeaeb2] disabled:opacity-20 active:text-[#7ab800] rounded-xl">
                   <i className="fas fa-chevron-left text-sm"></i>
@@ -1515,6 +1525,7 @@ const App: React.FC = () => {
             </button>
 
             <button
+              id="tab-teto-mobile"
               onClick={() => setActiveTab('teto')}
               className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'teto' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
             >

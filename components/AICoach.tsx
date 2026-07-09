@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { SpeechRecognition as NativeSpeech } from '@capacitor-community/speech-recognition';
 import { SummaryData, FinanceItem, CategoryType } from '../types';
@@ -53,6 +53,19 @@ const AICoach: React.FC<AICoachProps> = ({ summary, items, monthName, onExpenseD
   const recognitionRef = useRef<any>(null);
   const nativeTranscriptRef = useRef('');
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const textInputRef = useRef<HTMLInputElement>(null);
+
+  // O tour de onboarding pré-preenche o chat quando o usuário aceita a oferta de IA
+  useEffect(() => {
+    const onPrefill = (e: Event) => {
+      const detail = (e as CustomEvent<{ prompt: string }>).detail;
+      if (!detail?.prompt) return;
+      setPrompt(detail.prompt);
+      textInputRef.current?.focus();
+    };
+    window.addEventListener('kashim:stets-prefill', onPrefill);
+    return () => window.removeEventListener('kashim:stets-prefill', onPrefill);
+  }, []);
 
   const speak = (text: string) => {
     if (!ttsEnabled || !('speechSynthesis' in window)) return;
@@ -318,6 +331,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
       {/* Input row */}
       <div className="flex flex-col gap-2.5">
         <input
+          ref={textInputRef}
           type="text"
           value={prompt}
           onChange={e => setPrompt(e.target.value)}
