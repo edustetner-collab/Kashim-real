@@ -6,7 +6,6 @@ interface SubscriptionGateProps {
   onClose: () => void;
 }
 
-const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
 
 const FEATURES = [
   'Planejamento completo dos 12 meses',
@@ -70,29 +69,17 @@ const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onClose }) => {
           ))}
         </ul>
 
-        {isNativeApp ? (
-          /* iOS / native: Apple guidelines prohibit in-app purchase via external payment */
-          <div className="bg-zinc-800 border border-zinc-700 rounded-2xl p-5 text-center mb-3">
-            <i className="fas fa-globe text-green-400 text-2xl mb-3 block"></i>
-            <p className="text-white font-bold text-sm mb-1">Assine pelo navegador</p>
-            <p className="text-zinc-400 text-xs leading-relaxed">
-              Para assinar o Kashim, acesse{' '}
-              <span className="text-green-400 font-bold">app.kashim.com.br</span>{' '}
-              no navegador do seu celular.
-            </p>
-          </div>
-        ) : (
-          <>
-            {error && <p className="text-red-400 text-xs mb-4 text-center">{error}</p>}
-            <button
-              onClick={handleSubscribe}
-              disabled={loading}
-              className="w-full bg-green-500 hover:bg-green-400 disabled:opacity-50 text-black font-black py-4 rounded-2xl transition-all shadow-lg uppercase text-sm tracking-widest mb-3"
-            >
-              {loading ? <i className="fas fa-circle-notch animate-spin"></i> : 'Assinar agora'}
-            </button>
-          </>
-        )}
+        {/* Esta tela NUNCA é renderizada no app nativo (ver App.tsx): no iOS o
+            Kashim é gratuito e não pode exibir paywall nem direcionar o usuário
+            para uma compra externa (Apple 3.1.1 / 3.1.3(a)). */}
+        {error && <p className="text-red-400 text-xs mb-4 text-center">{error}</p>}
+        <button
+          onClick={handleSubscribe}
+          disabled={loading}
+          className="w-full bg-green-500 hover:bg-green-400 disabled:opacity-50 text-black font-black py-4 rounded-2xl transition-all shadow-lg uppercase text-sm tracking-widest mb-3"
+        >
+          {loading ? <i className="fas fa-circle-notch animate-spin"></i> : 'Assinar agora'}
+        </button>
 
         <button
           onClick={onClose}

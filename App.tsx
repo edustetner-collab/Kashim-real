@@ -53,7 +53,6 @@ const App: React.FC = () => {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [clerkTimeout, setClerkTimeout] = useState(false);
   const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
-  const [showWebNotice, setShowWebNotice] = useState<boolean>(false); // never show on native — Apple 3.1.1
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -212,7 +211,10 @@ const App: React.FC = () => {
           hasActiveCoach: hasCoach && !coachExpired,
         });
         setAccessInfo(access);
-        if (!access.hasAccess) {
+        // Apple 3.1.1 / 3.1.3(a): no iOS o app é totalmente gratuito. Nenhum
+        // paywall, nenhuma menção a assinatura, nenhum direcionamento para
+        // compra externa. Assinatura existe apenas na web.
+        if (!access.hasAccess && !isNativeApp) {
           setShowSubscriptionGate(true);
         }
 
@@ -1049,23 +1051,6 @@ const App: React.FC = () => {
       )}
 
 
-      {showWebNotice && (
-        <div className="fixed bottom-20 left-3 right-3 z-[90] animate-in slide-in-from-bottom-4 fade-in duration-300">
-          <div className="bg-zinc-900 border border-green-500/30 rounded-2xl px-4 py-3 shadow-2xl flex items-center gap-3">
-            <i className="fas fa-desktop text-green-400 shrink-0"></i>
-            <p className="text-zinc-300 text-xs leading-relaxed flex-1">
-              Sabia que você também acessa o Kashim pelo navegador em <span className="text-green-300 font-bold">app.kashim.com.br</span> com uma experiência ainda mais completa?
-            </p>
-            <button
-              onClick={() => { localStorage.setItem('web_notice_dismissed', 'true'); setShowWebNotice(false); }}
-              className="text-zinc-500 active:text-white shrink-0 p-1"
-            >
-              <i className="fas fa-times text-sm"></i>
-            </button>
-          </div>
-        </div>
-      )}
-
       {showSubscriptionGate && (
         <SubscriptionGate onClose={() => setShowSubscriptionGate(false)} />
       )}
@@ -1320,7 +1305,10 @@ const App: React.FC = () => {
 
 
       {/* ── CONTADOR DO TRIAL DE LANÇAMENTO ─────────────────────── */}
-      {accessInfo && !coachViewHouseholdId && (accessInfo.mode === 'trial' || accessInfo.mode === 'expired') && (
+      {/* Oculto no app nativo: no iOS o acesso é gratuito e ilimitado, então
+          falar em "acesso grátis terminando" implicaria uma assinatura que não
+          existe ali (Apple 3.1.1). */}
+      {accessInfo && !isNativeApp && !coachViewHouseholdId && (accessInfo.mode === 'trial' || accessInfo.mode === 'expired') && (
         <div className={`flex items-center justify-center gap-2 text-[11px] font-black uppercase tracking-wide py-2 px-4 ${
           accessInfo.mode === 'expired'
             ? 'bg-[#fff0f0] text-[#ff3b30]'
