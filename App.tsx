@@ -26,6 +26,7 @@ import { fireConfetti } from './lib/confetti';
 import { useTilt } from './lib/useTilt';
 import { computeAccess, AccessInfo } from './lib/access';
 import { Quote, getQuoteForUser, getMondayKey } from './lib/quotes';
+import { scheduleWeeklyQuotes } from './lib/notifications';
 
 const ADMIN_IDS = (import.meta.env.VITE_ADMIN_USER_IDS ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
 const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
@@ -284,6 +285,13 @@ const App: React.FC = () => {
 
   // Keep refs in sync with state so we can capture snapshots synchronously
   useEffect(() => { currentHouseholdIdRef.current = householdId; }, [householdId]);
+
+  // App nativo: (re)agenda a frase semanal no próprio aparelho — segunda, 8h.
+  // Idempotente e silencioso na web ou se a permissão for negada.
+  useEffect(() => {
+    if (!householdId || coachViewHouseholdId) return;
+    scheduleWeeklyQuotes(householdId);
+  }, [householdId, coachViewHouseholdId]);
 
   useEffect(() => {
     if (!householdId) return;

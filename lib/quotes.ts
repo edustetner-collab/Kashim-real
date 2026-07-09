@@ -60,21 +60,27 @@ export const QUOTES: Quote[] = [
   { numero: 53, categoria: 'instrucao', frase: 'Revise suas finanças todo mês, como quem confere o GPS numa viagem. Pequenos ajustes de rota evitam grandes desvios no destino.' },
 ];
 
-export function getQuoteForUser(householdId: string): Quote {
-  const now = new Date();
-  // ISO week number
-  const d = new Date(now);
+// Frase determinística para o household numa data específica. Usada tanto para
+// a frase da semana atual quanto para pré-agendar as notificações das próximas
+// semanas (o mesmo cálculo tem que rodar no app e no agendamento local).
+export function getQuoteForDate(householdId: string, when: Date): Quote {
+  // ISO week number da data informada
+  const d = new Date(when);
   d.setHours(0, 0, 0, 0);
   d.setDate(d.getDate() + 4 - (d.getDay() || 7));
   const yearStart = new Date(d.getFullYear(), 0, 1);
   const weekNum = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
   const year = d.getFullYear();
 
-  // Stable per-user offset so different users get different quotes on the same week
+  // Offset estável por usuário: usuários diferentes recebem frases diferentes na mesma semana
   const userOffset = [...householdId].reduce((acc, c) => acc + c.charCodeAt(0), 0) % QUOTES.length;
   const absoluteWeek = year * 53 + weekNum;
   const quoteIndex = (absoluteWeek + userOffset) % QUOTES.length;
   return QUOTES[quoteIndex];
+}
+
+export function getQuoteForUser(householdId: string): Quote {
+  return getQuoteForDate(householdId, new Date());
 }
 
 export function getMondayKey(): string {
