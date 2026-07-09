@@ -66,6 +66,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     role: 'owner',
   });
   if (memberError) {
+    // Corrida: uma requisição simultânea (ex.: app aberto em 2 abas logo após o
+    // signup) já criou a membership deste usuário. A UNIQUE constraint em
+    // household_members.clerk_user_id barra o segundo insert (código 23505).
+    // Recupera o household que venceu a corrida e descarta o órfão recém-criado.
+    const { data: winner } = await db
+      .from('household_members')
+      .select('household_id')
+      .eq('clerk_user_id', clerkUserId)
+      .maybeSingle();
+    if (winner) {
+      await db.from('households').delete().eq('id', household.id);
+      return res.status(200).json({ householdId: winner.household_id });
+    }
     return res.status(500).json({ error: `household_members.insert: ${memberError.message}` });
   }
 

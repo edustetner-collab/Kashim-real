@@ -99,7 +99,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     clerk_user_id: clerkUserId,
     role: 'member',
   });
-  if (insErr) return res.status(500).json({ error: 'Erro ao entrar no household' });
+  if (insErr) {
+    // Corrida: aceite simultâneo já vinculou este usuário (UNIQUE em
+    // clerk_user_id barra o 2º insert). Idempotente: devolve o household atual.
+    const { data: joined } = await db
+      .from('household_members')
+      .select('household_id')
+      .eq('clerk_user_id', clerkUserId)
+      .maybeSingle();
+    if (joined) return res.status(200).json({ householdId: joined.household_id, alreadyMember: true });
+    return res.status(500).json({ error: 'Erro ao entrar no household' });
+  }
 
   await db
     .from('household_invites')

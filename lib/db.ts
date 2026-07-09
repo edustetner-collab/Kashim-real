@@ -28,19 +28,9 @@ export async function getHousehold(db: SupabaseClient, householdId: string) {
   return data;
 }
 
-export async function updateHouseholdPlan(
-  db: SupabaseClient,
-  householdId: string,
-  startMonth: number,
-  startYear: number
-) {
-  const { error, count } = await db
-    .from('households')
-    .update({ start_month: startMonth, start_year: startYear }, { count: 'exact' })
-    .eq('id', householdId);
-  if (error) throw new Error(`Supabase update failed: ${error.message} (code: ${error.code})`);
-  if (count === 0) throw new Error(`RLS bloqueou o update — nenhuma linha atualizada. householdId: ${householdId}`);
-}
+// A atualização de início de plano é feita server-side em /api/update-start-month
+// (service key). O cliente não tem — nem deve ter — permissão de UPDATE em
+// households (ver docs/sql/security-hardening.sql).
 
 // ─── FINANCE ITEMS ────────────────────────────────────────────────────────────
 
