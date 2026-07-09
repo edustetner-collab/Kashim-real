@@ -68,7 +68,6 @@ const App: React.FC = () => {
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
   const [showSubscriptionGate, setShowSubscriptionGate] = useState(false);
   const [accessInfo, setAccessInfo] = useState<AccessInfo | null>(null);
-  const [debugMsg, setDebugMsg] = useState<string | null>(null); // TEMP diagnóstico
   const [showOnboarding, setShowOnboarding] = useState(false);
   const itemIdMapRef = useRef<Record<string, string>>({}); // localId -> dbId
   const pendingDeletesRef = useRef<Set<string>>(new Set());
@@ -267,7 +266,6 @@ const App: React.FC = () => {
         }
       } catch (e) {
         console.error('Erro ao carregar dados:', e);
-        setDebugMsg('LOAD: ' + (e instanceof Error ? e.message : String(e)));
       } finally {
         setDbLoading(false);
       }
@@ -370,8 +368,6 @@ const App: React.FC = () => {
           }
         } catch (e) {
           console.error('Erro ao salvar item', item.id, e);
-          const em = (e as any)?.message ? `${(e as any).message} [code ${(e as any).code ?? '?'}]` : JSON.stringify(e);
-          setDebugMsg('SAVE: ' + em);
         }
       }
     }, 1500);
@@ -986,14 +982,6 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#f5f5f7] text-[#1d1d1f] isolate">
       <AmbientBackground />
-      {debugMsg && (
-        <div
-          onClick={() => setDebugMsg(null)}
-          className="fixed top-2 left-2 right-2 z-[999] bg-red-600 text-white text-[11px] leading-snug font-mono p-3 rounded-xl shadow-2xl break-words"
-        >
-          <b>DIAGNÓSTICO (toque p/ fechar):</b><br />{debugMsg}
-        </div>
-      )}
       {showOnboarding && user && (
         <OnboardingWizard
           userName={user.firstName || user.emailAddresses[0]?.emailAddress.split('@')[0] || ''}
