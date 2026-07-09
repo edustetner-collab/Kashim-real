@@ -26,7 +26,7 @@ export async function getOrCreateHousehold(
     .select('id')
     .single();
 
-  if (hhError || !household) throw new Error('Erro ao criar household');
+  if (hhError || !household) throw new Error(`households.insert → ${hhError?.message ?? 'sem dados'} [code ${hhError?.code ?? '?'}]`);
 
   // Associa o usuário como owner
   const { error: memberError } = await db.from('household_members').insert({
@@ -35,7 +35,7 @@ export async function getOrCreateHousehold(
     role: 'owner',
   });
 
-  if (memberError) throw new Error('Erro ao criar membership');
+  if (memberError) throw new Error(`household_members.insert → ${memberError.message} [code ${memberError.code}]`);
 
   return household.id;
 }
