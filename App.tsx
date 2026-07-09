@@ -1537,6 +1537,7 @@ const App: React.FC = () => {
 
             {/* Central launch button */}
             <button
+              data-tour="tab-launch"
               onClick={() => {
                 const vm = months[mobileMonthIdx];
                 const isNow = vm.index === currentActualMonth && vm.year === currentActualYear;

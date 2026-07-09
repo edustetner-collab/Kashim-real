@@ -58,14 +58,18 @@ const OnboardingManager: React.FC<OnboardingManagerProps> = ({
       return;
     }
 
+    // Retomada: usuário parou no meio de um tour desta tela (inclui os que
+    // não auto-iniciam, ex.: "Como lançar gastos")
+    if (progress.currentTourId) {
+      const inProgress = getTourById(progress.currentTourId);
+      if (inProgress && inProgress.screen === screen) {
+        startTour(inProgress, progress.currentStepIndex);
+        return;
+      }
+    }
+
     const tour = getTourForScreen(screen);
     if (!tour) return;
-
-    // Retomada: usuário parou no meio deste tour em outra sessão
-    if (progress.currentTourId === tour.id) {
-      startTour(tour, progress.currentStepIndex);
-      return;
-    }
 
     // Auto-início: primeira visita a esta tela
     if (!hasSeenTour(progress, tour.id)) {

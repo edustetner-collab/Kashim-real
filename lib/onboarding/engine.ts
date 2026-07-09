@@ -84,9 +84,6 @@ export interface TargetRect {
 
 // Margem de respiro do spotlight ao redor do elemento
 const SPOTLIGHT_PADDING = 8;
-// Elemento pode renderizar depois do passo abrir (aba trocando, lazy render)
-const FIND_RETRY_MS = 150;
-const FIND_MAX_RETRIES = 20; // ~3s antes de desistir e centralizar o card
 
 function isVisible(el: Element): boolean {
   const h = el as HTMLElement;
@@ -127,9 +124,9 @@ function rectsDiffer(a: TargetRect | null, b: TargetRect): boolean {
 }
 
 // Segue o elemento `targetId` na tela. Retorna null enquanto não encontrado
-// (ou se o passo não tem alvo — card centralizado).
-// Performance: atualiza via rAF apenas em eventos (scroll/resize/mutação),
-// sem polling contínuo.
+// (ou se o passo não tem alvo — card centralizado). Reage a scroll, resize e
+// mutações do DOM — alvos podem aparecer/sumir depois (modais, sheets, abas).
+// Performance: tudo passa por um único rAF-throttle; nada roda em loop.
 export function useTargetRect(targetId: string | undefined): TargetRect | null {
   const [rect, setRect] = useState<TargetRect | null>(null);
   const rectRef = useRef<TargetRect | null>(null);
@@ -141,55 +138,56 @@ export function useTargetRect(targetId: string | undefined): TargetRect | null {
 
     let el: Element | null = null;
     let rafId = 0;
-    let retryId = 0;
-    let retries = 0;
     let cancelled = false;
-    let resizeObserver: ResizeObserver | null = null;
+    const resizeObserver = new ResizeObserver(() => scheduleUpdate());
 
-    const update = () => {
-      rafId = 0;
-      if (cancelled || !el || !el.isConnected) return;
-      const next = readRect(el);
-      if (rectsDiffer(rectRef.current, next)) {
+    const publish = (next: TargetRect | null) => {
+      if (next === null ? rectRef.current !== null : rectsDiffer(rectRef.current, next)) {
         rectRef.current = next;
         setRect(next);
       }
     };
 
-    const scheduleUpdate = () => {
-      if (!rafId) rafId = requestAnimationFrame(update);
-    };
-
-    const attach = () => {
-      el = findTargetElement(targetId);
-      if (!el) {
-        if (retries++ < FIND_MAX_RETRIES) {
-          retryId = window.setTimeout(attach, FIND_RETRY_MS);
+    const update = () => {
+      rafId = 0;
+      if (cancelled) return;
+      // Alvo sumiu (ex.: sheet trocou de etapa) ou ainda não existe → re-busca
+      if (!el || !el.isConnected) {
+        const found = findTargetElement(targetId);
+        if (found !== el) {
+          resizeObserver.disconnect();
+          el = found;
+          if (el) {
+            resizeObserver.observe(el);
+            // Traz o alvo novo para a área visível e re-mede após o scroll
+            el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            window.setTimeout(scheduleUpdate, 350);
+            window.setTimeout(scheduleUpdate, 700);
+          }
         }
-        return;
       }
-      // Traz o alvo para a área visível antes de medir
-      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      scheduleUpdate();
-      // Reposiciona durante o smooth scroll e depois dele
-      window.setTimeout(scheduleUpdate, 350);
-      window.setTimeout(scheduleUpdate, 700);
-
-      window.addEventListener('scroll', scheduleUpdate, { capture: true, passive: true });
-      window.addEventListener('resize', scheduleUpdate, { passive: true });
-      resizeObserver = new ResizeObserver(scheduleUpdate);
-      resizeObserver.observe(el);
+      publish(el ? readRect(el) : null);
     };
 
-    attach();
+    const scheduleUpdate = () => {
+      if (!rafId && !cancelled) rafId = requestAnimationFrame(update);
+    };
+
+    window.addEventListener('scroll', scheduleUpdate, { capture: true, passive: true });
+    window.addEventListener('resize', scheduleUpdate, { passive: true });
+    // Detecta o alvo aparecendo/sumindo (modais, troca de etapa em sheets)
+    const mutationObserver = new MutationObserver(scheduleUpdate);
+    mutationObserver.observe(document.body, { childList: true, subtree: true });
+
+    scheduleUpdate();
 
     return () => {
       cancelled = true;
       if (rafId) cancelAnimationFrame(rafId);
-      if (retryId) clearTimeout(retryId);
       window.removeEventListener('scroll', scheduleUpdate, { capture: true } as EventListenerOptions);
       window.removeEventListener('resize', scheduleUpdate);
-      resizeObserver?.disconnect();
+      mutationObserver.disconnect();
+      resizeObserver.disconnect();
     };
   }, [targetId]);
 

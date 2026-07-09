@@ -551,7 +551,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                 </div>
               </div>
               {category === CategoryType.CREDIT_CARD && onUpdateCardConfig && (
-                <div className="mt-2 ml-7 flex gap-4">
+                <div className="mt-2 ml-7 flex gap-4" data-tour="card-config">
                   <div className="flex items-center gap-2">
                     <label className="text-[9px] font-black text-[#aeaeb2] uppercase">Fecha</label>
                     <input type="number" min="1" max="31" value={item.closingDay || ''} onChange={(e) => onUpdateCardConfig(item.id, 'closingDay', parseInt(e.target.value))} className="bg-[#f5f5f7] rounded-lg px-2 py-1 text-[11px] w-12 outline-none border border-[#e8e8ed] text-center text-[#1d1d1f]" placeholder="Dia" />
@@ -814,7 +814,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                       placeholder="Nome do item..."
                     />
                     {category === CategoryType.CREDIT_CARD && onUpdateCardConfig && (
-                      <div className="flex gap-2 px-2 pb-1">
+                      <div className="flex gap-2 px-2 pb-1" data-tour="card-config">
                         <div className="flex flex-col">
                           <label className="text-[8px] font-black text-zinc-400 uppercase">Fechamento</label>
                           <input

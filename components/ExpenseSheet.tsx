@@ -286,7 +286,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
       </div>
 
       {/* Payment method */}
-      <div>
+      <div data-tour="sheet-payment">
         <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-2">Como foi pago?</p>
         <div className="grid grid-cols-2 gap-2">
           <button
@@ -308,7 +308,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
 
       {/* Card picker — required when credit is selected */}
       {isCredit && creditCards.length > 0 && (
-        <div>
+        <div data-tour="sheet-card">
           <div className="flex items-center justify-between mb-2">
             <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider">Em qual cartão?</p>
             {!selectedCardId && (
@@ -337,7 +337,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
 
       {/* Credit sub-options */}
       {isCredit && (
-        <div>
+        <div data-tour="sheet-credit-type">
           <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-2">Tipo de crédito</p>
           <div className="grid grid-cols-2 gap-2">
             <button
@@ -461,7 +461,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
 
           {/* CATEGORY */}
           {step === 'category' && source === 'manual' && (
-            <div className="space-y-3">
+            <div className="space-y-3" data-tour="sheet-categories">
               <p className="text-white font-black text-base uppercase tracking-wider py-2">Qual tipo de despesa?</p>
               {CATEGORIES.map(cat => (
                 <button
