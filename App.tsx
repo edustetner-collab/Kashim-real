@@ -24,6 +24,7 @@ import AmbientBackground from './components/AmbientBackground';
 import MoneyCountUp from './components/MoneyCountUp';
 import { fireConfetti } from './lib/confetti';
 import { useTilt } from './lib/useTilt';
+import { computeAccess, AccessInfo } from './lib/access';
 import { Quote, getQuoteForUser, getMondayKey } from './lib/quotes';
 
 const ADMIN_IDS = (import.meta.env.VITE_ADMIN_USER_IDS ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
@@ -66,6 +67,7 @@ const App: React.FC = () => {
   const [coachViewClientName, setCoachViewClientName] = useState<string>('');
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
   const [showSubscriptionGate, setShowSubscriptionGate] = useState(false);
+  const [accessInfo, setAccessInfo] = useState<AccessInfo | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const itemIdMapRef = useRef<Record<string, string>>({}); // localId -> dbId
   const pendingDeletesRef = useRef<Set<string>>(new Set());
@@ -200,7 +202,15 @@ const App: React.FC = () => {
         const coachExpired = coachAccessRes?.expired ?? false;
         const hasCoach = coachAccessRes?.hasCoach ?? false;
 
-        if (coachExpired && status !== 'active' && !isNativeApp) {
+        // Trial de lançamento (5 meses desde a criação) + assinatura paga + consultor
+        const access = computeAccess({
+          createdAt: (household as any)?.created_at,
+          subscriptionStatus: status,
+          subscriptionExpiresAt: (household as any)?.subscription_expires_at,
+          hasActiveCoach: hasCoach && !coachExpired,
+        });
+        setAccessInfo(access);
+        if (!access.hasAccess) {
           setShowSubscriptionGate(true);
         }
 
@@ -1009,7 +1019,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {showSubscriptionGate && !isNativeApp && (
+      {showSubscriptionGate && (
         <SubscriptionGate onClose={() => setShowSubscriptionGate(false)} />
       )}
 
@@ -1261,6 +1271,29 @@ const App: React.FC = () => {
         </div>
       </header>
 
+
+      {/* ── CONTADOR DO TRIAL DE LANÇAMENTO ─────────────────────── */}
+      {accessInfo && !coachViewHouseholdId && (accessInfo.mode === 'trial' || accessInfo.mode === 'expired') && (
+        <div className={`flex items-center justify-center gap-2 text-[11px] font-black uppercase tracking-wide py-2 px-4 ${
+          accessInfo.mode === 'expired'
+            ? 'bg-[#fff0f0] text-[#ff3b30]'
+            : (accessInfo.daysLeft ?? 0) <= 14
+              ? 'bg-orange-50 text-orange-600'
+              : 'bg-[#f0fad0] text-[#7ab800]'
+        }`}>
+          <i className={`fas ${accessInfo.mode === 'expired' ? 'fa-lock' : 'fa-gift'} text-xs`}></i>
+          <span>
+            {accessInfo.mode === 'expired'
+              ? 'Seu acesso terminou'
+              : (accessInfo.daysLeft ?? 0) <= 14
+                ? `Seu acesso grátis termina em ${accessInfo.daysLeft} ${accessInfo.daysLeft === 1 ? 'dia' : 'dias'}`
+                : `Acesso de lançamento — ${accessInfo.daysLeft} dias grátis restantes`}
+          </span>
+          {accessInfo.mode === 'expired' && !isNativeApp && (
+            <button onClick={() => setShowSubscriptionGate(true)} className="underline ml-1">Renovar</button>
+          )}
+        </div>
+      )}
 
       <main key={activeTab} className={`k-reveal ${activeTab === 'plan' ? 'max-w-[1600px]' : 'w-full px-2'} mx-auto px-2 lg:px-8 mt-2 lg:mt-8`} style={(activeTab === 'desempenho' || activeTab === 'metas') ? { maxWidth: '100%' } : {}}>
         {activeTab === 'desempenho' ? (
