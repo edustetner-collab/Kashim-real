@@ -37,3 +37,26 @@ root.render(
     </ClerkProvider>
   </React.StrictMode>
 );
+
+// ── Auto-atualização agressiva do PWA/service worker ──────────────────────
+// Em webview nativo (Capacitor) o app "retoma" a página em cache e não checa
+// por atualização. Aqui forçamos a checagem ao ganhar foco e periodicamente, e
+// recarregamos assim que um novo service worker assume o controle.
+if ('serviceWorker' in navigator) {
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
+  navigator.serviceWorker.ready
+    .then((registration) => {
+      const check = () => registration.update().catch(() => {});
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') check();
+      });
+      window.addEventListener('focus', check);
+      setInterval(check, 60_000);
+    })
+    .catch(() => {});
+}
