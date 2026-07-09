@@ -290,13 +290,6 @@ const App: React.FC = () => {
   // Keep refs in sync with state so we can capture snapshots synchronously
   useEffect(() => { currentHouseholdIdRef.current = householdId; }, [householdId]);
 
-  // App nativo: (re)agenda a frase semanal no próprio aparelho — segunda, 8h.
-  // Idempotente e silencioso na web ou se a permissão for negada.
-  useEffect(() => {
-    if (!householdId || coachViewHouseholdId) return;
-    scheduleWeeklyQuotes(householdId);
-  }, [householdId, coachViewHouseholdId]);
-
   // Consentimento LGPD: clientes de link mágico nunca passam pela tela de
   // cadastro, então o aceite precisa ser pedido (e registrado) aqui.
   useEffect(() => {
@@ -313,6 +306,15 @@ const App: React.FC = () => {
   // Só bloqueia quando temos certeza de que NÃO aceitou (false).
   // null (verificando/erro de rede) nunca tranca o usuário fora dos dados.
   const needsTermsAcceptance = termsAccepted === false && !!user && !isAdmin && !coachViewHouseholdId;
+
+  // App nativo: (re)agenda a frase semanal no próprio aparelho — segunda, 8h.
+  // Idempotente e silencioso na web ou se a permissão for negada.
+  // Espera o aceite dos termos: o prompt de permissão do sistema não pode
+  // aparecer por cima da tela de consentimento.
+  useEffect(() => {
+    if (!householdId || coachViewHouseholdId || needsTermsAcceptance) return;
+    scheduleWeeklyQuotes(householdId);
+  }, [householdId, coachViewHouseholdId, needsTermsAcceptance]);
 
   useEffect(() => {
     if (!householdId) return;
