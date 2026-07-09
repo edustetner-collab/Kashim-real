@@ -232,8 +232,12 @@ const App: React.FC = () => {
             toDelete.forEach(id => deleteFinanceItem(db!, id).catch(() => {}));
           }
           setItems(deduped);
-          dbItemsLoadedRef.current = true;
         }
+
+        // Libera a gravação assim que o load termina com sucesso — MESMO com o
+        // banco vazio. Sem isso, usuário novo (sem linhas ainda) nunca conseguia
+        // persistir o primeiro lançamento (perda de dados crítica).
+        dbItemsLoadedRef.current = true;
 
         // Carrega metas
         loadGoals(db!, hId).then(g => {
