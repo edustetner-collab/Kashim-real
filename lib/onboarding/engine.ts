@@ -88,6 +88,24 @@ const SPOTLIGHT_PADDING = 8;
 const FIND_RETRY_MS = 150;
 const FIND_MAX_RETRIES = 20; // ~3s antes de desistir e centralizar o card
 
+function isVisible(el: Element): boolean {
+  const h = el as HTMLElement;
+  return h.offsetWidth > 0 && h.offsetHeight > 0;
+}
+
+// Procura o alvo por id e, se não achar (ou estiver invisível), por
+// [data-tour="..."] — útil para elementos repetidos (ex.: botão de replicar),
+// onde destacamos a primeira instância visível.
+function findTargetElement(targetId: string): Element | null {
+  const byId = document.getElementById(targetId);
+  if (byId && isVisible(byId)) return byId;
+  const candidates = document.querySelectorAll(`[data-tour="${targetId}"]`);
+  for (const el of candidates) {
+    if (isVisible(el)) return el;
+  }
+  return null;
+}
+
 function readRect(el: Element): TargetRect {
   const r = el.getBoundingClientRect();
   return {
@@ -143,7 +161,7 @@ export function useTargetRect(targetId: string | undefined): TargetRect | null {
     };
 
     const attach = () => {
-      el = document.getElementById(targetId);
+      el = findTargetElement(targetId);
       if (!el) {
         if (retries++ < FIND_MAX_RETRIES) {
           retryId = window.setTimeout(attach, FIND_RETRY_MS);

@@ -174,8 +174,17 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                         category === CategoryType.VARIABLE_EXPENSE || 
                         category === CategoryType.PERSONAL_LEISURE;
 
+  // Âncoras do tour de onboarding — um id estável por bloco
+  const blockTourId = {
+    [CategoryType.INCOME]: 'block-entradas',
+    [CategoryType.CREDIT_CARD]: 'block-faturas',
+    [CategoryType.FIXED_EXPENSE]: 'block-fixas',
+    [CategoryType.VARIABLE_EXPENSE]: 'block-variaveis',
+    [CategoryType.PERSONAL_LEISURE]: 'block-lazer',
+  }[category];
+
   return (
-    <div className="bg-white rounded-[22px] shadow-sm border border-[#e8e8ed] overflow-hidden mb-3 mx-3">
+    <div id={blockTourId} className="bg-white rounded-[22px] shadow-sm border border-[#e8e8ed] overflow-hidden mb-3 mx-3">
 
       {/* Paid celebration toast */}
       {paidToast && (
@@ -522,6 +531,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   {/* Replicate button — only for categories that repeat every month */}
                   {(category === CategoryType.INCOME || category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE) && (
                     <button
+                      data-tour="replicate-btn"
                       onClick={() => handleReplicateWithToast(item.id, mobileMonthIdx)}
                       className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 active:scale-90 shadow-sm"
                       style={{background:'linear-gradient(180deg,#c5f23a,#8cc400)',boxShadow:'0 2px 6px rgba(130,192,0,0.4)'}}
