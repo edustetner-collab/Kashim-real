@@ -213,9 +213,15 @@ const TourOverlay: React.FC<TourOverlayProps> = ({
   // Passo com alvo ainda não encontrado: mostra só a máscara cheia até o
   // useTargetRect achar o elemento (ou desistir → card centralizado)
   const effectiveRect = engine.step.targetId ? rect : null;
-  // Alvo na metade de baixo da tela → card mobile vai para o topo
-  const mobileOnTop = !!effectiveRect &&
-    effectiveRect.top + effectiveRect.height / 2 > window.innerHeight * 0.55;
+  // Mobile: o card vai SEMPRE para o lado com mais espaço livre, para nunca
+  // cobrir o elemento destacado (ex.: etapas dentro do lançador, que ficam
+  // no meio/baixo da tela → card sobe para o topo)
+  const mobileOnTop = (() => {
+    if (!effectiveRect) return false;
+    const spaceAbove = effectiveRect.top;
+    const spaceBelow = window.innerHeight - (effectiveRect.top + effectiveRect.height);
+    return spaceAbove > spaceBelow;
+  })();
 
   return (
     <>
