@@ -389,6 +389,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
           CANCELAR
         </button>
         <button
+          data-tour="sheet-confirm"
           onClick={handleConfirmClick}
           disabled={!canConfirm}
           className={`flex-[2] py-3.5 rounded-2xl font-black text-sm transition-all ${canConfirm ? 'bg-green-400 text-black active:scale-95' : 'bg-zinc-800 text-zinc-600'}`}

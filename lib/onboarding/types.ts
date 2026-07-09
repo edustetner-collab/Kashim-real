@@ -31,6 +31,10 @@ export interface TourStep {
   desktopOnly?: boolean;
   // true = pulado em viewports >= 1024px (elementos lg:hidden)
   mobileOnly?: boolean;
+  // Posição fixa do card no mobile. Sem valor = automático (lado com mais
+  // espaço). Use 'top' quando o alvo/conteúdo relevante ocupa o meio/baixo
+  // da tela (ex.: etapas dentro do lançador).
+  cardPosition?: 'top' | 'bottom';
 }
 
 export interface Tour {

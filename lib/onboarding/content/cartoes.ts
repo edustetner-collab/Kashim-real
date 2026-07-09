@@ -26,6 +26,7 @@ export const cartoesTour: Tour = {
     {
       id: 'card-config',
       targetId: 'card-config',
+      cardPosition: 'top',
       title: 'Fechamento e vencimento',
       body: '"Fecha" é o dia que a fatura fecha: compras depois desse dia caem na fatura SEGUINTE. "Vence" é o dia de pagar. Com o fechamento configurado, o Kashim sabe exatamente em qual mês cada compra parcelada ou à vista vai cair.',
       icon: 'fa-calendar-days',

@@ -31,6 +31,7 @@ export const lancarTour: Tour = {
     {
       id: 'sheet-categories',
       targetId: 'sheet-categories',
+      cardPosition: 'top',
       title: 'Passo 1: o tipo de despesa',
       body: 'Gasto Variável é o imprevisto (conserto, farmácia). Lazer & Pessoal é estilo de vida (restaurante, presente). Conta Fixa é o que você já paga todo mês. Escolher certo mantém o diagnóstico do plano correto.',
       icon: 'fa-list',
@@ -39,6 +40,7 @@ export const lancarTour: Tour = {
     {
       id: 'sheet-payment',
       targetId: 'sheet-payment',
+      cardPosition: 'top',
       title: 'Passo 2: débito ou crédito?',
       body: 'DÉBITO: o dinheiro saiu na hora — o gasto conta no mês da compra. CRÉDITO: vai para a fatura do cartão — o Kashim joga o valor para a fatura certa e não conta duas vezes.',
       icon: 'fa-money-bill-wave',
@@ -47,6 +49,7 @@ export const lancarTour: Tour = {
     {
       id: 'sheet-card',
       targetId: 'sheet-card',
+      cardPosition: 'top',
       title: 'Crédito? Diga qual cartão',
       body: 'Se pagou no crédito, escolha em QUAL cartão — é assim que a compra cai na fatura certa, respeitando o dia de fechamento de cada um. Se ainda não cadastrou seus cartões, veja o tutorial "Cartões de crédito" no menu de ajuda.',
       icon: 'fa-credit-card',
@@ -54,15 +57,19 @@ export const lancarTour: Tour = {
     {
       id: 'sheet-credit-type',
       targetId: 'sheet-credit-type',
+      cardPosition: 'top',
       title: 'À vista ou parcelado?',
       body: 'À vista no crédito: o valor inteiro cai na próxima fatura. Parcelado: escolha em quantas vezes e o Kashim distribui as parcelas automaticamente pelos meses seguintes, a partir da data da compra.',
       icon: 'fa-divide',
     },
     {
       id: 'confirm',
+      targetId: 'sheet-confirm',
+      cardPosition: 'top',
       title: 'Confirme e pronto',
-      body: 'Confira o resumo e toque em Confirmar — o gasto entra no mês certo do plano. Dica: dá para mudar a "Data da compra" e lançar algo de dias atrás (lançamento retroativo). E lembre: o Stets lança por você — basta falar "gastei 50 no mercado no crédito do Nubank".',
+      body: 'Toque em LANÇAR e o gasto entra no mês certo do plano. Dica: dá para mudar a "Data da compra" e lançar algo de dias atrás (lançamento retroativo). E lembre: o Stets lança por você — basta falar "gastei 50 no mercado no crédito do Nubank".',
       icon: 'fa-check-circle',
+      demoAction: 'Toque no botão verde LANÇAR para concluir seu primeiro lançamento.',
     },
   ],
 };
