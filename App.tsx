@@ -27,6 +27,8 @@ import { useTilt } from './lib/useTilt';
 import { computeAccess, AccessInfo } from './lib/access';
 import { Quote, getQuoteForUser, getMondayKey } from './lib/quotes';
 import { scheduleWeeklyQuotes } from './lib/notifications';
+import TermsGate from './components/TermsGate';
+import { hasAcceptedTerms, recordTermsAcceptance } from './lib/terms';
 
 const ADMIN_IDS = (import.meta.env.VITE_ADMIN_USER_IDS ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
 const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
@@ -67,6 +69,8 @@ const App: React.FC = () => {
   const [showSubscriptionGate, setShowSubscriptionGate] = useState(false);
   const [accessInfo, setAccessInfo] = useState<AccessInfo | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  // null = ainda verificando ou indeterminado (falha de rede) → não bloqueia
+  const [termsAccepted, setTermsAccepted] = useState<boolean | null>(null);
   const itemIdMapRef = useRef<Record<string, string>>({}); // localId -> dbId
   const pendingDeletesRef = useRef<Set<string>>(new Set());
   const userDataLoadedRef = useRef<string | null>(null); // tracks userId to prevent token-refresh reloads
@@ -292,6 +296,23 @@ const App: React.FC = () => {
     if (!householdId || coachViewHouseholdId) return;
     scheduleWeeklyQuotes(householdId);
   }, [householdId, coachViewHouseholdId]);
+
+  // Consentimento LGPD: clientes de link mágico nunca passam pela tela de
+  // cadastro, então o aceite precisa ser pedido (e registrado) aqui.
+  useEffect(() => {
+    if (!db || !user || isAdmin) return;
+    hasAcceptedTerms(db, user.id).then(setTermsAccepted);
+  }, [db, user, isAdmin]);
+
+  const handleAcceptTerms = async () => {
+    if (!db || !user) return;
+    await recordTermsAcceptance(db, user.id);
+    setTermsAccepted(true);
+  };
+
+  // Só bloqueia quando temos certeza de que NÃO aceitou (false).
+  // null (verificando/erro de rede) nunca tranca o usuário fora dos dados.
+  const needsTermsAcceptance = termsAccepted === false && !!user && !isAdmin && !coachViewHouseholdId;
 
   useEffect(() => {
     if (!householdId) return;
@@ -990,7 +1011,13 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#f5f5f7] text-[#1d1d1f] isolate">
       <AmbientBackground />
-      {showOnboarding && user && (
+
+      {/* Consentimento LGPD — precede qualquer outra coisa (wizard, tour, app) */}
+      {needsTermsAcceptance && (
+        <TermsGate onAccept={handleAcceptTerms} onSignOut={() => signOut()} />
+      )}
+
+      {!needsTermsAcceptance && showOnboarding && user && (
         <OnboardingWizard
           userName={user.firstName || user.emailAddresses[0]?.emailAddress.split('@')[0] || ''}
           onComplete={handleWizardComplete}
@@ -1003,7 +1030,7 @@ const App: React.FC = () => {
           screen={activeTab}
           db={db}
           userId={user.id}
-          active={!showOnboarding && !showSubscriptionGate && !coachViewHouseholdId && !dbLoading}
+          active={!needsTermsAcceptance && !showOnboarding && !showSubscriptionGate && !coachViewHouseholdId && !dbLoading}
           onRequestScreen={setActiveTab}
           onAiPrompt={handleTourAiPrompt}
         />
