@@ -26,7 +26,7 @@ import { fireConfetti } from './lib/confetti';
 import { useTilt } from './lib/useTilt';
 import { computeAccess, AccessInfo } from './lib/access';
 import { Quote, getQuoteForUser, getMondayKey } from './lib/quotes';
-import { scheduleWeeklyQuotes } from './lib/notifications';
+import { refreshNotifications } from './lib/notifications';
 import TermsGate from './components/TermsGate';
 import { hasAcceptedTerms, recordTermsAcceptance } from './lib/terms';
 
@@ -309,14 +309,17 @@ const App: React.FC = () => {
   // null (verificando/erro de rede) nunca tranca o usuário fora dos dados.
   const needsTermsAcceptance = termsAccepted === false && !!user && !isAdmin && !coachViewHouseholdId;
 
-  // App nativo: (re)agenda a frase semanal no próprio aparelho — segunda, 8h.
-  // Idempotente e silencioso na web ou se a permissão for negada.
-  // Espera o aceite dos termos: o prompt de permissão do sistema não pode
-  // aparecer por cima da tela de consentimento.
+  // App nativo: (re)agenda as notificações locais (frase semanal + lembretes de
+  // contas a vencer). Debounce porque `items` muda a cada edição — não faz
+  // sentido martelar o bridge nativo a cada tecla. Espera o aceite dos termos:
+  // o prompt de permissão do sistema não pode aparecer por cima do consentimento.
   useEffect(() => {
     if (!householdId || coachViewHouseholdId || needsTermsAcceptance) return;
-    scheduleWeeklyQuotes(householdId);
-  }, [householdId, coachViewHouseholdId, needsTermsAcceptance]);
+    const t = setTimeout(() => {
+      refreshNotifications({ householdId, items, months });
+    }, 2500);
+    return () => clearTimeout(t);
+  }, [householdId, coachViewHouseholdId, needsTermsAcceptance, items, months]);
 
   useEffect(() => {
     if (!householdId) return;
