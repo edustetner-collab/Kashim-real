@@ -62,13 +62,11 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   // Sem isso, colunas de um cliente vazam para outro via localStorage ou estado residual
   const isFirstRender = useRef(true);
   const autoLinkedRef = useRef(false);
-  const cleanedFixedRef = useRef(false);
   useEffect(() => {
     setColumns([]);
     setColumnsLoaded(false);
     isFirstRender.current = true;
     autoLinkedRef.current = false;
-    cleanedFixedRef.current = false;
   }, [householdId]);
 
   useEffect(() => {
@@ -153,23 +151,13 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
     });
   }, [columnsLoaded, items, hasRealItems]);
 
-  // Remove columns linked to FIXED_EXPENSE items that have no recorded expenses.
-  // Fixed items (internet, celular) don't need transaction tracking — only variable/leisure do.
-  // Must wait for real Supabase items so partialExpenses are populated.
-  useEffect(() => {
-    if (!columnsLoaded || cleanedFixedRef.current || !hasRealItems) return;
-    cleanedFixedRef.current = true;
-    setColumns(prev => {
-      const cleaned = prev.filter(col => {
-        if (!col.linkedItemId) return true;
-        const linked = items.find(i => i.id === col.linkedItemId);
-        if (!linked || linked.category !== CategoryType.FIXED_EXPENSE) return true;
-        // FIXED_EXPENSE cards only stay if user actually tracked transactions there
-        return Object.values(linked.partialExpenses ?? {}).some(arr => (arr as PartialExpense[]).length > 0);
-      });
-      return cleaned.length !== prev.length ? cleaned : prev;
-    });
-  }, [columnsLoaded, items, hasRealItems]);
+  // NOTA: havia aqui um efeito que removia automaticamente colunas ligadas a
+  // Contas Fixas sem gastos registrados. Isso foi REMOVIDO (bug em produção
+  // 2026-07-11): uma coluna só se liga a um item fixo por ação MANUAL do
+  // usuário (o auto-link acima só cria para variáveis/lazer). Então o efeito só
+  // apagava cards criados pelo próprio usuário — e, por timing (antes do gasto
+  // sincronizar do banco), sumia até com cards que já tinham gasto. Remoção de
+  // card agora é só pelo botão de excluir.
 
   const addColumn = () => {
     setColumns(prev => [...prev, { id: crypto.randomUUID(), title: 'NOVA DESPESA', linkedItemId: '' }]);

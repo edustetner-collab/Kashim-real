@@ -258,12 +258,15 @@ const App: React.FC = () => {
           if (g.length > 0) { setGoals(g); localStorage.setItem('kashim_goals', JSON.stringify(g)); }
         }).catch(() => {});
 
-        // Wizard de coleta de dados: qualquer cliente sem dados ainda, com ou
-        // sem coach, em qualquer plataforma (web e app nativo)
+        // Wizard de coleta de dados: SÓ para quem se cadastrou sozinho (sem
+        // coach) e ainda não tem dados. Cliente de coach NUNCA é forçado ao
+        // wizard — quem monta o plano dele é o consultor. Sem a guarda
+        // `!hasCoach`, o cliente ficava preso numa tela de preencher plano que
+        // o coach já preencheu (bug em produção 2026-07-11).
         const onboardingKey = `onboarding_done_${user!.id}`;
         if (localStorage.getItem(onboardingKey) !== 'true') {
           const hasData = dbItems.some(i => i.values.some(v => v > 0));
-          if (!hasData) {
+          if (!hasCoach && !hasData) {
             setShowOnboarding(true);
           } else {
             localStorage.setItem(onboardingKey, 'true');
