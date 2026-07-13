@@ -364,6 +364,11 @@ const App: React.FC = () => {
         if (household?.start_month != null) setStartMonth(household.start_month);
         if (household?.start_year != null) setStartYear(household.start_year);
         if (dbItems.length > 0) setItems(dbItems);
+        // CRÍTICO: libera o salvamento nesta sessão. O admin pula o loadData
+        // normal (onde esta trava era ligada), então sem isto TUDO que o coach
+        // preenche na conta do cliente ficava só na tela e NUNCA era salvo no
+        // banco → cliente reabria zerado (perda de dados, 3 clientes 2026-07-11).
+        dbItemsLoadedRef.current = true;
       } catch (e) {
         console.error('Erro ao carregar dados do cliente:', e);
       } finally {
