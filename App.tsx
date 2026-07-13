@@ -43,6 +43,19 @@ const DEFAULT_FIXED_EXPENSES = [
   'Parcela de carro', 'Terapia', 'Emprestimo'
 ];
 
+// Conjunto de itens em branco de um plano novo. Usado no boot e — crítico —
+// ao entrar num cliente SEM dados, para nunca herdar os itens do cliente
+// anterior (isolamento entre contas).
+function makeDefaultItems(): FinanceItem[] {
+  return DEFAULT_FIXED_EXPENSES.map((desc, idx) => ({
+    id: `default-fixed-${idx}`,
+    description: desc,
+    category: CategoryType.FIXED_EXPENSE,
+    values: new Array(12).fill(0),
+    paidStatus: new Array(12).fill(false),
+  }));
+}
+
 const App: React.FC = () => {
   const { isSignedIn, user, isLoaded } = useUser();
   const { signOut } = useClerk();
@@ -142,15 +155,7 @@ const App: React.FC = () => {
   const currentActualMonth = new Date().getMonth();
   const currentActualYear = new Date().getFullYear();
 
-  const [items, setItems] = useState<FinanceItem[]>(() =>
-    DEFAULT_FIXED_EXPENSES.map((desc, idx) => ({
-      id: `default-fixed-${idx}`,
-      description: desc,
-      category: CategoryType.FIXED_EXPENSE,
-      values: new Array(12).fill(0),
-      paidStatus: new Array(12).fill(false)
-    }))
-  );
+  const [items, setItems] = useState<FinanceItem[]>(() => makeDefaultItems());
 
   // Carrega dados do Supabase quando o cliente estiver pronto (não roda para admins)
   useEffect(() => {
@@ -356,6 +361,13 @@ const App: React.FC = () => {
             startYear: currentStartYearRef.current,
           };
         }
+        // CRÍTICO p/ isolamento entre contas: zera o mapa local→DB de IDs e a
+        // fila de exclusões do cliente ANTERIOR. Sem isto, os itens padrão
+        // (mesmos IDs locais "default-fixed-N") do novo cliente eram mapeados
+        // para as linhas do banco do cliente anterior → dados de um vazavam
+        // para o outro (contaminação, 2026-07-11).
+        itemIdMapRef.current = {};
+        pendingDeletesRef.current.clear();
         setHouseholdId(coachViewHouseholdId!);
         const [household, dbItems] = await Promise.all([
           getHousehold(db!, coachViewHouseholdId!),
@@ -363,11 +375,13 @@ const App: React.FC = () => {
         ]);
         if (household?.start_month != null) setStartMonth(household.start_month);
         if (household?.start_year != null) setStartYear(household.start_year);
-        if (dbItems.length > 0) setItems(dbItems);
-        // CRÍTICO: libera o salvamento nesta sessão. O admin pula o loadData
-        // normal (onde esta trava era ligada), então sem isto TUDO que o coach
-        // preenche na conta do cliente ficava só na tela e NUNCA era salvo no
-        // banco → cliente reabria zerado (perda de dados, 3 clientes 2026-07-11).
+        // SEMPRE substitui os itens — se o cliente não tem dados, volta ao
+        // conjunto em branco em vez de manter os do cliente anterior na tela
+        // (que aí seriam salvos na conta errada).
+        setItems(dbItems.length > 0 ? dbItems : makeDefaultItems());
+        // Libera o salvamento nesta sessão. O admin pula o loadData normal
+        // (onde esta trava era ligada), então sem isto TUDO que o coach
+        // preenche na conta do cliente ficava só na tela e NUNCA era salvo.
         dbItemsLoadedRef.current = true;
       } catch (e) {
         console.error('Erro ao carregar dados do cliente:', e);
