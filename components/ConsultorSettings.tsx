@@ -71,9 +71,28 @@ const ConsultorSettings: React.FC<ConsultorSettingsProps> = ({ db, onClose }) =>
     }
   }
 
-  async function handleRemoveAssistant(id: string) {
-    await db.from('admin_users').delete().eq('id', id);
-    await loadAssistants();
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  async function handleRemoveAssistant(id: string, email: string) {
+    // Precisa ir pelo servidor (service key): a tabela admin_users só permite
+    // LEITURA pelo cliente, então o delete direto falhava em silêncio.
+    setRemovingId(id);
+    try {
+      const token = await getToken({ template: 'supabase' });
+      const res = await fetch('/api/remove-assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ id, email }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? 'Erro ao excluir');
+      }
+      await loadAssistants();
+    } catch (e: any) {
+      alert('Não consegui excluir a assistente: ' + (e?.message ?? 'erro'));
+    } finally {
+      setRemovingId(null);
+    }
   }
 
   return (
@@ -226,10 +245,11 @@ const ConsultorSettings: React.FC<ConsultorSettingsProps> = ({ db, onClose }) =>
                         <p className="text-zinc-500 text-xs">{a.email}</p>
                       </div>
                       <button
-                        onClick={() => handleRemoveAssistant(a.id)}
-                        className="w-8 h-8 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl flex items-center justify-center transition-all"
+                        onClick={() => { if (confirm(`Excluir ${a.name} da equipe?`)) handleRemoveAssistant(a.id, a.email); }}
+                        disabled={removingId === a.id}
+                        className="w-8 h-8 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl flex items-center justify-center transition-all disabled:opacity-50"
                       >
-                        <i className="fas fa-times text-xs"></i>
+                        {removingId === a.id ? <i className="fas fa-circle-notch animate-spin text-xs"></i> : <i className="fas fa-times text-xs"></i>}
                       </button>
                     </div>
                   ))}
