@@ -54,10 +54,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (error) throw error;
     }
 
-    // Revoga convites pendentes no Clerk para esse e-mail (best-effort)
+    // Limpa o estado no Clerk para permitir um recadastro 100% limpo:
+    // (1) revoga convites pendentes; (2) APAGA a conta Clerk dela, se existir —
+    // é isso que destrava o "já tem conta" sem link. Assistente não tem dados
+    // próprios, então apagar a conta de login é seguro. Tudo best-effort.
     if (email) {
       const clean = email.toLowerCase().trim();
       const headers = { Authorization: `Bearer ${CLERK_SECRET_KEY}`, 'Content-Type': 'application/json' };
+
+      // (1) Revoga convites pendentes
       try {
         const listRes = await fetch('https://api.clerk.com/v1/invitations?status=pending&limit=100', { headers });
         if (listRes.ok) {
@@ -68,9 +73,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             await fetch(`https://api.clerk.com/v1/invitations/${inv.id}/revoke`, { method: 'POST', headers }).catch(() => {});
           }
         }
-      } catch {
-        // revogação é best-effort — a exclusão do admin_users é o que importa
-      }
+      } catch { /* best-effort */ }
+
+      // (2) Apaga a conta Clerk existente (se houver)
+      try {
+        const usersRes = await fetch(
+          `https://api.clerk.com/v1/users?email_address=${encodeURIComponent(clean)}`,
+          { headers }
+        );
+        if (usersRes.ok) {
+          const users = await usersRes.json();
+          const arr: any[] = Array.isArray(users) ? users : (users.data ?? []);
+          for (const u of arr) {
+            if (u?.id) {
+              await fetch(`https://api.clerk.com/v1/users/${u.id}`, { method: 'DELETE', headers }).catch(() => {});
+            }
+          }
+        }
+      } catch { /* best-effort */ }
     }
 
     return res.status(200).json({ ok: true });
