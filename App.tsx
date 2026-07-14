@@ -523,7 +523,7 @@ const App: React.FC = () => {
     linkElement.click();
   };
 
-  const handleReproject = (newStartMonth: number, newStartYear: number) => {
+  const handleReproject = async (newStartMonth: number, newStartYear: number) => {
     exportBackup();
     const oldMonths = [...months];
     const newProjectionMonths = [];
@@ -531,6 +531,13 @@ const App: React.FC = () => {
       const d = new Date(newStartYear, newStartMonth + i, 1);
       newProjectionMonths.push({ monthName: MONTHS_BR[d.getMonth()], year: d.getFullYear(), index: d.getMonth() });
     }
+
+    // Categorias recorrentes: continuam mês a mês. Nos meses NOVOS que entram no
+    // fim da janela (sem correspondência no plano antigo), o valor é herdado do
+    // mês anterior — assim aluguel, mercado, cartão etc. não ficam zerados.
+    // Variáveis e lazer NÃO se replicam (só migram o que já existia).
+    const isRecurring = (cat: CategoryType) =>
+      cat === CategoryType.INCOME || cat === CategoryType.FIXED_EXPENSE || cat === CategoryType.CREDIT_CARD;
 
     setItems(prevItems => prevItems.map(item => {
       const newValues = new Array(12).fill(0);
@@ -546,6 +553,9 @@ const App: React.FC = () => {
           if (item.partialExpenses && item.partialExpenses[oldMonthKey]) {
             newPartialExpenses[`${newM.year}-${newM.index}`] = item.partialExpenses[oldMonthKey];
           }
+        } else if (isRecurring(item.category) && newIdx > 0) {
+          // Mês novo no fim da janela: herda o valor recorrente do mês anterior
+          newValues[newIdx] = newValues[newIdx - 1];
         }
       });
       return { ...item, values: newValues, paidStatus: newPaidStatus, partialExpenses: newPartialExpenses };
@@ -553,16 +563,23 @@ const App: React.FC = () => {
 
     setStartMonth(newStartMonth);
     setStartYear(newStartYear);
+    setShowProjectionModal(false);
+
+    // Persiste o novo início e CONFIRMA que salvou. Se falhar, avisa em vez de
+    // deixar o plano voltar silenciosamente para o mês antigo no próximo load.
     if (householdId) {
-      getToken({ template: 'supabase' }).then(token =>
-        fetch('/api/update-start-month', {
+      try {
+        const token = await getToken({ template: 'supabase' });
+        const res = await fetch('/api/update-start-month', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ householdId, startMonth: newStartMonth, startYear: newStartYear }),
-        })
-      ).catch(console.error);
+        });
+        if (!res.ok) throw new Error(await res.text());
+      } catch (e: any) {
+        alert('Não consegui salvar o novo início do plano no servidor. Recarregue a página e tente novamente. Detalhe: ' + (e?.message ?? 'erro'));
+      }
     }
-    setShowProjectionModal(false);
   };
 
   // Moves the 12-month window back to an earlier start WITHOUT remapping values.
