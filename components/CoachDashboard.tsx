@@ -29,6 +29,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
   const db = useSupabase();
 
   const [clients, setClients] = useState<ClientProfile[]>([]);
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -237,6 +238,28 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
           </button>
         </div>
 
+        {/* Busca — filtra por nome ou e-mail conforme digita */}
+        {!loading && clients.length > 0 && (
+          <div className="relative mb-4">
+            <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 text-sm"></i>
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar cliente por nome ou e-mail..."
+              className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl pl-11 pr-10 py-3 text-white text-sm outline-none focus:border-green-500/50 transition-colors placeholder:text-zinc-600"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center text-zinc-500 hover:text-white transition-colors"
+              >
+                <i className="fas fa-times text-sm"></i>
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Lista */}
         {loading ? (
           <div className="flex items-center justify-center py-20">
@@ -248,9 +271,25 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
             <p className="font-black uppercase text-sm tracking-widest">Nenhum cliente ainda</p>
             <p className="text-xs mt-2">Clique em "Criar novo perfil" para começar</p>
           </div>
-        ) : (
+        ) : (() => {
+          const q = search.trim().toLowerCase();
+          const visible = q
+            ? clients.filter(c =>
+                (c.clientName ?? '').toLowerCase().includes(q) ||
+                (c.clientEmail ?? '').toLowerCase().includes(q))
+            : clients;
+          if (visible.length === 0) {
+            return (
+              <div className="text-center py-16 text-zinc-600">
+                <i className="fas fa-user-slash text-4xl mb-3 block"></i>
+                <p className="font-black uppercase text-sm tracking-widest">Nenhum cliente encontrado</p>
+                <p className="text-xs mt-2">Tente outro nome ou e-mail</p>
+              </div>
+            );
+          }
+          return (
           <div className="flex flex-col gap-3">
-            {clients.map(client => {
+            {visible.map(client => {
               const days = daysRemaining(client.coachingEndsAt);
               const isExpiring = days < 30;
               const isDraft = client.status === 'draft';
@@ -383,7 +422,8 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
               );
             })}
           </div>
-        )}
+          );
+        })()}
       </main>
 
       {/* Modal criar perfil */}
