@@ -49,15 +49,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'householdId, startMonth e startYear são obrigatórios' });
   }
 
+  // Super-admin (consultor) pode reprojetar qualquer cliente na visão de coach
+  const ADMIN_IDS = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean);
+  const isSuperAdmin = ADMIN_IDS.includes(payload.sub);
+
   // Verify the user belongs to this household
-  const { data: member } = await supabase
+  const { data: member } = isSuperAdmin ? { data: { id: 'admin' } } : await supabase
     .from('household_members')
     .select('id')
     .eq('household_id', householdId)
     .eq('clerk_user_id', payload.sub)
     .maybeSingle();
 
-  // Allow if user is a direct member OR if they are a coach (admin) with coach_access
+  // Allow if user is a direct member OR if they are a coach with coach_access
   const { data: coachAccess } = member ? { data: null } : await supabase
     .from('coach_access')
     .select('id')

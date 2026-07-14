@@ -533,12 +533,13 @@ const App: React.FC = () => {
       newProjectionMonths.push({ monthName: MONTHS_BR[d.getMonth()], year: d.getFullYear(), index: d.getMonth() });
     }
 
-    // Categorias recorrentes: continuam mês a mês. Nos meses NOVOS que entram no
-    // fim da janela (sem correspondência no plano antigo), o valor é herdado do
-    // mês anterior — assim aluguel, mercado, cartão etc. não ficam zerados.
-    // Variáveis e lazer NÃO se replicam (só migram o que já existia).
+    // Categorias recorrentes: continuam mês a mês (renda, contas fixas, cartão e
+    // lazer/gastos pessoais). Variáveis (contas pontuais) NÃO se replicam.
     const isRecurring = (cat: CategoryType) =>
-      cat === CategoryType.INCOME || cat === CategoryType.FIXED_EXPENSE || cat === CategoryType.CREDIT_CARD;
+      cat === CategoryType.INCOME ||
+      cat === CategoryType.FIXED_EXPENSE ||
+      cat === CategoryType.CREDIT_CARD ||
+      cat === CategoryType.PERSONAL_LEISURE;
 
     setItems(prevItems => prevItems.map(item => {
       const newValues = new Array(12).fill(0);
@@ -554,11 +555,21 @@ const App: React.FC = () => {
           if (item.partialExpenses && item.partialExpenses[oldMonthKey]) {
             newPartialExpenses[`${newM.year}-${newM.index}`] = item.partialExpenses[oldMonthKey];
           }
-        } else if (isRecurring(item.category) && newIdx > 0) {
-          // Mês novo no fim da janela: herda o valor recorrente do mês anterior
-          newValues[newIdx] = newValues[newIdx - 1];
         }
       });
+
+      // Projeta para frente: para itens recorrentes, todo mês zerado APÓS o
+      // último mês preenchido herda o valor desse último mês preenchido. Assim,
+      // se o plano ia até fevereiro (mercado = X), as colunas novas (mar, abr,
+      // mai, jun...) recebem X — não ficam zeradas.
+      if (isRecurring(item.category)) {
+        let lastFilled = 0;
+        for (let i = 0; i < 12; i++) {
+          if (newValues[i] > 0) lastFilled = newValues[i];
+          else if (lastFilled > 0) newValues[i] = lastFilled;
+        }
+      }
+
       return { ...item, values: newValues, paidStatus: newPaidStatus, partialExpenses: newPartialExpenses };
     }));
 
