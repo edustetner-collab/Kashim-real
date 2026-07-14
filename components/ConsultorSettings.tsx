@@ -21,6 +21,7 @@ const ConsultorSettings: React.FC<ConsultorSettingsProps> = ({ db, onClose }) =>
   const [inviteLink, setInviteLink] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
+  const [diag, setDiag] = useState('');
   const [tab, setTab] = useState<'perfil' | 'equipe'>('perfil');
 
   useEffect(() => { loadAssistants(); }, []);
@@ -48,9 +49,8 @@ const ConsultorSettings: React.FC<ConsultorSettingsProps> = ({ db, onClose }) =>
       if (!res.ok) throw new Error(data.error ?? 'Erro ao enviar convite');
 
       setInviteEmail(newEmail);
-      if (data.inviteLink === undefined && data.inviteUrl) {
-        // compat
-      }
+      // Diagnóstico temporário — remover depois de resolver o acesso da assistente
+      if (data.debug) setDiag(JSON.stringify(data.debug));
       if (data.inviteUrl) {
         setInviteLink(data.inviteUrl);
         setAddSuccess(`Convite pronto para ${newName}! Copie o link abaixo e mande no WhatsApp dela.`);
@@ -202,6 +202,12 @@ const ConsultorSettings: React.FC<ConsultorSettingsProps> = ({ db, onClose }) =>
                 />
                 {addError && <p className="text-red-400 text-xs">{addError}</p>}
                 {addSuccess && <p className="text-green-400 text-xs">{addSuccess}</p>}
+                {diag && (
+                  <div className="bg-zinc-950 border border-zinc-700 rounded-xl p-2">
+                    <p className="text-zinc-500 text-[9px] uppercase tracking-wider mb-1">Diagnóstico (temporário)</p>
+                    <p className="text-amber-300 text-[10px] break-all font-mono">{diag}</p>
+                  </div>
+                )}
                 {inviteLink && (
                   <div className="bg-zinc-800 border border-green-500/30 rounded-2xl p-3 flex flex-col gap-2">
                     <p className="text-zinc-400 text-[10px] font-black uppercase tracking-wider">

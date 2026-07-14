@@ -159,69 +159,76 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       public_metadata: { role: 'assistant' },
     });
 
-    // Cria o convite no Clerk e devolve a URL. Se já existir um convite
-    // PENDENTE (o motivo dela não conseguir entrar), revoga e recria — assim
-    // sempre há um link novo e válido para mandar no WhatsApp.
     let inviteUrl: string | null = null;
     let alreadyHasAccount = false;
+    const debug: Record<string, unknown> = {};
 
-    const first = await fetch(INVITES, { method: 'POST', headers: clerkHeaders, body: inviteBody });
-    if (first.ok) {
-      inviteUrl = (await first.json()).url ?? null;
+    // PASSO 1 — Ela já tem conta no Clerk? Se sim, o caminho certo é um LINK
+    // MÁGICO de acesso direto (igual clientes), que loga sem senha.
+    const usersRes = await fetch(
+      `https://api.clerk.com/v1/users?email_address=${encodeURIComponent(cleanEmail)}`,
+      { headers: clerkHeaders }
+    );
+    debug.userLookupStatus = usersRes.status;
+    let userId: string | null = null;
+    if (usersRes.ok) {
+      const users = await usersRes.json();
+      const arr: any[] = Array.isArray(users) ? users : (users.data ?? []);
+      debug.usersFound = arr.length;
+      userId = arr[0]?.id ?? null;
     } else {
-      const err = await first.json();
-      const msg: string = (err.errors?.[0]?.long_message ?? err.errors?.[0]?.message ?? '').toLowerCase();
-      const isDuplicate = msg.includes('already') || err.errors?.[0]?.code === 'duplicate_record';
-      if (!isDuplicate) throw new Error(msg || 'Erro ao criar convite no Clerk');
-
-      // Revoga convites pendentes deste e-mail e tenta recriar
-      const listRes = await fetch(`${INVITES}?status=pending&limit=100`, { headers: clerkHeaders });
-      let revokedAny = false;
-      if (listRes.ok) {
-        const list = await listRes.json();
-        const arr: any[] = Array.isArray(list) ? list : (list.data ?? []);
-        const pending = arr.filter(i => (i.email_address ?? '').toLowerCase() === cleanEmail);
-        for (const inv of pending) {
-          await fetch(`${INVITES}/${inv.id}/revoke`, { method: 'POST', headers: clerkHeaders }).catch(() => {});
-          revokedAny = true;
-        }
-      }
-      if (revokedAny) {
-        const retry = await fetch(INVITES, { method: 'POST', headers: clerkHeaders, body: inviteBody });
-        if (retry.ok) inviteUrl = (await retry.json()).url ?? null;
-      }
-
-      // Sem convite pendente = ela JÁ tem conta no Clerk (mas pode não ter senha
-      // / nunca ter entrado). Gera um LINK MÁGICO de acesso direto, igual aos
-      // clientes — ela clica e entra sem precisar de senha.
-      if (!inviteUrl) {
-        const usersRes = await fetch(
-          `https://api.clerk.com/v1/users?email_address=${encodeURIComponent(cleanEmail)}`,
-          { headers: clerkHeaders }
-        );
-        if (usersRes.ok) {
-          const users = await usersRes.json();
-          const arr: any[] = Array.isArray(users) ? users : (users.data ?? []);
-          const userId = arr[0]?.id;
-          if (userId) {
-            const tokenRes = await fetch('https://api.clerk.com/v1/sign_in_tokens', {
-              method: 'POST',
-              headers: clerkHeaders,
-              body: JSON.stringify({ user_id: userId, expires_in_seconds: 7 * 24 * 60 * 60 }),
-            });
-            if (tokenRes.ok) {
-              const t = (await tokenRes.json()).token;
-              if (t) inviteUrl = `https://app.kashim.com.br?sign_in_token=${t}`;
-            }
-          }
-        }
-      }
-
-      if (!inviteUrl) alreadyHasAccount = true;
+      debug.userLookupError = (await usersRes.text()).slice(0, 300);
     }
 
+    if (userId) {
+      const tokenRes = await fetch('https://api.clerk.com/v1/sign_in_tokens', {
+        method: 'POST',
+        headers: clerkHeaders,
+        body: JSON.stringify({ user_id: userId, expires_in_seconds: 7 * 24 * 60 * 60 }),
+      });
+      debug.tokenStatus = tokenRes.status;
+      if (tokenRes.ok) {
+        const t = (await tokenRes.json()).token;
+        if (t) inviteUrl = `https://app.kashim.com.br?sign_in_token=${t}`;
+      } else {
+        debug.tokenError = (await tokenRes.text()).slice(0, 300);
+      }
+    }
+
+    // PASSO 2 — Sem conta ainda: cria convite. Se houver convite pendente
+    // travado, revoga e recria.
+    if (!inviteUrl && !userId) {
+      const first = await fetch(INVITES, { method: 'POST', headers: clerkHeaders, body: inviteBody });
+      debug.inviteStatus = first.status;
+      if (first.ok) {
+        inviteUrl = (await first.json()).url ?? null;
+      } else {
+        const err = await first.json();
+        debug.inviteError = err?.errors?.[0] ?? err;
+        const listRes = await fetch(`${INVITES}?status=pending&limit=100`, { headers: clerkHeaders });
+        let revokedAny = false;
+        if (listRes.ok) {
+          const list = await listRes.json();
+          const arr: any[] = Array.isArray(list) ? list : (list.data ?? []);
+          const pending = arr.filter(i => (i.email_address ?? '').toLowerCase() === cleanEmail);
+          debug.pendingFound = pending.length;
+          for (const inv of pending) {
+            await fetch(`${INVITES}/${inv.id}/revoke`, { method: 'POST', headers: clerkHeaders }).catch(() => {});
+            revokedAny = true;
+          }
+        }
+        if (revokedAny) {
+          const retry = await fetch(INVITES, { method: 'POST', headers: clerkHeaders, body: inviteBody });
+          debug.retryStatus = retry.status;
+          if (retry.ok) inviteUrl = (await retry.json()).url ?? null;
+        }
+      }
+    }
+
+    if (!inviteUrl) alreadyHasAccount = true;
+
     // Envia o email bonito via Resend (best-effort; o link na tela é o principal)
-    if (RESEND_API_KEY && inviteUrl) {
+    if (RESEND_API_KEY && inviteUrl && inviteUrl.includes('sign_in_token') === false) {
       const resend = new Resend(RESEND_API_KEY);
       await resend.emails.send({
         from: 'Kashim <noreply@app.kashim.com.br>',
@@ -231,7 +238,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }).catch(() => {});
     }
 
-    return res.status(200).json({ ok: true, inviteUrl, alreadyHasAccount });
+    return res.status(200).json({ ok: true, inviteUrl, alreadyHasAccount, debug });
   } catch (err: any) {
     console.error('invite-assistant error:', err);
     return res.status(500).json({ error: err.message ?? 'Internal server error' });
