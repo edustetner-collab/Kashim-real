@@ -940,7 +940,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   const isOver = realSpent > val && val > 0;
 
                   return (
-                    <td key={mIdx} className={`p-2 border-l text-center transition-all ${isPaid ? 'bg-green-50/30' : ''}`}>
+                    <td key={mIdx} className={`p-2 border-l text-center transition-colors focus-within:!bg-white ${isPaid ? 'bg-green-50/30' : val === 0 ? 'bg-zinc-100' : ''}`}>
                       <div className="flex flex-col gap-1.5 items-center">
                         <div className="relative w-full group">
                           <input
@@ -951,7 +951,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                               onUpdateValue(item.id, mIdx, e.target.value);
                               checkInstallments(item.id);
                             }}
-                            className={`w-full text-center bg-transparent border-none focus:ring-0 outline-none transition-all text-sm ${isPaid ? 'text-green-700 font-bold' : 'text-gray-900'}`}
+                            className={`w-full text-center bg-transparent border-none focus:ring-0 outline-none transition-all text-sm ${isPaid ? 'text-green-700 font-bold' : val === 0 ? 'text-zinc-400' : 'text-gray-900'}`}
                             placeholder="0,00"
                           />
                           <button

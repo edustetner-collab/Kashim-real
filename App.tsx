@@ -422,10 +422,13 @@ const App: React.FC = () => {
   // Quando coach sai da visão de cliente, restaura os próprios dados
   useEffect(() => {
     if (coachViewHouseholdId) return; // só roda ao sair
+    // Limpa SEMPRE ao sair, mesmo sem snapshot (super-admin não tem dados próprios
+    // para restaurar, mas o ref precisa ser zerado para que ao re-entrar o mesmo
+    // cliente os dados sejam recarregados do banco — sem isso o coach vê dados antigos)
+    coachViewLoadedRef.current = null;
     const snap = ownDataSnapshotRef.current;
     if (!snap) return;
     ownDataSnapshotRef.current = null;
-    coachViewLoadedRef.current = null;
     setHouseholdId(snap.householdId);
     setItems(snap.items);
     setStartMonth(snap.startMonth);
@@ -1702,19 +1705,19 @@ ${renderSection(CategoryType.PERSONAL_LEISURE, 'Lazer e Gastos Pessoais',    '#a
                     </tr>
                     <tr className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
                       <td className="p-4 font-bold text-zinc-300">Custos Fixos</td>
-                      {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-red-400/80 font-mono">{formatCurrency(s.totalFixed)}</td>)}
+                      {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-orange-400 font-mono">{formatCurrency(s.totalFixed)}</td>)}
                     </tr>
                     <tr className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
                       <td className="p-4 font-bold text-zinc-300">Custos Variáveis</td>
-                      {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-cyan-400/80 font-mono">{formatCurrency(s.totalVariable)}</td>)}
+                      {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-orange-400 font-mono">{formatCurrency(s.totalVariable)}</td>)}
                     </tr>
                     <tr className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
                       <td className="p-4 font-bold text-zinc-300">Gastos Pessoais e Lazer</td>
-                      {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-purple-400/80 font-mono">{formatCurrency(s.totalLeisure)}</td>)}
+                      {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-orange-400 font-mono">{formatCurrency(s.totalLeisure)}</td>)}
                     </tr>
                     <tr className="border-b border-zinc-800 bg-zinc-800/20">
                       <td className="p-4 font-black text-zinc-200 uppercase italic">Total de Custos</td>
-                      {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-red-400 font-mono font-black whitespace-nowrap">{formatCurrency(s.totalCost)}</td>)}
+                      {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-orange-400 font-mono font-black whitespace-nowrap">{formatCurrency(s.totalCost)}</td>)}
                     </tr>
                     <tr className="border-b-2 border-zinc-800 bg-zinc-950/20">
                       <td className="p-4 font-black text-white uppercase italic">Sobras / Faltas</td>
@@ -1724,9 +1727,9 @@ ${renderSection(CategoryType.PERSONAL_LEISURE, 'Lazer e Gastos Pessoais',    '#a
                         </td>
                       ))}
                     </tr>
-                    <tr className="bg-green-500/5">
-                      <td className="p-6 font-black text-green-400 uppercase italic text-base">ACUMULADO</td>
-                      {monthlySummaries.map((s, i) => <td key={i} className="p-6 text-center font-black font-mono text-lg text-green-400 drop-shadow-lg whitespace-nowrap">{formatCurrency(s.accumulated)}</td>)}
+                    <tr className="bg-zinc-900/40">
+                      <td className="p-6 font-black text-zinc-300 uppercase italic text-base">ACUMULADO</td>
+                      {monthlySummaries.map((s, i) => <td key={i} className={`p-6 text-center font-black font-mono text-lg drop-shadow-lg whitespace-nowrap ${s.accumulated >= 0 ? 'text-green-400' : 'text-red-500'}`}>{formatCurrency(s.accumulated)}</td>)}
                     </tr>
                   </tbody>
                 </table>
