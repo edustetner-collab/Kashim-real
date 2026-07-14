@@ -216,6 +216,30 @@
         100% { transform: translate(var(--k-x), var(--k-y)) rotate(var(--k-r)); opacity: 0; }
       }
 
+      /* ---- Print / PDF da consultoria (visível só para o coach) ---- */
+      @media print {
+        @page { margin: 1.5cm; }
+        * {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        /* Esconde todo o chrome da app */
+        #header,
+        nav,
+        #stets,
+        #diagnosis,
+        #summary-mobile,
+        #month-navigator,
+        .k-ambient,
+        #coach-pdf-btn,
+        #cycle-management { display: none !important; }
+        /* Força a Compilação Financeira a aparecer (hidden lg:block → display:none em telas pequenas) */
+        #summary-section { display: block !important; }
+        /* Esconde botões interativos dentro dos blocos */
+        #blocks button { display: none !important; }
+        body { background: white !important; }
+      }
+
       /* ---- Respect reduced motion: kill all decorative motion ---- */
       @media (prefers-reduced-motion: reduce) {
         .k-aurora, .k-reveal, .k-stagger > *, .k-sweep::after,

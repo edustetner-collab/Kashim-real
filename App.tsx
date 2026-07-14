@@ -1523,6 +1523,18 @@ const App: React.FC = () => {
               </div>
             </div>
 
+            {isAdmin && !isNativeApp && (
+              <div id="coach-pdf-btn" className="px-3 mb-4 flex justify-end">
+                <button
+                  onClick={() => window.print()}
+                  className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wide text-white bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 active:scale-95 transition-all shadow-sm hover:bg-zinc-800"
+                  title="Gera PDF do cenário completo (Gastos Mensais + Compilação Financeira) — só visível para o coach"
+                >
+                  <i className="fas fa-file-pdf text-[#ff3b30]"></i> Gerar PDF da consultoria
+                </button>
+              </div>
+            )}
+
             <div id="blocks" className="k-stagger">
               {[
                 { title: "ENTRADAS (Rendas)", type: CategoryType.INCOME },
@@ -1626,7 +1638,7 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div className="bg-white border border-zinc-200 rounded-3xl p-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 mb-20">
+            <div id="cycle-management" className="bg-white border border-zinc-200 rounded-3xl p-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 mb-20">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-400">
                   <i className="fas fa-history text-xl"></i>
