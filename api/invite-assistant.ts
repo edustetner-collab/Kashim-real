@@ -146,48 +146,66 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
     if (dbError) throw dbError;
 
-    // Cria o convite no Clerk (sem notificação padrão deles)
-    let inviteUrl = 'https://app.kashim.com.br';
-    const inviteRes = await fetch('https://api.clerk.com/v1/invitations', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${CLERK_SECRET_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        email_address: email.toLowerCase().trim(),
-        notify: false, // vamos mandar o nosso email
-        redirect_url: 'https://app.kashim.com.br',
-        public_metadata: { role: 'assistant' },
-      }),
+    const cleanEmail = email.toLowerCase().trim();
+    const clerkHeaders = {
+      Authorization: `Bearer ${CLERK_SECRET_KEY}`,
+      'Content-Type': 'application/json',
+    };
+    const INVITES = 'https://api.clerk.com/v1/invitations';
+    const inviteBody = JSON.stringify({
+      email_address: cleanEmail,
+      notify: false, // enviamos nosso próprio e-mail
+      redirect_url: 'https://app.kashim.com.br',
+      public_metadata: { role: 'assistant' },
     });
 
-    let alreadyExists = false;
-    if (!inviteRes.ok) {
-      const err = await inviteRes.json();
-      const msg: string = err.errors?.[0]?.long_message ?? err.errors?.[0]?.message ?? '';
-      if (msg.toLowerCase().includes('already') || err.errors?.[0]?.code === 'duplicate_record') {
-        alreadyExists = true;
-      } else {
-        throw new Error(msg || 'Erro ao criar convite no Clerk');
-      }
+    // Cria o convite no Clerk e devolve a URL. Se já existir um convite
+    // PENDENTE (o motivo dela não conseguir entrar), revoga e recria — assim
+    // sempre há um link novo e válido para mandar no WhatsApp.
+    let inviteUrl: string | null = null;
+    let alreadyHasAccount = false;
+
+    const first = await fetch(INVITES, { method: 'POST', headers: clerkHeaders, body: inviteBody });
+    if (first.ok) {
+      inviteUrl = (await first.json()).url ?? null;
     } else {
-      const clerkData = await inviteRes.json();
-      if (clerkData.url) inviteUrl = clerkData.url;
+      const err = await first.json();
+      const msg: string = (err.errors?.[0]?.long_message ?? err.errors?.[0]?.message ?? '').toLowerCase();
+      const isDuplicate = msg.includes('already') || err.errors?.[0]?.code === 'duplicate_record';
+      if (!isDuplicate) throw new Error(msg || 'Erro ao criar convite no Clerk');
+
+      // Revoga convites pendentes deste e-mail e tenta recriar
+      const listRes = await fetch(`${INVITES}?status=pending&limit=100`, { headers: clerkHeaders });
+      let revokedAny = false;
+      if (listRes.ok) {
+        const list = await listRes.json();
+        const arr: any[] = Array.isArray(list) ? list : (list.data ?? []);
+        const pending = arr.filter(i => (i.email_address ?? '').toLowerCase() === cleanEmail);
+        for (const inv of pending) {
+          await fetch(`${INVITES}/${inv.id}/revoke`, { method: 'POST', headers: clerkHeaders }).catch(() => {});
+          revokedAny = true;
+        }
+      }
+      if (revokedAny) {
+        const retry = await fetch(INVITES, { method: 'POST', headers: clerkHeaders, body: inviteBody });
+        if (retry.ok) inviteUrl = (await retry.json()).url ?? null;
+      }
+      // Sem convite pendente para revogar = ela JÁ tem conta no Clerk: é só logar
+      if (!inviteUrl) alreadyHasAccount = true;
     }
 
-    // Envia o email bonito via Resend
-    if (RESEND_API_KEY && !alreadyExists) {
+    // Envia o email bonito via Resend (best-effort; o link na tela é o principal)
+    if (RESEND_API_KEY && inviteUrl) {
       const resend = new Resend(RESEND_API_KEY);
       await resend.emails.send({
         from: 'Kashim <noreply@app.kashim.com.br>',
-        to: email.toLowerCase().trim(),
+        to: cleanEmail,
         subject: `${name}, você foi convidada para a equipe Kashim`,
         html: buildInviteEmail(name, email, inviteUrl),
-      });
+      }).catch(() => {});
     }
 
-    return res.status(200).json({ ok: true, alreadyExists });
+    return res.status(200).json({ ok: true, inviteUrl, alreadyHasAccount });
   } catch (err: any) {
     console.error('invite-assistant error:', err);
     return res.status(500).json({ error: err.message ?? 'Internal server error' });

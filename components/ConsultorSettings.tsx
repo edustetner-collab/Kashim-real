@@ -18,6 +18,9 @@ const ConsultorSettings: React.FC<ConsultorSettingsProps> = ({ db, onClose }) =>
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState('');
   const [addSuccess, setAddSuccess] = useState('');
+  const [inviteLink, setInviteLink] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [linkCopied, setLinkCopied] = useState(false);
   const [tab, setTab] = useState<'perfil' | 'equipe'>('perfil');
 
   useEffect(() => { loadAssistants(); }, []);
@@ -44,10 +47,19 @@ const ConsultorSettings: React.FC<ConsultorSettingsProps> = ({ db, onClose }) =>
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Erro ao enviar convite');
 
-      if (data.alreadyExists) {
-        setAddSuccess(`${newName} já tem conta no Kashim e foi adicionada à equipe!`);
+      setInviteEmail(newEmail);
+      if (data.inviteLink === undefined && data.inviteUrl) {
+        // compat
+      }
+      if (data.inviteUrl) {
+        setInviteLink(data.inviteUrl);
+        setAddSuccess(`Convite pronto para ${newName}! Copie o link abaixo e mande no WhatsApp dela.`);
+      } else if (data.alreadyHasAccount) {
+        setInviteLink('');
+        setAddSuccess(`${newName} já tem conta no Kashim. É só ela entrar em app.kashim.com.br com o e-mail ${newEmail} — já está na equipe.`);
       } else {
-        setAddSuccess(`Convite enviado para ${newEmail}! Ela vai receber um e-mail para criar a conta.`);
+        setInviteLink('');
+        setAddSuccess(`${newName} foi adicionada. Ela pode entrar em app.kashim.com.br e criar a conta com o e-mail ${newEmail}.`);
       }
       setNewEmail('');
       setNewName('');
@@ -171,6 +183,24 @@ const ConsultorSettings: React.FC<ConsultorSettingsProps> = ({ db, onClose }) =>
                 />
                 {addError && <p className="text-red-400 text-xs">{addError}</p>}
                 {addSuccess && <p className="text-green-400 text-xs">{addSuccess}</p>}
+                {inviteLink && (
+                  <div className="bg-zinc-800 border border-green-500/30 rounded-2xl p-3 flex flex-col gap-2">
+                    <p className="text-zinc-400 text-[10px] font-black uppercase tracking-wider">
+                      <i className="fas fa-link mr-1 text-green-400"></i>Link de acesso da assistente
+                    </p>
+                    <p className="text-zinc-300 text-[11px] break-all bg-zinc-900 rounded-lg px-2 py-1.5">{inviteLink}</p>
+                    <button
+                      type="button"
+                      onClick={() => { navigator.clipboard.writeText(inviteLink); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2500); }}
+                      className={`w-full py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${linkCopied ? 'bg-green-600 text-white' : 'bg-green-500 text-black active:scale-95'}`}
+                    >
+                      {linkCopied ? <><i className="fas fa-check"></i> Copiado!</> : <><i className="fas fa-copy"></i> Copiar link</>}
+                    </button>
+                    <p className="text-zinc-500 text-[10px] leading-relaxed">
+                      Mande no WhatsApp dela. Ela abre no computador, cria a senha e já entra no painel com acesso aos clientes.
+                    </p>
+                  </div>
+                )}
                 <button
                   type="submit"
                   disabled={adding || !newEmail || !newName}
