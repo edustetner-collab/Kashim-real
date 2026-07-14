@@ -61,29 +61,34 @@ function makeDefaultItems(): FinanceItem[] {
   }));
 }
 
-// Colapsa itens duplicados (mesma descrição+categoria) numa linha só, mantendo
-// a de maior "sinal" (mais valores/pagamentos) e marcando as outras para
-// exclusão. Limpa duplicatas já gravadas no banco por bugs anteriores.
+// Remove APENAS cópias 100% idênticas (mesmo nome, categoria, valores, status e
+// lançamentos) — as que a corrida de salvamento gerava. NUNCA junta itens que
+// diferem em qualquer coisa: dois lazeres "Lazer e Despesas Pessoais" com
+// compras diferentes são coisas distintas e ambos são preservados.
+// (Versão anterior agrupava só por nome+categoria e apagou dados legítimos.)
 function dedupeItems(dbItems: FinanceItem[]): { deduped: FinanceItem[]; toDelete: string[] } {
-  const signal = (i: FinanceItem) =>
-    i.values.reduce((a, v) => a + Math.abs(v), 0) +
-    i.paidStatus.filter(Boolean).length +
-    (i.partialExpenses ? Object.values(i.partialExpenses).reduce((a, arr) => a + (arr?.length ?? 0), 0) : 0);
+  const signature = (i: FinanceItem) =>
+    JSON.stringify({
+      d: i.description,
+      c: i.category,
+      v: i.values,
+      p: i.paidStatus,
+      pe: i.partialExpenses ?? {},
+      lc: i.linkedCardId ?? null,
+    });
 
-  const byKey = new Map<string, FinanceItem[]>();
+  const seen = new Set<string>();
   const deduped: FinanceItem[] = [];
-  for (const item of dbItems) {
-    // Itens sem descrição (novos em branco) nunca são agrupados/mesclados
-    if (!item.description.trim()) { deduped.push(item); continue; }
-    const key = `${item.description}|${item.category}`;
-    byKey.set(key, [...(byKey.get(key) ?? []), item]);
-  }
   const toDelete: string[] = [];
-  for (const group of byKey.values()) {
-    if (group.length === 1) { deduped.push(group[0]); continue; }
-    const sorted = [...group].sort((a, b) => signal(b) - signal(a));
-    deduped.push(sorted[0]);
-    toDelete.push(...sorted.slice(1).map(i => i.id));
+  for (const item of dbItems) {
+    if (!item.description.trim()) { deduped.push(item); continue; }
+    const sig = signature(item);
+    if (seen.has(sig)) {
+      toDelete.push(item.id); // cópia byte-a-byte → segura de remover
+    } else {
+      seen.add(sig);
+      deduped.push(item);
+    }
   }
   return { deduped, toDelete };
 }
