@@ -30,6 +30,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
 
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<'all' | 'new'>('all');
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -260,6 +261,29 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
           </div>
         )}
 
+        {/* Filtro — Todos vs Novos (aguardando 1ª reunião) */}
+        {!loading && clients.length > 0 && (
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={() => setFilter('all')}
+              className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wide transition-all border ${
+                filter === 'all' ? 'bg-green-500 text-black border-green-500' : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+              }`}
+            >
+              Todos ({clients.length})
+            </button>
+            <button
+              onClick={() => setFilter('new')}
+              className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wide transition-all border flex items-center gap-2 ${
+                filter === 'new' ? 'bg-amber-400 text-black border-amber-400' : 'bg-zinc-900 text-amber-400/80 border-amber-500/30'
+              }`}
+            >
+              <i className="fas fa-star text-[10px]"></i>
+              Novos ({draftCount})
+            </button>
+          </div>
+        )}
+
         {/* Lista */}
         {loading ? (
           <div className="flex items-center justify-center py-20">
@@ -273,17 +297,22 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
           </div>
         ) : (() => {
           const q = search.trim().toLowerCase();
-          const visible = q
-            ? clients.filter(c =>
-                (c.clientName ?? '').toLowerCase().includes(q) ||
-                (c.clientEmail ?? '').toLowerCase().includes(q))
-            : clients;
+          const visible = clients.filter(c => {
+            if (filter === 'new' && c.status !== 'draft') return false;
+            if (!q) return true;
+            return (c.clientName ?? '').toLowerCase().includes(q) ||
+                   (c.clientEmail ?? '').toLowerCase().includes(q);
+          });
           if (visible.length === 0) {
             return (
               <div className="text-center py-16 text-zinc-600">
-                <i className="fas fa-user-slash text-4xl mb-3 block"></i>
-                <p className="font-black uppercase text-sm tracking-widest">Nenhum cliente encontrado</p>
-                <p className="text-xs mt-2">Tente outro nome ou e-mail</p>
+                <i className={`fas ${filter === 'new' ? 'fa-star' : 'fa-user-slash'} text-4xl mb-3 block`}></i>
+                <p className="font-black uppercase text-sm tracking-widest">
+                  {filter === 'new' ? 'Nenhum cliente novo aguardando' : 'Nenhum cliente encontrado'}
+                </p>
+                <p className="text-xs mt-2">
+                  {filter === 'new' ? 'Perfis novos aparecem aqui até você ativar' : 'Tente outro nome ou e-mail'}
+                </p>
               </div>
             );
           }
@@ -298,7 +327,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
               return (
                 <div key={client.householdId}>
                   <div className={`rounded-2xl border p-4 transition-all ${
-                    isDraft ? 'bg-zinc-900/60 border-zinc-800' : 'bg-zinc-900 border-zinc-800'
+                    isDraft ? 'bg-amber-500/5 border-amber-500/40' : 'bg-zinc-900 border-zinc-800'
                   }`}>
                     {/* Linha 1: Nome + badges */}
                     <div className="flex items-start justify-between gap-2 mb-1">
@@ -306,7 +335,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-white font-black text-sm uppercase italic">{client.clientName}</p>
                           {isDraft && (
-                            <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-zinc-700 text-zinc-400">Rascunho</span>
+                            <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-400"><i className="fas fa-star mr-1"></i>Novo</span>
                           )}
                           {justActivated && (
                             <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">
