@@ -47,13 +47,44 @@ const DEFAULT_FIXED_EXPENSES = [
 // ao entrar num cliente SEM dados, para nunca herdar os itens do cliente
 // anterior (isolamento entre contas).
 function makeDefaultItems(): FinanceItem[] {
-  return DEFAULT_FIXED_EXPENSES.map((desc, idx) => ({
-    id: `default-fixed-${idx}`,
+  return DEFAULT_FIXED_EXPENSES.map((desc) => ({
+    // UUID real (não "default-fixed-N"): força o caminho de UPSERT no banco, que
+    // atualiza sempre a MESMA linha. Com ID local o app fazia INSERT e, sob
+    // salvamentos concorrentes (rede lenta), criava a mesma conta várias vezes
+    // → itens duplicados/triplicados (2026-07-11).
+    id: crypto.randomUUID(),
     description: desc,
     category: CategoryType.FIXED_EXPENSE,
     values: new Array(12).fill(0),
     paidStatus: new Array(12).fill(false),
   }));
+}
+
+// Colapsa itens duplicados (mesma descrição+categoria) numa linha só, mantendo
+// a de maior "sinal" (mais valores/pagamentos) e marcando as outras para
+// exclusão. Limpa duplicatas já gravadas no banco por bugs anteriores.
+function dedupeItems(dbItems: FinanceItem[]): { deduped: FinanceItem[]; toDelete: string[] } {
+  const signal = (i: FinanceItem) =>
+    i.values.reduce((a, v) => a + Math.abs(v), 0) +
+    i.paidStatus.filter(Boolean).length +
+    (i.partialExpenses ? Object.values(i.partialExpenses).reduce((a, arr) => a + (arr?.length ?? 0), 0) : 0);
+
+  const byKey = new Map<string, FinanceItem[]>();
+  const deduped: FinanceItem[] = [];
+  for (const item of dbItems) {
+    // Itens sem descrição (novos em branco) nunca são agrupados/mesclados
+    if (!item.description.trim()) { deduped.push(item); continue; }
+    const key = `${item.description}|${item.category}`;
+    byKey.set(key, [...(byKey.get(key) ?? []), item]);
+  }
+  const toDelete: string[] = [];
+  for (const group of byKey.values()) {
+    if (group.length === 1) { deduped.push(group[0]); continue; }
+    const sorted = [...group].sort((a, b) => signal(b) - signal(a));
+    deduped.push(sorted[0]);
+    toDelete.push(...sorted.slice(1).map(i => i.id));
+  }
+  return { deduped, toDelete };
 }
 
 const App: React.FC = () => {
@@ -224,29 +255,9 @@ const App: React.FC = () => {
         }
 
         if (dbItems.length > 0) {
-          // Auto-cleanup: remove zero-value duplicate items (may exist from a prior bug)
-          const byKey = new Map<string, FinanceItem[]>();
-          for (const item of dbItems) {
-            const key = `${item.description}|${item.category}`;
-            byKey.set(key, [...(byKey.get(key) ?? []), item]);
-          }
-          const toDelete: string[] = [];
-          const deduped: FinanceItem[] = [];
-          const hasData = (i: FinanceItem) =>
-            i.values.some(v => v > 0) || i.paidStatus.some(Boolean) ||
-            !!(i.partialExpenses && Object.keys(i.partialExpenses).length > 0);
-          for (const group of byKey.values()) {
-            if (group.length === 1) { deduped.push(group[0]); continue; }
-            const withData = group.filter(hasData);
-            const noData = group.filter(i => !hasData(i));
-            if (withData.length > 0) {
-              deduped.push(...withData);
-              toDelete.push(...noData.map(i => i.id));
-            } else {
-              deduped.push(group[0]);
-              toDelete.push(...group.slice(1).map(i => i.id));
-            }
-          }
+          // Colapsa duplicatas (inclusive as COM valor, geradas por bugs de
+          // salvamento concorrente) numa linha só por conta, e apaga as demais.
+          const { deduped, toDelete } = dedupeItems(dbItems);
           if (toDelete.length > 0) {
             toDelete.forEach(id => deleteFinanceItem(db!, id).catch(() => {}));
           }
@@ -377,8 +388,15 @@ const App: React.FC = () => {
         if (household?.start_year != null) setStartYear(household.start_year);
         // SEMPRE substitui os itens — se o cliente não tem dados, volta ao
         // conjunto em branco em vez de manter os do cliente anterior na tela
-        // (que aí seriam salvos na conta errada).
-        setItems(dbItems.length > 0 ? dbItems : makeDefaultItems());
+        // (que aí seriam salvos na conta errada). E colapsa duplicatas já
+        // gravadas por bugs anteriores.
+        if (dbItems.length > 0) {
+          const { deduped, toDelete } = dedupeItems(dbItems);
+          toDelete.forEach(id => deleteFinanceItem(db!, id).catch(() => {}));
+          setItems(deduped);
+        } else {
+          setItems(makeDefaultItems());
+        }
         // Libera o salvamento nesta sessão. O admin pula o loadData normal
         // (onde esta trava era ligada), então sem isto TUDO que o coach
         // preenche na conta do cliente ficava só na tela e NUNCA era salvo.
@@ -408,25 +426,38 @@ const App: React.FC = () => {
 
   // Salva item no Supabase sempre que items mudar (debounced)
   const saveTimeoutRef = useRef<any>(null);
+  const savingRef = useRef(false);
   useEffect(() => {
     if (!db || !householdId || dbLoading || !dbItemsLoadedRef.current) return;
 
     clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(async () => {
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        const dbId = itemIdMapRef.current[item.id] ?? item.id;
-        if (pendingDeletesRef.current.has(item.id) || pendingDeletesRef.current.has(dbId)) continue;
+    const run = () => {
+      // Nunca deixa dois ciclos de salvamento rodarem juntos: sob rede lenta,
+      // ciclos sobrepostos inseriam a mesma conta várias vezes (duplicação).
+      // Se um já está rodando, tenta de novo em 600ms com o estado mais recente.
+      if (savingRef.current) { saveTimeoutRef.current = setTimeout(run, 600); return; }
+      savingRef.current = true;
+      (async () => {
         try {
-          const savedId = await saveFinanceItem(db!, householdId, item, i);
-          if (savedId !== item.id) {
-            itemIdMapRef.current[item.id] = savedId;
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            const dbId = itemIdMapRef.current[item.id] ?? item.id;
+            if (pendingDeletesRef.current.has(item.id) || pendingDeletesRef.current.has(dbId)) continue;
+            try {
+              const savedId = await saveFinanceItem(db!, householdId, item, i);
+              if (savedId !== item.id) {
+                itemIdMapRef.current[item.id] = savedId;
+              }
+            } catch (e) {
+              console.error('Erro ao salvar item', item.id, e);
+            }
           }
-        } catch (e) {
-          console.error('Erro ao salvar item', item.id, e);
+        } finally {
+          savingRef.current = false;
         }
-      }
-    }, 1500);
+      })();
+    };
+    saveTimeoutRef.current = setTimeout(run, 1500);
   }, [items, db, householdId]);
 
   // startMonth/startYear are saved explicitly in handleReproject and handleSetStartMonth only.
