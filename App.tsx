@@ -1581,7 +1581,7 @@ const App: React.FC = () => {
 
             <div id="summary-section" className="hidden lg:block bg-zinc-900 border border-green-500/30 rounded-[40px] p-8 mt-12 mb-8 shadow-2xl overflow-hidden">
               <h3 className="text-green-400 font-black text-xl uppercase italic tracking-tighter mb-8 flex items-center gap-3"><i className="fas fa-vault"></i> Compilação Financeira</h3>
-              <div className="overflow-x-auto pb-4">
+              <div className="overflow-x-auto print:overflow-visible pb-4">
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="text-zinc-500 font-black uppercase text-[10px] tracking-widest border-b border-zinc-800">

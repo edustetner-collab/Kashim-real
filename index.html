@@ -218,7 +218,7 @@
 
       /* ---- Print / PDF da consultoria (visível só para o coach) ---- */
       @media print {
-        @page { margin: 1.5cm; }
+        @page { size: A4 landscape; margin: 0.7cm; }
         * {
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
@@ -233,11 +233,20 @@
         .k-ambient,
         #coach-pdf-btn,
         #cycle-management { display: none !important; }
-        /* Força a Compilação Financeira a aparecer (hidden lg:block → display:none em telas pequenas) */
+        /* Força a Compilação Financeira a aparecer */
         #summary-section { display: block !important; }
         /* Esconde botões interativos dentro dos blocos */
         #blocks button { display: none !important; }
+        /* Remove min-widths para caber 12 meses na folha */
+        #blocks th, #blocks td,
+        #summary-section th, #summary-section td { min-width: 0 !important; }
+        /* Reduz fonte e padding para os valores caberem na folha A4 paisagem */
+        #blocks table, #summary-section table { font-size: 8.5px !important; width: 100% !important; }
+        #blocks table th, #blocks table td,
+        #summary-section table th, #summary-section table td { padding: 3px 5px !important; }
         body { background: white !important; }
+        /* Garante que inputs/selects de dia não apareçam no PDF */
+        #blocks input, #blocks select { display: none !important; }
       }
 
       /* ---- Respect reduced motion: kill all decorative motion ---- */

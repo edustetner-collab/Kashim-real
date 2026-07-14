@@ -184,7 +184,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
   }[category];
 
   return (
-    <div id={blockTourId} className="bg-white rounded-[22px] shadow-sm border border-[#e8e8ed] overflow-hidden mb-3 mx-3">
+    <div id={blockTourId} className="bg-white rounded-[22px] shadow-sm border border-[#e8e8ed] overflow-hidden print:overflow-visible mb-3 mx-3">
 
       {/* Paid celebration toast */}
       {paidToast && (
@@ -483,7 +483,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
       })()}
 
       {/* ── MOBILE LAYOUT ─────────────────────────────────────────── */}
-      <div className="block lg:hidden bg-white divide-y divide-[#e8e8ed]">
+      <div className="block lg:hidden print:hidden bg-white divide-y divide-[#e8e8ed]">
         {items.filter(item => {
           if (item.category === CategoryType.VARIABLE_EXPENSE) {
             if (item.values[mobileMonthIdx] > 0) return true;
@@ -765,7 +765,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
       </div>
 
       {/* ── DESKTOP TABLE ──────────────────────────────────────────── */}
-      <div className="hidden lg:block overflow-x-auto">
+      <div className="hidden lg:block print:block overflow-x-auto print:overflow-visible">
         <table className="w-full text-sm text-left">
           <thead className="bg-gray-100 text-gray-700 uppercase font-semibold">
             <tr>
