@@ -732,6 +732,101 @@ const App: React.FC = () => {
   };
 
   // Ferramenta do coach (só web): remove de uma vez todas as contas fixas
+  const handleGeneratePDF = () => {
+    const clientName = coachViewClientName || 'Cliente';
+    const today = new Date().toLocaleDateString('pt-BR');
+    const fmt = (v: number) =>
+      new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+
+    const monthHeaders = months
+      .map(m => `<th>${m.monthName}<span class="year">${m.year}</span></th>`)
+      .join('');
+
+    const renderSection = (category: CategoryType, title: string, color: string) => {
+      const catItems = items.filter(i => i.category === category);
+      if (catItems.length === 0) return '';
+      const rows = catItems.map(item => {
+        const cells = months.map((_, idx) => {
+          const v = item.values[idx] || 0;
+          return `<td class="val">${v > 0 ? fmt(v) : ''}</td>`;
+        }).join('');
+        return `<tr><td class="desc">${item.description || '—'}</td>${cells}</tr>`;
+      }).join('');
+      const totals = months.map((_, idx) =>
+        `<td class="total-val">${fmt(catItems.reduce((s, i) => s + (i.values[idx] || 0), 0))}</td>`
+      ).join('');
+      return `<div class="section">
+        <h2 style="border-left:4px solid ${color}">${title}</h2>
+        <table>
+          <thead><tr><th class="desc-th">Descrição</th>${monthHeaders}</tr></thead>
+          <tbody>${rows}<tr class="total-row"><td>TOTAL</td>${totals}</tr></tbody>
+        </table></div>`;
+    };
+
+    const summaryRows = [
+      { label: 'Total de Entradas',        vals: monthlySummaries.map(s => s.totalIncome),    cls: 'income' },
+      { label: 'Faturas de Cartão',         vals: monthlySummaries.map(s => s.totalCreditCard), cls: 'credit' },
+      { label: 'Custos Fixos',              vals: monthlySummaries.map(s => s.totalFixed),      cls: 'fixed' },
+      { label: 'Custos Variáveis',          vals: monthlySummaries.map(s => s.totalVariable),   cls: 'variable' },
+      { label: 'Gastos Pessoais e Lazer',   vals: monthlySummaries.map(s => s.totalLeisure),    cls: 'leisure' },
+      { label: 'Total de Custos',           vals: monthlySummaries.map(s => s.totalCost),       cls: 'costtotal' },
+      { label: 'Saldo Mensal',              vals: monthlySummaries.map(s => s.balance),         cls: 'balance' },
+      { label: 'Acumulado',                 vals: monthlySummaries.map(s => s.accumulated),     cls: 'accumulated' },
+    ].map(row =>
+      `<tr class="sr-${row.cls}"><td>${row.label}</td>${row.vals.map(v =>
+        `<td class="val${v < 0 ? ' neg' : ''}">${fmt(v)}</td>`).join('')}</tr>`
+    ).join('');
+
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Raio-X — ${clientName}</title><style>
+@page{size:A4 landscape;margin:0.8cm}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;font-size:7.5px;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #a8e716}
+header h1{font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:-.5px}
+header p{font-size:7px;color:#666}
+.section{margin-bottom:12px}
+.section h2{font-size:8px;font-weight:900;text-transform:uppercase;letter-spacing:1px;padding:3px 6px;margin-bottom:4px;background:#f5f5f5}
+table{width:100%;border-collapse:collapse}
+th,td{border:1px solid #ddd;padding:2.5px 4px;text-align:right;white-space:nowrap}
+th{background:#f0f0f0;font-size:6.5px;font-weight:700}
+.desc-th{text-align:left;min-width:110px}
+.desc{text-align:left;max-width:140px;overflow:hidden;text-overflow:ellipsis}
+.val{font-family:monospace}
+.year{display:block;font-size:6px;color:#999;font-weight:400}
+.total-row td{background:#e8e8e8;font-weight:800;border-top:2px solid #bbb}
+.total-val{font-family:monospace;font-weight:800}
+.sr-income td{color:#15803d;font-weight:700}
+.sr-costtotal td{background:#f0f0f0;font-weight:800;border-top:2px solid #bbb}
+.sr-balance td{background:#fff7f0}
+.sr-accumulated td{background:#111;color:#a8e716;font-weight:900}
+.neg{color:#dc2626!important}
+.summary-section h2{background:#111;color:#a8e716}
+</style></head><body>
+<header>
+  <div><h1>Raio-X Financeiro — ${clientName}</h1>
+  <p>Período: ${months[0].monthName} ${months[0].year} → ${months[11].monthName} ${months[11].year}</p></div>
+  <p>Emitido em ${today} | Kashim</p>
+</header>
+${renderSection(CategoryType.INCOME,           'Entradas (Rendas)',          '#22c55e')}
+${renderSection(CategoryType.CREDIT_CARD,      'Faturas de Cartão',          '#f97316')}
+${renderSection(CategoryType.FIXED_EXPENSE,    'Contas Fixas',               '#ef4444')}
+${renderSection(CategoryType.VARIABLE_EXPENSE, 'Contas Variáveis',           '#06b6d4')}
+${renderSection(CategoryType.PERSONAL_LEISURE, 'Lazer e Gastos Pessoais',    '#a855f7')}
+<div class="section summary-section">
+  <h2>Compilação Financeira</h2>
+  <table><thead><tr><th class="desc-th">Resumo</th>${monthHeaders}</tr></thead>
+  <tbody>${summaryRows}</tbody></table>
+</div>
+</body></html>`;
+
+    const win = window.open('', '_blank', 'width=1200,height=800');
+    if (!win) { alert('Permita pop-ups para gerar o PDF.'); return; }
+    win.document.write(html);
+    win.document.close();
+    setTimeout(() => { win.focus(); win.print(); }, 400);
+  };
+
   // deixadas em branco ao montar o plano do cliente — sem valor em nenhum mês e
   // sem lançamentos. Evita apagar uma a uma.
   const handleDeleteBlankFixed = () => {
@@ -1526,7 +1621,7 @@ const App: React.FC = () => {
             {isAdmin && !isNativeApp && (
               <div id="coach-pdf-btn" className="px-3 mb-4 flex justify-end">
                 <button
-                  onClick={() => window.print()}
+                  onClick={handleGeneratePDF}
                   className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wide text-white bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 active:scale-95 transition-all shadow-sm hover:bg-zinc-800"
                   title="Gera PDF do cenário completo (Gastos Mensais + Compilação Financeira) — só visível para o coach"
                 >
