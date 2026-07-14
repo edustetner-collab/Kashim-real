@@ -49,6 +49,24 @@ export async function loadFinanceItems(
   return data.map(rowToFinanceItem);
 }
 
+// Carrega finance_items (+ partial_expenses) via service key para a visão de coach.
+// Necessário porque o RLS de partial_expenses bloqueia a leitura do JWT do coach
+// mesmo quando ele tem acesso ao finance_items via coach_access.
+export async function loadFinanceItemsForCoach(
+  authToken: string,
+  householdId: string
+): Promise<FinanceItem[]> {
+  const res = await fetch(`/api/load-finance-items?householdId=${encodeURIComponent(householdId)}`, {
+    headers: { Authorization: `Bearer ${authToken}` },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(`load-finance-items [${res.status}]: ${body.error ?? 'erro'}`);
+  }
+  const data = await res.json() as { items: unknown[] };
+  return (data.items ?? []).map(rowToFinanceItem);
+}
+
 export async function saveFinanceItem(
   db: SupabaseClient,
   householdId: string,

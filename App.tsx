@@ -10,7 +10,7 @@ import TetoGastos from './components/TetoGastos';
 import AICoach from './components/AICoach';
 import OnboardingManager from './components/onboarding/OnboardingManager';
 import { useSupabase } from './lib/useSupabase';
-import { getOrCreateHousehold, getHousehold, loadFinanceItems, saveFinanceItem, deleteFinanceItem, addPartialExpense, deletePartialExpense, loadGoals, loadTetoColumns, saveTetoColumns } from './lib/db';
+import { getOrCreateHousehold, getHousehold, loadFinanceItems, loadFinanceItemsForCoach, saveFinanceItem, deleteFinanceItem, addPartialExpense, deletePartialExpense, loadGoals, loadTetoColumns, saveTetoColumns } from './lib/db';
 import { processInviteFromUrl } from './lib/invites';
 import InvitePartner from './components/InvitePartner';
 import CoachDashboard from './components/CoachDashboard';
@@ -388,9 +388,12 @@ const App: React.FC = () => {
         itemIdMapRef.current = {};
         pendingDeletesRef.current.clear();
         setHouseholdId(coachViewHouseholdId!);
+        // Usa service key (via API) para carregar finance_items + partial_expenses
+        // porque o RLS do Supabase bloqueia partial_expenses para o JWT do coach.
+        const authToken = await getToken({ template: 'supabase' });
         const [household, dbItems] = await Promise.all([
           getHousehold(db!, coachViewHouseholdId!),
-          loadFinanceItems(db!, coachViewHouseholdId!),
+          loadFinanceItemsForCoach(authToken!, coachViewHouseholdId!),
         ]);
         if (household?.start_month != null) setStartMonth(household.start_month);
         if (household?.start_year != null) setStartYear(household.start_year);
