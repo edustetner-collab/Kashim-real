@@ -190,7 +190,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const retry = await fetch(INVITES, { method: 'POST', headers: clerkHeaders, body: inviteBody });
         if (retry.ok) inviteUrl = (await retry.json()).url ?? null;
       }
-      // Sem convite pendente para revogar = ela JÁ tem conta no Clerk: é só logar
+
+      // Sem convite pendente = ela JÁ tem conta no Clerk (mas pode não ter senha
+      // / nunca ter entrado). Gera um LINK MÁGICO de acesso direto, igual aos
+      // clientes — ela clica e entra sem precisar de senha.
+      if (!inviteUrl) {
+        const usersRes = await fetch(
+          `https://api.clerk.com/v1/users?email_address=${encodeURIComponent(cleanEmail)}`,
+          { headers: clerkHeaders }
+        );
+        if (usersRes.ok) {
+          const users = await usersRes.json();
+          const arr: any[] = Array.isArray(users) ? users : (users.data ?? []);
+          const userId = arr[0]?.id;
+          if (userId) {
+            const tokenRes = await fetch('https://api.clerk.com/v1/sign_in_tokens', {
+              method: 'POST',
+              headers: clerkHeaders,
+              body: JSON.stringify({ user_id: userId, expires_in_seconds: 7 * 24 * 60 * 60 }),
+            });
+            if (tokenRes.ok) {
+              const t = (await tokenRes.json()).token;
+              if (t) inviteUrl = `https://app.kashim.com.br?sign_in_token=${t}`;
+            }
+          }
+        }
+      }
+
       if (!inviteUrl) alreadyHasAccount = true;
     }
 
