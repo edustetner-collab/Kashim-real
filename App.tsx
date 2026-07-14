@@ -1483,19 +1483,6 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            {/* Ferramenta do coach (só admin, só web): limpar contas fixas em branco */}
-            {isAdmin && !isNativeApp && (
-              <div className="px-3 mb-2 flex justify-end">
-                <button
-                  onClick={handleDeleteBlankFixed}
-                  className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wide text-[#ff3b30] bg-[#fff0f0] border border-[rgba(255,59,48,0.25)] rounded-xl px-3 py-2 active:scale-95 transition-all"
-                  title="Remove todas as contas fixas sem valor (visível só para o coach)"
-                >
-                  <i className="fas fa-broom text-xs"></i> Limpar contas fixas em branco
-                </button>
-              </div>
-            )}
-
             <div id="blocks" className="k-stagger">
               {[
                 { title: "ENTRADAS (Rendas)", type: CategoryType.INCOME },
@@ -1504,8 +1491,20 @@ const App: React.FC = () => {
                 { title: "CONTAS VARIÁVEIS", type: CategoryType.VARIABLE_EXPENSE },
                 { title: "LAZER E GASTOS PESSOAIS", type: CategoryType.PERSONAL_LEISURE }
               ].map(block => (
+                <React.Fragment key={block.type}>
+                {isAdmin && !isNativeApp && block.type === CategoryType.FIXED_EXPENSE && (
+                  <div className="px-3 mb-2 flex justify-end">
+                    <button
+                      onClick={handleDeleteBlankFixed}
+                      className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wide text-[#ff3b30] bg-[#fff0f0] border border-[rgba(255,59,48,0.25)] rounded-xl px-3 py-2 active:scale-95 transition-all"
+                      title="Remove só as contas fixas 100% em branco — zeradas em TODOS os meses (visível só para o coach)"
+                    >
+                      <i className="fas fa-broom text-xs"></i> Limpar contas fixas em branco
+                    </button>
+                  </div>
+                )}
                 <BlockSection
-                  key={block.type} title={block.title} subtitle={block.subtitle} category={block.type}
+                  title={block.title} subtitle={block.subtitle} category={block.type}
                   items={items.filter(i => i.category === block.type)} allCards={allCards} months={months}
                   totalIncome={monthlySummaries[0].totalIncome}
                   mobileMonthIdx={mobileMonthIdx}
@@ -1524,6 +1523,7 @@ const App: React.FC = () => {
                     : undefined}
                   onAddLeisureItem={block.type === CategoryType.PERSONAL_LEISURE ? handleAddLeisureItem : undefined}
                 />
+                </React.Fragment>
               ))}
             </div>
 
