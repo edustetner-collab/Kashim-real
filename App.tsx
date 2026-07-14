@@ -19,6 +19,7 @@ import SubscriptionGate from './components/SubscriptionGate';
 import OnboardingWizard, { WizardResult } from './components/OnboardingWizard';
 import Desempenho from './components/Desempenho';
 import Metas from './components/Metas';
+import Dividas from './components/Dividas';
 import MondayQuote from './components/MondayQuote';
 import AmbientBackground from './components/AmbientBackground';
 import MoneyCountUp from './components/MoneyCountUp';
@@ -160,7 +161,7 @@ const App: React.FC = () => {
   const [showProjectionModal, setShowProjectionModal] = useState(false);
   const [pendingStartMonth, setPendingStartMonth] = useState<{month: number, year: number} | null>(null);
   const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '' });
-  const [activeTab, setActiveTab] = useState<'plan' | 'teto' | 'metas' | 'desempenho'>('plan');
+  const [activeTab, setActiveTab] = useState<'plan' | 'teto' | 'metas' | 'desempenho' | 'dividas'>('plan');
   const [goals, setGoals] = useState<Goal[]>(() => {
     try { return JSON.parse(localStorage.getItem('kashim_goals') || '[]'); } catch { return []; }
   });
@@ -1385,6 +1386,7 @@ const App: React.FC = () => {
             <button onClick={() => setActiveTab('plan')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'plan' ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#6e6e73] hover:text-[#1d1d1f]'}`}>Gastos Mensais</button>
             <button id="tab-gastos-frequentes" onClick={() => setActiveTab('teto')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'teto' ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#6e6e73] hover:text-[#1d1d1f]'}`}>Gastos Frequentes</button>
             <button onClick={() => setActiveTab('metas')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'metas' ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#6e6e73] hover:text-[#1d1d1f]'}`}>Metas</button>
+            <button onClick={() => setActiveTab('dividas')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'dividas' ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#6e6e73] hover:text-[#1d1d1f]'}`}>Dívidas</button>
             <button onClick={() => setActiveTab('desempenho')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'desempenho' ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#6e6e73] hover:text-[#1d1d1f]'}`}>Desempenho</button>
             {coachViewHouseholdId && (
               <div className="flex items-center gap-2 bg-[#f0fad0] border border-[rgba(122,184,0,0.3)] px-3 py-1.5 rounded-xl">
@@ -1443,6 +1445,8 @@ const App: React.FC = () => {
           <Desempenho summary={monthlySummaries[mobileMonthIdx]} summaries={monthlySummaries.slice(0, mobileMonthIdx + 1)} items={items} goals={goals} />
         ) : activeTab === 'metas' ? (
           <Metas goals={goals} onGoalsChange={handleGoalsChange} db={db} householdId={householdId} />
+        ) : activeTab === 'dividas' ? (
+          <Dividas householdId={householdId} />
         ) : activeTab === 'plan' ? (
           <>
             <div id="stets"><AICoach summary={monthlySummaries[mobileMonthIdx]} items={items} monthName={months[mobileMonthIdx].monthName} onExpenseDetected={handleExpenseDetected} tetoColumns={tetoColumns} /></div>
@@ -1708,6 +1712,16 @@ const App: React.FC = () => {
                 <i className={`fas fa-bullseye text-lg ${activeTab === 'metas' ? 'k-glow-lime' : ''}`}></i>
               </div>
               <span className="text-[9px] font-black uppercase tracking-wide">Metas</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('dividas')}
+              className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'dividas' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
+            >
+              <div className={`w-7 h-7 flex items-center justify-center rounded-[9px] transition-all ${activeTab === 'dividas' ? 'bg-[#f0fad0]' : ''}`}>
+                <i className={`fas fa-file-invoice-dollar text-lg ${activeTab === 'dividas' ? 'k-glow-lime' : ''}`}></i>
+              </div>
+              <span className="text-[9px] font-black uppercase tracking-wide">Dívidas</span>
             </button>
 
             {currentWeekQuote && (
