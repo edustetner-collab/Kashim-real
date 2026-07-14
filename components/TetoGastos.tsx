@@ -9,6 +9,9 @@ interface TetoGastosProps {
   items: FinanceItem[];
   currentMonthIdx: number;
   currentYear: number;
+  // Slots do plano (0-11 a partir do mês inicial). Necessário porque
+  // item.values[] é indexado por SLOT, não pelo mês do calendário.
+  months: { index: number; year: number }[];
   onAddPartial: (itemId: string, expense: PartialExpense, year?: number, month?: number) => void;
   onRemovePartial: (itemId: string, expenseId: string) => void;
   db?: SupabaseClient | null;
@@ -25,7 +28,7 @@ function isRecurringItem(item: FinanceItem): boolean {
   return item.category === CategoryType.PERSONAL_LEISURE || item.category === CategoryType.VARIABLE_EXPENSE;
 }
 
-const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, currentYear, onAddPartial, onRemovePartial, db, householdId }) => {
+const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, currentYear, months, onAddPartial, onRemovePartial, db, householdId }) => {
   const currentMonthKey = `${currentYear}-${currentMonthIdx}`;
   const [selectedMonthKey, setSelectedMonthKey] = useState(currentMonthKey);
   const [columnsLoaded, setColumnsLoaded] = useState(false);
@@ -55,6 +58,14 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
   const isHistoricalView = selectedMonthKey !== currentMonthKey;
   const monthKey = selectedMonthKey;
+
+  // Slot do plano correspondente ao mês selecionado. O teto vem de
+  // item.values[slot] — usar o mês do calendário aqui puxava o teto do mês
+  // errado (ex.: teto de julho aparecia como o de outro mês). Bug 2026-07-11.
+  const tetoSlotIdx = useMemo(() => {
+    const [selYear, selMonth] = monthKey.split('-').map(Number);
+    return months.findIndex(m => m.year === selYear && m.index === selMonth);
+  }, [months, monthKey]);
 
   const [columns, setColumns] = useState<ColumnData[]>([]);
 
@@ -428,7 +439,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
         ))}
         {displayColumns.map((col, colIdx) => {
           const linkedItem = items.find(i => i.id === col.linkedItemId);
-          const teto = linkedItem ? (linkedItem.values[currentMonthIdx] || 0) : 0;
+          const teto = linkedItem && tetoSlotIdx >= 0 ? (linkedItem.values[tetoSlotIdx] || 0) : 0;
           const partials = linkedItem?.partialExpenses?.[monthKey] || [];
           const totalSpent = partials.reduce((acc, p) => acc + p.value, 0);
           const isOverLimit = totalSpent > teto && teto > 0;

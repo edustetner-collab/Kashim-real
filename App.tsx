@@ -1582,7 +1582,7 @@ const App: React.FC = () => {
             </div>
           </>
         ) : (
-          <TetoGastos items={items} currentMonthIdx={currentActualMonth} currentYear={currentActualYear} onAddPartial={handleAddPartial} onRemovePartial={handleRemovePartial} db={db} householdId={householdId} />
+          <TetoGastos items={items} currentMonthIdx={currentActualMonth} currentYear={currentActualYear} months={months} onAddPartial={handleAddPartial} onRemovePartial={handleRemovePartial} db={db} householdId={householdId} />
         )}
       </main>
 
