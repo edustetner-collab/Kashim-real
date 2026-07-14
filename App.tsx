@@ -27,6 +27,7 @@ import { useTilt } from './lib/useTilt';
 import { computeAccess, AccessInfo } from './lib/access';
 import { Quote, getQuoteForUser, getMondayKey } from './lib/quotes';
 import { refreshNotifications } from './lib/notifications';
+import { getNotifPrefs } from './lib/notifPrefs';
 import TermsGate from './components/TermsGate';
 import { hasAcceptedTerms, recordTermsAcceptance } from './lib/terms';
 
@@ -332,13 +333,14 @@ const App: React.FC = () => {
   // contas a vencer). Debounce porque `items` muda a cada edição — não faz
   // sentido martelar o bridge nativo a cada tecla. Espera o aceite dos termos:
   // o prompt de permissão do sistema não pode aparecer por cima do consentimento.
+  const [notifPrefsVersion, setNotifPrefsVersion] = useState(0);
   useEffect(() => {
-    if (!householdId || coachViewHouseholdId || needsTermsAcceptance) return;
+    if (!householdId || coachViewHouseholdId || needsTermsAcceptance || !user) return;
     const t = setTimeout(() => {
-      refreshNotifications({ householdId, items, months });
+      refreshNotifications({ userId: user.id, householdId, items, months });
     }, 2500);
     return () => clearTimeout(t);
-  }, [householdId, coachViewHouseholdId, needsTermsAcceptance, items, months]);
+  }, [householdId, coachViewHouseholdId, needsTermsAcceptance, items, months, user, notifPrefsVersion]);
 
   useEffect(() => {
     if (!householdId) return;
@@ -1175,6 +1177,7 @@ const App: React.FC = () => {
           currentMonthIdx={months[mobileMonthIdx].index}
           currentYear={months[mobileMonthIdx].year}
           subscriptionStatus={subscriptionStatus}
+          onNotifPrefsChange={() => setNotifPrefsVersion(v => v + 1)}
         />
       ) : showSettings && dbLoading ? (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowSettings(false)}>
@@ -1626,7 +1629,7 @@ const App: React.FC = () => {
             </div>
           </>
         ) : (
-          <TetoGastos items={items} currentMonthIdx={currentActualMonth} currentYear={currentActualYear} months={months} onAddPartial={handleAddPartial} onRemovePartial={handleRemovePartial} db={db} householdId={householdId} />
+          <TetoGastos items={items} currentMonthIdx={currentActualMonth} currentYear={currentActualYear} months={months} onAddPartial={handleAddPartial} onRemovePartial={handleRemovePartial} db={db} householdId={householdId} tetoAlert={user ? (() => { const p = getNotifPrefs(user.id); return { enabled: p.tetoAlert, pct: p.tetoPct }; })() : undefined} />
         )}
       </main>
 

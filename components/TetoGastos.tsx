@@ -16,6 +16,8 @@ interface TetoGastosProps {
   onRemovePartial: (itemId: string, expenseId: string) => void;
   db?: SupabaseClient | null;
   householdId?: string | null;
+  // Alerta de teto: aviso na tela quando um gasto cruza X% do teto
+  tetoAlert?: { enabled: boolean; pct: number };
 }
 
 interface ColumnData {
@@ -28,7 +30,7 @@ function isRecurringItem(item: FinanceItem): boolean {
   return item.category === CategoryType.PERSONAL_LEISURE || item.category === CategoryType.VARIABLE_EXPENSE;
 }
 
-const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, currentYear, months, onAddPartial, onRemovePartial, db, householdId }) => {
+const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, currentYear, months, onAddPartial, onRemovePartial, db, householdId, tetoAlert }) => {
   const currentMonthKey = `${currentYear}-${currentMonthIdx}`;
   const [selectedMonthKey, setSelectedMonthKey] = useState(currentMonthKey);
   const [columnsLoaded, setColumnsLoaded] = useState(false);
@@ -68,6 +70,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   }, [months, monthKey]);
 
   const [columns, setColumns] = useState<ColumnData[]>([]);
+  const [tetoAlertData, setTetoAlertData] = useState<{ name: string; pct: number; teto: number; spent: number } | null>(null);
 
   // Isolamento de perfil: limpa estado e refs ao trocar de householdId
   // Sem isso, colunas de um cliente vazam para outro via localStorage ou estado residual
@@ -305,6 +308,21 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       description: desc || linkedItem?.description || 'Gasto',
       value: parsed,
     };
+
+    // Alerta de teto: dispara só quando ESTE gasto cruza o limite (não repete
+    // nos lançamentos seguintes do mesmo mês).
+    if (tetoAlert?.enabled && linkedItem && tetoSlotIdx >= 0) {
+      const teto = linkedItem.values[tetoSlotIdx] || 0;
+      if (teto > 0) {
+        const before = (linkedItem.partialExpenses?.[monthKey] || []).reduce((a, p) => a + p.value, 0);
+        const after = before + parsed;
+        const limit = teto * (tetoAlert.pct / 100);
+        if (after >= limit && before < limit) {
+          setTetoAlertData({ name: linkedItem.description || 'este gasto', pct: Math.round((after / teto) * 100), teto, spent: after });
+        }
+      }
+    }
+
     onAddPartial(itemId, expense, currentYear, currentMonthIdx);
     if (valueInputRefs.current[colId]) valueInputRefs.current[colId]!.value = '';
     setEntryDescriptions(prev => ({ ...prev, [colId]: '' }));
@@ -359,6 +377,30 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
   return (
     <div className="p-3 lg:p-6 animate-in fade-in zoom-in-95 duration-500">
+      {/* Pop-up de alerta de teto */}
+      {tetoAlertData && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setTetoAlertData(null)}>
+          <div className="w-full max-w-sm bg-zinc-900 border border-orange-500/40 rounded-3xl p-6 shadow-2xl text-center" onClick={e => e.stopPropagation()}>
+            <div className="w-16 h-16 rounded-full bg-orange-500/10 border border-orange-500/30 flex items-center justify-center mx-auto mb-4">
+              <i className="fas fa-triangle-exclamation text-2xl text-orange-400"></i>
+            </div>
+            <h3 className="text-white text-lg font-black italic uppercase tracking-tighter mb-2">Atenção ao teto!</h3>
+            <p className="text-zinc-400 text-sm leading-relaxed mb-5">
+              Você já usou <span className="text-orange-400 font-black">{tetoAlertData.pct}%</span> do seu teto de{' '}
+              <span className="text-white font-bold">{tetoAlertData.name}</span> este mês
+              ({formatCurrency(tetoAlertData.spent)} de {formatCurrency(tetoAlertData.teto)}). Pise no freio para não estourar.
+            </p>
+            <button
+              onClick={() => setTetoAlertData(null)}
+              className="w-full text-black font-black py-3.5 rounded-2xl text-xs uppercase tracking-widest active:scale-95 transition-all"
+              style={{ background: 'linear-gradient(90deg, #fb923c, #f97316)' }}
+            >
+              Entendi
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="mb-4 flex items-center gap-2">
         <div className="relative">
           <select

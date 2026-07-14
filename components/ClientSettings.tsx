@@ -5,6 +5,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { NotificationPrefs, SummaryData } from '../types';
 import { saveNotificationPrefs, loadNotificationPrefs } from '../lib/db';
 import { MONTHS_BR } from '../constants';
+import { NotifPrefs, getNotifPrefs, saveNotifPrefs } from '../lib/notifPrefs';
 import InvitePartner from './InvitePartner';
 
 interface ClientSettingsProps {
@@ -15,6 +16,8 @@ interface ClientSettingsProps {
   currentMonthIdx?: number;
   currentYear?: number;
   subscriptionStatus?: string | null;
+  // Avisa o App que as preferências de notificação mudaram (reprograma agenda)
+  onNotifPrefsChange?: () => void;
 }
 
 type PasswordView = 'idle' | 'set' | 'change';
@@ -29,7 +32,7 @@ const DEFAULT_PREFS: NotificationPrefs = {
 
 const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
 
-const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClose, summary, currentMonthIdx, currentYear, subscriptionStatus }) => {
+const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClose, summary, currentMonthIdx, currentYear, subscriptionStatus, onNotifPrefsChange }) => {
   const { user } = useUser();
   const { signOut } = useClerk();
   const { signIn, setActive } = useSignIn();
@@ -75,6 +78,15 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
   // Notification preferences
   const [prefs, setPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS);
   const [prefsLoading, setPrefsLoading] = useState(false);
+  // Preferências de notificação local (frase, contas, teto, atualização)
+  const [notif, setNotif] = useState<NotifPrefs>(() => user ? getNotifPrefs(user.id) : { weeklyQuote: true, bills: true, tetoAlert: true, tetoPct: 80, updateDays: 0 });
+  const updateNotif = (patch: Partial<NotifPrefs>) => {
+    if (!user) return;
+    const next = { ...notif, ...patch };
+    setNotif(next);
+    saveNotifPrefs(user.id, next);
+    onNotifPrefsChange?.();
+  };
   const [digestSending, setDigestSending] = useState(false);
   const [digestSent, setDigestSent] = useState(false);
 
@@ -518,81 +530,78 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
             <h3 className="text-white font-black uppercase italic tracking-tight mb-1 flex items-center gap-2">
               <i className="fas fa-bell text-green-400"></i>Notificações
             </h3>
-            <p className="text-zinc-500 text-xs mb-6">Escolha como o Kashim se comunica com você.</p>
+            <p className="text-zinc-500 text-xs mb-6">Ligue ou desligue os avisos do Kashim.</p>
 
             <ToggleRow
-              label="Resumo semanal por e-mail"
-              sublabel="Receba um resumo do seu mês no seu e-mail"
-              value={prefs.weeklyEmail}
-              onChange={v => handleSavePrefs({ ...prefs, weeklyEmail: v })}
+              label="Frase da semana"
+              sublabel="Toda segunda de manhã, uma mensagem de foco financeiro"
+              value={notif.weeklyQuote}
+              onChange={v => updateNotif({ weeklyQuote: v })}
             />
-
-            {prefs.weeklyEmail && (
-              <div className="mb-3 mt-2">
-                <button
-                  onClick={handleSendDigest}
-                  disabled={digestSending || !summary}
-                  className={`w-full py-3 rounded-2xl text-sm font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${digestSent ? 'bg-green-600 text-white' : 'bg-zinc-800 border border-zinc-700 text-zinc-300 hover:text-white hover:border-green-500'}`}
-                >
-                  {digestSending ? <><i className="fas fa-circle-notch animate-spin"></i> Enviando...</>
-                  : digestSent ? <><i className="fas fa-check"></i> Enviado!</>
-                  : <><i className="fas fa-paper-plane text-green-400"></i> Enviar resumo agora</>}
-                </button>
-              </div>
-            )}
 
             <ToggleRow
-              label="Alertas de teto de gasto"
-              sublabel={`Avisar quando uma categoria atingir ${prefs.alertThresholdPct}% do teto`}
-              value={prefs.pushEnabled}
-              onChange={v => handleSavePrefs({ ...prefs, pushEnabled: v })}
+              label="Lembrete de contas a vencer"
+              sublabel="No dia do vencimento, aviso das contas ainda não pagas"
+              value={notif.bills}
+              onChange={v => updateNotif({ bills: v })}
             />
 
-            {prefs.pushEnabled && (
-              <div className="mb-4">
+            <ToggleRow
+              label="Alerta de teto de gasto"
+              sublabel={`Aviso na tela quando um gasto atingir ${notif.tetoPct}% do teto`}
+              value={notif.tetoAlert}
+              onChange={v => updateNotif({ tetoAlert: v })}
+            />
+
+            {notif.tetoAlert && (
+              <div className="mb-4 mt-2">
                 <label className="text-zinc-500 text-[10px] font-black uppercase tracking-widest block mb-2">
-                  Alertar em {prefs.alertThresholdPct}% do teto
+                  Avisar em {notif.tetoPct}% do teto
                 </label>
                 <input
                   type="range" min="50" max="100" step="5"
-                  value={prefs.alertThresholdPct}
-                  onChange={e => handleSavePrefs({ ...prefs, alertThresholdPct: Number(e.target.value) })}
+                  value={notif.tetoPct}
+                  onChange={e => updateNotif({ tetoPct: Number(e.target.value) })}
                   className="w-full accent-green-400"
                 />
                 <div className="flex justify-between text-[9px] text-zinc-600 font-mono mt-0.5">
-                  <span>50%</span><span className="text-green-400 font-black">{prefs.alertThresholdPct}%</span><span>100%</span>
+                  <span>50%</span><span className="text-green-400 font-black">{notif.tetoPct}%</span><span>100%</span>
                 </div>
               </div>
             )}
 
             <ToggleRow
-              label="Lembrete de lançamentos recorrentes"
-              sublabel={`Lembrar no dia ${prefs.recurringReminderDay} se itens recorrentes não foram lançados`}
-              value={!!prefs.recurringReminderDay}
-              onChange={v => handleSavePrefs({ ...prefs, recurringReminderDay: v ? 20 : 0 })}
+              label="Lembrete de atualização"
+              sublabel="Notificação periódica para você manter os dados em dia"
+              value={notif.updateDays > 0}
+              onChange={v => updateNotif({ updateDays: v ? 7 : 0 })}
             />
 
-            {prefs.recurringReminderDay > 0 && (
+            {notif.updateDays > 0 && (
               <div className="mt-2 mb-2">
                 <label className="text-zinc-500 text-[10px] font-black uppercase tracking-widest block mb-2">
-                  Lembrar no dia {prefs.recurringReminderDay}
+                  A cada {notif.updateDays} dias
                 </label>
-                <input
-                  type="range" min="1" max="28" step="1"
-                  value={prefs.recurringReminderDay}
-                  onChange={e => handleSavePrefs({ ...prefs, recurringReminderDay: Number(e.target.value) })}
-                  className="w-full accent-green-400"
-                />
-                <div className="flex justify-between text-[9px] text-zinc-600 font-mono mt-0.5">
-                  <span>Dia 1</span><span className="text-green-400 font-black">Dia {prefs.recurringReminderDay}</span><span>Dia 28</span>
+                <div className="flex gap-2">
+                  {[7, 10, 15, 30].map(d => (
+                    <button
+                      key={d}
+                      onClick={() => updateNotif({ updateDays: d })}
+                      className={`flex-1 py-2 rounded-xl text-xs font-black transition-all border ${notif.updateDays === d ? 'bg-green-500 text-black border-green-500' : 'bg-zinc-800 text-zinc-400 border-zinc-700'}`}
+                    >
+                      {d} dias
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
 
-            {prefsLoading && (
-              <div className="flex items-center gap-2 mt-4 text-zinc-500 text-xs">
-                <i className="fas fa-circle-notch animate-spin"></i> Salvando...
-              </div>
+            {!isNativeApp && (
+              <p className="text-zinc-600 text-[11px] mt-5 leading-relaxed">
+                <i className="fas fa-circle-info mr-1"></i>
+                As notificações no celular (frase, contas e atualização) chegam pelo
+                aplicativo instalado. O alerta de teto aparece aqui na tela.
+              </p>
             )}
           </div>
         )}

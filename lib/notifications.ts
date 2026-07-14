@@ -12,9 +12,11 @@ import { isNativeApp } from './onboarding/platform';
 import { getQuoteForDate } from './quotes';
 import { formatCurrency } from '../constants';
 import { FinanceItem, CategoryType } from '../types';
+import { getNotifPrefs } from './notifPrefs';
 
 const NOTIF_HOUR_QUOTE = 8;
 const NOTIF_HOUR_BILL = 9;      // separado da frase para não empilhar às segundas
+const NOTIF_HOUR_UPDATE = 10;   // lembrete de atualização
 const ANDROID_CHANNEL = 'kashim-avisos';
 const BODY_MAX = 240;
 
@@ -23,6 +25,9 @@ const QUOTE_ID_BASE = 720000;
 const QUOTE_ID_RANGE = 1000;
 const BILL_ID_BASE = 730000;
 const BILL_ID_RANGE = 1000;
+const UPDATE_ID_BASE = 740000;
+const UPDATE_ID_RANGE = 1000;
+const UPDATE_OCCURRENCES = 8;   // quantos lembretes de atualização pré-agendar
 
 // iOS descarta silenciosamente notificações pendentes acima de 64 por app.
 // Reservamos folga: até 10 frases + até 48 contas = 58.
@@ -138,26 +143,55 @@ function buildBillNotifications(items: FinanceItem[], months: MonthSlot[]): Sche
   }));
 }
 
-// Ponto de entrada único: pede permissão uma vez e reprograma tudo. Idempotente
-// e silencioso na web, sem permissão, ou se o plugin não existir (build antigo).
+// Lembrete "atualize seus dados" a cada N dias, às 10h.
+function buildUpdateReminders(everyDays: number): ScheduledNotification[] {
+  if (everyDays <= 0) return [];
+  const out: ScheduledNotification[] = [];
+  const now = new Date();
+  const cursor = new Date(now);
+  cursor.setHours(NOTIF_HOUR_UPDATE, 0, 0, 0);
+  cursor.setDate(cursor.getDate() + everyDays);
+  for (let i = 0; i < UPDATE_OCCURRENCES; i++) {
+    out.push({
+      id: UPDATE_ID_BASE + i,
+      title: 'Kashim · mantenha seu plano em dia',
+      body: 'Não esqueça de atualizar o sistema com seus gastos. Manter a frequência é o que faz o plano funcionar.',
+      channelId: ANDROID_CHANNEL,
+      schedule: { at: new Date(cursor), allowWhileIdle: true },
+    });
+    cursor.setDate(cursor.getDate() + everyDays);
+  }
+  return out;
+}
+
+// Ponto de entrada único: pede permissão uma vez e reprograma tudo, respeitando
+// as preferências do cliente. Idempotente e silencioso na web, sem permissão, ou
+// se o plugin não existir (build antigo).
 export async function refreshNotifications(params: {
+  userId: string;
   householdId: string;
   items: FinanceItem[];
   months: MonthSlot[];
 }): Promise<void> {
-  const { householdId, items, months } = params;
+  const { userId, householdId, items, months } = params;
   if (!isNativeApp || !householdId) return;
+
+  const prefs = getNotifPrefs(userId);
 
   try {
     if (!(await ensurePermission())) return;
     await ensureChannel();
 
+    // Sempre cancela as três faixas antes de reprogramar — assim, desligar uma
+    // preferência realmente remove os agendamentos daquele tipo.
     await cancelRange(QUOTE_ID_BASE, QUOTE_ID_RANGE);
     await cancelRange(BILL_ID_BASE, BILL_ID_RANGE);
+    await cancelRange(UPDATE_ID_BASE, UPDATE_ID_RANGE);
 
     const notifications = [
-      ...buildQuoteNotifications(householdId),
-      ...buildBillNotifications(items, months),
+      ...(prefs.weeklyQuote ? buildQuoteNotifications(householdId) : []),
+      ...(prefs.bills ? buildBillNotifications(items, months) : []),
+      ...buildUpdateReminders(prefs.updateDays),
     ];
     if (notifications.length > 0) {
       await LocalNotifications.schedule({ notifications });
