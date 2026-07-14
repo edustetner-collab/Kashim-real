@@ -1075,6 +1075,21 @@ const BlockSection: React.FC<BlockSectionProps> = ({
               </tr>
             </tfoot>
           )}
+          {category === CategoryType.FIXED_EXPENSE && items.length > 0 && (
+            <tfoot>
+              <tr className="bg-red-50/50 border-t-2 border-red-200">
+                <td className="p-3"></td>
+                <td className="p-3 font-black text-xs uppercase text-red-500 tracking-widest">
+                  <i className="fas fa-file-invoice-dollar mr-2"></i>Total Contas Fixas
+                </td>
+                {months.map((_, mIdx) => (
+                  <td key={mIdx} className="p-3 text-center border-l font-black font-mono text-red-500">
+                    {formatCurrency(items.reduce((sum, i) => sum + (i.values[mIdx] || 0), 0))}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
     </div>

@@ -122,17 +122,22 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
     setColumns(prev => {
       const alreadyLinked = new Set(prev.map(c => c.linkedItemId).filter(Boolean));
-      const isExpenseCategory = (item: FinanceItem) =>
-        item.category === CategoryType.VARIABLE_EXPENSE ||
-        item.category === CategoryType.PERSONAL_LEISURE;
-      const hasActivity = (item: FinanceItem) =>
-        item.category === CategoryType.PERSONAL_LEISURE ||
-        Object.values(item.partialExpenses ?? {}).some(arr => (arr as PartialExpense[]).length > 0);
-      const toAdd = items.filter(item =>
-        isExpenseCategory(item) &&
-        hasActivity(item) &&
-        !alreadyLinked.has(item.id)
-      );
+      // Contas fixas que "gastam ao longo do mês" e merecem card de teto quando
+      // preenchidas: mercado e gasolina. Lazer sempre tem card. Variáveis só
+      // quando já têm lançamentos. Demais contas fixas NÃO criam card automático.
+      const TETO_FIXED_KEYWORDS = ['mercado', 'gasolina'];
+      const isTetoWorthy = (item: FinanceItem): boolean => {
+        if (item.category === CategoryType.PERSONAL_LEISURE) return true;
+        if (item.category === CategoryType.VARIABLE_EXPENSE) {
+          return Object.values(item.partialExpenses ?? {}).some(arr => (arr as PartialExpense[]).length > 0);
+        }
+        if (item.category === CategoryType.FIXED_EXPENSE) {
+          const desc = item.description.toLowerCase();
+          return TETO_FIXED_KEYWORDS.some(k => desc.includes(k)) && item.values.some(v => v > 0);
+        }
+        return false;
+      };
+      const toAdd = items.filter(item => isTetoWorthy(item) && !alreadyLinked.has(item.id));
       if (toAdd.length === 0) return prev;
       const updatedPrev = prev.map(col => {
         if (col.linkedItemId) return col;

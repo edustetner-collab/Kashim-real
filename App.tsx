@@ -695,6 +695,33 @@ const App: React.FC = () => {
     setItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
   };
 
+  // Ferramenta do coach (só web): remove de uma vez todas as contas fixas
+  // deixadas em branco ao montar o plano do cliente — sem valor em nenhum mês e
+  // sem lançamentos. Evita apagar uma a uma.
+  const handleDeleteBlankFixed = () => {
+    const isBlank = (i: FinanceItem) =>
+      i.category === CategoryType.FIXED_EXPENSE &&
+      !i.values.some(v => v > 0) &&
+      !i.paidStatus.some(Boolean) &&
+      !(i.partialExpenses && Object.values(i.partialExpenses).some(arr => (arr?.length ?? 0) > 0));
+    const blanks = items.filter(isBlank);
+    if (blanks.length === 0) return;
+    if (!confirm(`Excluir ${blanks.length} conta(s) fixa(s) em branco deste cliente?`)) return;
+    for (const item of blanks) {
+      const dbId = itemIdMapRef.current[item.id] ?? item.id;
+      pendingDeletesRef.current.add(item.id);
+      pendingDeletesRef.current.add(dbId);
+      if (db) {
+        deleteFinanceItem(db, dbId).catch(console.error).finally(() => {
+          pendingDeletesRef.current.delete(item.id);
+          pendingDeletesRef.current.delete(dbId);
+        });
+      }
+    }
+    const blankIds = new Set(blanks.map(b => b.id));
+    setItems(prev => prev.filter(i => !blankIds.has(i.id)));
+  };
+
   const handleAddPartial = (itemId: string, expense: PartialExpense, overrideYear?: number, overrideMonth?: number) => {
     // Always record in the month the expense actually happened.
     // The credit card "fatura" month is informational only (shown as a label in TetoGastos).
@@ -1456,6 +1483,19 @@ const App: React.FC = () => {
               </div>
             </div>
 
+            {/* Ferramenta do coach (só admin, só web): limpar contas fixas em branco */}
+            {isAdmin && !isNativeApp && (
+              <div className="px-3 mb-2 flex justify-end">
+                <button
+                  onClick={handleDeleteBlankFixed}
+                  className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wide text-[#ff3b30] bg-[#fff0f0] border border-[rgba(255,59,48,0.25)] rounded-xl px-3 py-2 active:scale-95 transition-all"
+                  title="Remove todas as contas fixas sem valor (visível só para o coach)"
+                >
+                  <i className="fas fa-broom text-xs"></i> Limpar contas fixas em branco
+                </button>
+              </div>
+            )}
+
             <div id="blocks" className="k-stagger">
               {[
                 { title: "ENTRADAS (Rendas)", type: CategoryType.INCOME },
@@ -1524,6 +1564,10 @@ const App: React.FC = () => {
                     <tr className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
                       <td className="p-4 font-bold text-zinc-300">Gastos Pessoais e Lazer</td>
                       {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-purple-400/80 font-mono">{formatCurrency(s.totalLeisure)}</td>)}
+                    </tr>
+                    <tr className="border-b border-zinc-800 bg-zinc-800/20">
+                      <td className="p-4 font-black text-zinc-200 uppercase italic">Total de Custos</td>
+                      {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-red-400 font-mono font-black whitespace-nowrap">{formatCurrency(s.totalCost)}</td>)}
                     </tr>
                     <tr className="border-b-2 border-zinc-800 bg-zinc-950/20">
                       <td className="p-4 font-black text-white uppercase italic">Sobras / Faltas</td>
