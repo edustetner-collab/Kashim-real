@@ -502,8 +502,9 @@ const BlockSection: React.FC<BlockSectionProps> = ({
           const isPaid = item.paidStatus[mobileMonthIdx];
           const isIncome = category === CategoryType.INCOME;
 
+          const canReplicate = category === CategoryType.INCOME || category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE;
           return (
-            <div key={item.id} className={`px-3 py-3 ${isPaid ? 'bg-[#f8fdf0]' : ''}`}>
+            <div key={item.id} className={`relative px-3 py-3 ${canReplicate ? 'pb-9' : ''} ${isPaid ? 'bg-[#f8fdf0]' : ''}`}>
               <div className="flex items-center gap-2">
                 <button onClick={() => onRemoveItem(item.id)} className="text-[#ff3b30]/30 active:text-[#ff3b30] shrink-0 p-1">
                   <i className="fas fa-trash-alt text-[11px]"></i>
@@ -528,18 +529,6 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                     className={`w-24 text-right rounded-xl px-2.5 py-1.5 text-sm font-black k-num outline-none border ${isPaid ? 'bg-[#f0fad0] text-[#7ab800] border-[rgba(122,184,0,0.3)]' : 'bg-[#f5f5f7] text-[#1d1d1f] border-[#e8e8ed]'}`}
                     placeholder="0,00"
                   />
-                  {/* Replicate button — only for categories that repeat every month */}
-                  {(category === CategoryType.INCOME || category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE) && (
-                    <button
-                      data-tour="replicate-btn"
-                      onClick={() => handleReplicateWithToast(item.id, mobileMonthIdx)}
-                      className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 active:scale-90 shadow-sm"
-                      style={{background:'linear-gradient(180deg,#c5f23a,#8cc400)',boxShadow:'0 2px 6px rgba(130,192,0,0.4)'}}
-                      title="Replicar para todos os meses"
-                    >
-                      <i className="fas fa-copy text-[7px] text-[#182200]"></i>
-                    </button>
-                  )}
                   {!isIncome && (
                     <button
                       onClick={() => handleTogglePaid(item.id, mobileMonthIdx, isPaid)}
@@ -736,6 +725,20 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   </div>
                 );
               })()}
+              {/* Replicate button — only for categories that repeat every month. Fixed to the
+                  card's bottom-right corner, slightly above the edge so it doesn't collide
+                  with the payment-method row or future per-card spent totals. */}
+              {canReplicate && (
+                <button
+                  data-tour="replicate-btn"
+                  onClick={() => handleReplicateWithToast(item.id, mobileMonthIdx)}
+                  className="absolute bottom-2 right-3 w-5 h-5 rounded-full flex items-center justify-center shrink-0 active:scale-90 shadow-sm"
+                  style={{background:'linear-gradient(180deg,#c5f23a,#8cc400)',boxShadow:'0 2px 6px rgba(130,192,0,0.4)'}}
+                  title="Replicar para todos os meses"
+                >
+                  <i className="fas fa-copy text-[7px] text-[#182200]"></i>
+                </button>
+              )}
             </div>
           );
         })}

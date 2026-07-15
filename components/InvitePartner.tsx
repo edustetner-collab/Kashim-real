@@ -188,12 +188,12 @@ const InvitePartner: React.FC<InvitePartnerProps> = ({ db, householdId, currentU
               value={email}
               onChange={e => setEmail(e.target.value)}
               placeholder="email@exemplo.com"
-              className="flex-1 bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white text-sm outline-none focus:border-green-400 transition-all"
+              className="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white text-sm outline-none focus:border-green-400 transition-all"
             />
             <button
               type="submit"
               disabled={loading}
-              className="bg-green-500 hover:bg-green-400 text-black font-black px-6 py-3 rounded-2xl transition-all disabled:opacity-50 text-xs uppercase"
+              className="shrink-0 whitespace-nowrap bg-green-500 hover:bg-green-400 text-black font-black px-6 py-3 rounded-2xl transition-all disabled:opacity-50 text-xs uppercase"
             >
               {loading ? <i className="fas fa-circle-notch animate-spin"></i> : 'Convidar'}
             </button>
