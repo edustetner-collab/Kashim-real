@@ -94,23 +94,24 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
           <span className="text-[80px] opacity-10 select-none">{level.emoji}</span>
         </div>
 
-        <div className="relative z-10 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <ScoreRing score={score} max={1000} />
-            <div className="text-white/35 text-[10px] font-black uppercase tracking-[2px] leading-tight">Score<br/>Financeiro</div>
-          </div>
+        {/* Empilhado verticalmente (em vez de lado a lado) — nomes de nível longos
+            (ex: "RICO Nessa Vida", "Fase Despertar") não cabiam ao lado do anel de
+            score em telas estreitas e ficavam cortados pelo overflow-hidden do card. */}
+        <div className="relative z-10 flex items-center gap-3">
+          <ScoreRing score={score} max={1000} />
+          <div className="text-white/35 text-[10px] font-black uppercase tracking-[2px] leading-tight">Score<br/>Financeiro</div>
+        </div>
 
-          <div className="text-right">
-            <div className="text-lg font-black uppercase italic tracking-tighter text-[#a8e716]">
-              {level.emoji} {level.name}
-            </div>
-            {nextLevel && (
-              <div className="text-white/30 text-[10px] mt-0.5">próximo: {nextLevel.name} ({nextLevel.minScore} pts)</div>
-            )}
-            {!nextLevel && (
-              <div className="text-[#a8e716] text-[10px] font-black mt-0.5">Nível máximo atingido!</div>
-            )}
+        <div className="relative z-10 mt-3">
+          <div className="text-lg font-black uppercase italic tracking-tighter text-[#a8e716] break-words">
+            {level.emoji} {level.name}
           </div>
+          {nextLevel && (
+            <div className="text-white/30 text-[10px] mt-0.5">próximo: {nextLevel.name} ({nextLevel.minScore} pts)</div>
+          )}
+          {!nextLevel && (
+            <div className="text-[#a8e716] text-[10px] font-black mt-0.5">Nível máximo atingido!</div>
+          )}
         </div>
 
         {/* Level progress bar */}

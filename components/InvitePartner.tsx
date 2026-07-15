@@ -82,34 +82,25 @@ const InvitePartner: React.FC<InvitePartnerProps> = ({ db, householdId, currentU
 
       const inviteLink = `${window.location.origin}?invite=${token}`;
 
-      // Envia email automaticamente via API server-side
+      // O link já é válido a partir daqui (o convite foi gravado acima) — mostra
+      // ele imediatamente, igual ao convite de assistente. O envio automático de
+      // e-mail é só um "bônus" best-effort: mesmo que falhe ou não chegue (spam,
+      // domínio, etc.), o usuário sempre tem o link pra mandar manualmente.
+      setPendingLink(inviteLink);
+      setMessage({ type: 'success', text: 'Convite criado! Copie o link abaixo e envie pro seu parceiro(a) (por WhatsApp, por exemplo).' });
+      setEmail('');
+      loadInvites();
+
+      // Tenta mandar por e-mail em segundo plano, sem bloquear nem depender do resultado
       const token2 = getToken ? await getToken() : null;
-      const emailRes = await fetch('/api/invite-partner', {
+      fetch('/api/invite-partner', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token2 ? { Authorization: `Bearer ${token2}` } : {}),
         },
         body: JSON.stringify({ email: email.trim(), token, householdId, inviterName }),
-      });
-
-      const emailOk = emailRes.ok;
-      if (!emailOk) {
-        const errBody = await emailRes.json().catch(() => ({})) as { error?: string };
-        setPendingLink(inviteLink);
-        setMessage({
-          type: 'error',
-          text: `Convite criado, mas o email automático falhou: ${errBody.error ?? 'erro desconhecido'}. Copie o link abaixo e envie manualmente.`,
-        });
-        setEmail('');
-        loadInvites();
-        return;
-      }
-
-      setPendingLink(inviteLink);
-      setMessage({ type: 'success', text: `Email de convite enviado para ${email.trim()}!` });
-      setEmail('');
-      loadInvites();
+      }).catch(() => {});
     } catch (err: any) {
       setMessage({ type: 'error', text: 'Erro ao criar convite. Tente novamente.' });
     } finally {
@@ -212,12 +203,12 @@ const InvitePartner: React.FC<InvitePartnerProps> = ({ db, householdId, currentU
           )}
           {pendingLink && (
             <div className="flex flex-col gap-2">
-              <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest">Link do convite (caso o e-mail não abra)</p>
+              <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest">Link do convite — envie manualmente (WhatsApp, etc.)</p>
               <div className="flex gap-2">
                 <input
                   readOnly
                   value={pendingLink}
-                  className="flex-1 bg-zinc-800 border border-zinc-700 rounded-2xl px-3 py-2 text-zinc-400 text-xs outline-none truncate"
+                  className="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 rounded-2xl px-3 py-2 text-zinc-400 text-xs outline-none truncate"
                 />
                 <button
                   type="button"
