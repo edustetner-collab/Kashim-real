@@ -5,6 +5,7 @@ import { useSupabase } from '../lib/useSupabase';
 import { parseFormText, ParsedField } from '../lib/parseFormText';
 import { formatCurrency } from '../constants';
 import ConsultorSettings from './ConsultorSettings';
+import AdminMetrics from './AdminMetrics';
 
 interface ClientProfile {
   householdId: string;
@@ -28,6 +29,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
   const { signOut } = useClerk();
   const db = useSupabase();
 
+  const [view, setView] = useState<'clients' | 'metrics'>('clients');
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'new'>('all');
@@ -222,6 +224,32 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-6">
+        {/* Alternador Clientes / Métricas — métricas só para o super-admin */}
+        {isSuperAdmin && (
+          <div className="flex gap-2 mb-5">
+            <button
+              onClick={() => setView('clients')}
+              className={`flex-1 md:flex-none md:px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-wide transition-all border ${
+                view === 'clients' ? 'bg-green-500 text-black border-green-500' : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+              }`}
+            >
+              <i className="fas fa-users mr-2"></i>Clientes
+            </button>
+            <button
+              onClick={() => setView('metrics')}
+              className={`flex-1 md:flex-none md:px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-wide transition-all border ${
+                view === 'metrics' ? 'bg-green-500 text-black border-green-500' : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+              }`}
+            >
+              <i className="fas fa-chart-line mr-2"></i>Métricas
+            </button>
+          </div>
+        )}
+
+        {view === 'metrics' && isSuperAdmin ? (
+          <AdminMetrics />
+        ) : (
+        <>
         {/* Topo */}
         <div className="flex items-center justify-between mb-5">
           <div>
@@ -453,6 +481,8 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
           </div>
           );
         })()}
+        </>
+        )}
       </main>
 
       {/* Modal criar perfil */}
