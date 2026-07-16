@@ -246,10 +246,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     // Households + memberships + coach_access num passe só (3 queries)
+    // select('*') de propósito: o schema de households divergiu do código no
+    // passado (subscription_expires_at faltando derrubava a query inteira).
+    // Campos ausentes viram undefined e a régua continua funcionando.
     const [{ data: households, error: hhErr }, { data: members }, { data: coachRows }] = await Promise.all([
-      db.from('households').select('id, created_at, subscription_status, subscription_expires_at'),
+      db.from('households').select('*'),
       db.from('household_members').select('household_id, clerk_user_id, role'),
-      db.from('coach_access').select('household_id, status, expires_at, coaching_ends_at'),
+      db.from('coach_access').select('*'),
     ]);
     if (hhErr || !households) {
       return res.status(500).json({ error: `households: ${hhErr?.message ?? 'sem dados'}` });
