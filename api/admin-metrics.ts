@@ -81,22 +81,56 @@ async function listAllClerkUsers(): Promise<ClerkUser[]> {
   return users;
 }
 
+// Lista de usuários ocultados do dashboard fica na private_metadata do
+// PRÓPRIO admin no Clerk (sem migração no banco; sincroniza web + celular).
+async function getHiddenIds(adminId: string): Promise<string[]> {
+  const r = await fetch(`https://api.clerk.com/v1/users/${adminId}`, {
+    headers: { Authorization: `Bearer ${CLERK_SECRET_KEY}` },
+  });
+  if (!r.ok) return [];
+  const u = await r.json() as { private_metadata?: { hidden_metrics_users?: string[] } };
+  return u.private_metadata?.hidden_metrics_users ?? [];
+}
+
+async function setHiddenIds(adminId: string, ids: string[]): Promise<void> {
+  await fetch(`https://api.clerk.com/v1/users/${adminId}/metadata`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${CLERK_SECRET_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ private_metadata: { hidden_metrics_users: ids } }),
+  });
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Cache-Control', 'no-store');
-  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   const claims = verifyAuthToken(req.headers.authorization as string | undefined);
   if (!claims || !ADMIN_IDS.includes(claims.sub)) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
+  // POST { userId, hide } — oculta/mostra um usuário na métrica (não apaga nada)
+  if (req.method === 'POST') {
+    const { userId, hide } = (req.body ?? {}) as { userId?: string; hide?: boolean };
+    if (!userId) return res.status(400).json({ error: 'userId obrigatório' });
+    const current = await getHiddenIds(claims.sub);
+    const next = hide
+      ? Array.from(new Set([...current, userId]))
+      : current.filter(id => id !== userId);
+    await setHiddenIds(claims.sub, next);
+    return res.status(200).json({ ok: true, hidden: next });
+  }
+
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+
   try {
-    const [clerkUsers, { data: households }, { data: members }, { data: coachRows }] = await Promise.all([
+    const [clerkUsers, hiddenIds, { data: households }, { data: members }, { data: coachRows }] = await Promise.all([
       listAllClerkUsers(),
+      getHiddenIds(claims.sub),
       db.from('households').select('*'),
       db.from('household_members').select('household_id, clerk_user_id'),
       db.from('coach_access').select('*'),
     ]);
+    const hiddenSet = new Set(hiddenIds);
 
     const now = Date.now();
     const hhById = new Map((households ?? []).map(h => [h.id, h]));
@@ -117,12 +151,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     type Status = 'coach' | 'pagante' | 'trial' | 'expirado' | 'sem_conta';
     interface ClientRow {
+      id: string;
       name: string;
       email: string;
       lastSignInAt: number | null;
       status: Status;
       trialDaysLeft: number | null;
       isAnnual: boolean;
+      hidden: boolean;
     }
 
     const rows: ClientRow[] = [];
@@ -132,12 +168,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     for (const u of clerkUsers) {
       if (ADMIN_IDS.includes(u.id)) continue; // não conta a si próprio/assistentes-admin
+      const isHidden = hiddenSet.has(u.id);
 
       const primary = u.email_addresses?.find(e => e.id === u.primary_email_address_id) ?? u.email_addresses?.[0];
       const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || primary?.email_address?.split('@')[0] || '—';
       const last = u.last_sign_in_at ?? null;
-      if (last && now - last <= D7) active7d++;
-      if (last && now - last <= D30) active30d++;
+      if (!isHidden && last && now - last <= D7) active7d++;
+      if (!isHidden && last && now - last <= D30) active30d++;
 
       const hhId = hhByUser.get(u.id);
       const hh = hhId ? hhById.get(hhId) : undefined;
@@ -152,15 +189,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           (!hh.subscription_expires_at || new Date(hh.subscription_expires_at).getTime() > now);
         if (coach?.coachActive) {
           status = 'coach';
-          coachActive++;
+          if (!isHidden) coachActive++;
+          // Consultoria também tem relógio: dias até o fim dos 5 meses grátis
+          // (= quando começa a pagar), mesmo cálculo do trial de coach-client.
+          if (hh.created_at) {
+            const trialEnd = addMonths(new Date(hh.created_at), TRIAL_MONTHS_COACH_CLIENT);
+            trialDaysLeft = Math.max(0, Math.ceil((trialEnd.getTime() - now) / (24 * 60 * 60 * 1000)));
+          }
         } else if (subActive) {
           status = 'pagante';
-          paying++;
+          if (!isHidden) paying++;
           // anual se a janela started→expires passa de 6 meses
           if (hh.subscription_started_at && hh.subscription_expires_at) {
             const span = new Date(hh.subscription_expires_at).getTime() - new Date(hh.subscription_started_at).getTime();
             isAnnual = span > 6 * 30 * 24 * 60 * 60 * 1000;
-            if (isAnnual) payingAnnual++;
+            if (isAnnual && !isHidden) payingAnnual++;
           }
         } else if (hh.created_at) {
           const created = new Date(hh.created_at);
@@ -171,15 +214,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (trialEnd.getTime() > now) {
             status = 'trial';
             trialDaysLeft = Math.max(0, Math.ceil((trialEnd.getTime() - now) / (24 * 60 * 60 * 1000)));
-            inTrial++;
+            if (!isHidden) inTrial++;
           } else {
             status = 'expirado';
-            expired++;
+            if (!isHidden) expired++;
           }
         }
       }
 
-      rows.push({ name, email: primary?.email_address ?? '—', lastSignInAt: last, status, trialDaysLeft, isAnnual });
+      rows.push({ id: u.id, name, email: primary?.email_address ?? '—', lastSignInAt: last, status, trialDaysLeft, isAnnual, hidden: isHidden });
     }
 
     // Mais recentes primeiro; quem nunca logou vai pro fim
@@ -190,7 +233,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({
       totals: {
-        totalUsers: rows.length,
+        totalUsers: rows.filter(r => !r.hidden).length,
         active7d,
         active30d,
         paying,

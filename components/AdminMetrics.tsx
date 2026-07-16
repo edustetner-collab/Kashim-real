@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 
 // Dashboard do administrador — usuários ativos, pagantes, último acesso e
@@ -8,12 +8,14 @@ import { useAuth } from '@clerk/clerk-react';
 type Status = 'coach' | 'pagante' | 'trial' | 'expirado' | 'sem_conta';
 
 interface ClientRow {
+  id: string;
   name: string;
   email: string;
   lastSignInAt: number | null;
   status: Status;
   trialDaysLeft: number | null;
   isAnnual: boolean;
+  hidden: boolean;
 }
 
 interface Metrics {
@@ -39,6 +41,14 @@ const STATUS_META: Record<Status, { label: string; classes: string }> = {
   sem_conta: { label: 'Sem plano', classes: 'bg-zinc-800 text-zinc-500 border-zinc-700' },
 };
 
+const FILTERS: Array<{ key: Status | 'all'; label: string }> = [
+  { key: 'all', label: 'Todos' },
+  { key: 'coach', label: 'Consultoria' },
+  { key: 'trial', label: 'Trial' },
+  { key: 'pagante', label: 'Pagantes' },
+  { key: 'expirado', label: 'Expirados' },
+];
+
 function formatBRL(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 }
@@ -55,37 +65,59 @@ function lastAccessLabel(ts: number | null): { text: string; fresh: boolean } {
   return { text: `Há ${months} ${months === 1 ? 'mês' : 'meses'}`, fresh: false };
 }
 
+function chipText(c: ClientRow): string {
+  const meta = STATUS_META[c.status];
+  if (c.status === 'coach' && c.trialDaysLeft != null) return `${meta.label} · ${c.trialDaysLeft}d p/ pagar`;
+  if (c.status === 'trial' && c.trialDaysLeft != null) return `${meta.label} · ${c.trialDaysLeft}d`;
+  if (c.status === 'pagante' && c.isAnnual) return `${meta.label} · anual`;
+  return meta.label;
+}
+
 const AdminMetrics: React.FC = () => {
   const { getToken } = useAuth();
   const [data, setData] = useState<Metrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<Status | 'all'>('all');
+  const [showHidden, setShowHidden] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      setError('');
-      try {
-        const token = await getToken({ template: 'supabase' });
-        const res = await fetch('/api/admin-metrics', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({})) as { error?: string };
-          throw new Error(body.error ?? `Erro ${res.status}`);
-        }
-        const json = await res.json() as Metrics;
-        if (!cancelled) setData(json);
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Erro ao carregar métricas');
-      } finally {
-        if (!cancelled) setLoading(false);
+  const load = useCallback(async () => {
+    setError('');
+    try {
+      const token = await getToken({ template: 'supabase' });
+      const res = await fetch('/api/admin-metrics', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? `Erro ${res.status}`);
       }
+      setData(await res.json() as Metrics);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao carregar métricas');
+    } finally {
+      setLoading(false);
     }
-    load();
-    return () => { cancelled = true; };
   }, [getToken]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function toggleHidden(c: ClientRow) {
+    setTogglingId(c.id);
+    try {
+      const token = await getToken({ template: 'supabase' });
+      const res = await fetch('/api/admin-metrics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ userId: c.id, hide: !c.hidden }),
+      });
+      if (res.ok) await load();
+    } finally {
+      setTogglingId(null);
+    }
+  }
 
   if (loading) {
     return (
@@ -105,6 +137,14 @@ const AdminMetrics: React.FC = () => {
   }
 
   const t = data.totals;
+  const hiddenCount = data.clients.filter(c => c.hidden).length;
+  const q = search.trim().toLowerCase();
+  const visible = data.clients.filter(c => {
+    if (c.hidden !== showHidden) return false;
+    if (filter !== 'all' && c.status !== filter) return false;
+    if (!q) return true;
+    return c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q);
+  });
 
   return (
     <div className="pb-10">
@@ -150,27 +190,93 @@ const AdminMetrics: React.FC = () => {
       <h2 className="text-white text-sm font-black uppercase italic tracking-tight mb-3 mt-6">
         Último acesso <span className="text-zinc-600 normal-case not-italic font-normal">· mais recentes primeiro</span>
       </h2>
-      <div className="space-y-2">
-        {data.clients.map((c, i) => {
-          const access = lastAccessLabel(c.lastSignInAt);
-          const meta = STATUS_META[c.status];
-          return (
-            <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 flex items-center gap-3">
-              <div className={`w-2 h-2 rounded-full shrink-0 ${access.fresh ? 'bg-green-400' : 'bg-zinc-700'}`}></div>
-              <div className="flex-1 min-w-0">
-                <p className="text-white text-sm font-bold truncate">{c.name}</p>
-                <p className="text-zinc-600 text-[11px] truncate">{c.email}</p>
-              </div>
-              <div className="text-right shrink-0">
-                <p className={`text-[11px] font-bold ${access.fresh ? 'text-green-400' : 'text-zinc-500'}`}>{access.text}</p>
-                <span className={`inline-block mt-1 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${meta.classes}`}>
-                  {meta.label}{c.status === 'trial' && c.trialDaysLeft != null ? ` · ${c.trialDaysLeft}d` : ''}{c.status === 'pagante' && c.isAnnual ? ' · anual' : ''}
-                </span>
-              </div>
-            </div>
-          );
-        })}
+
+      {/* Busca */}
+      <div className="relative mb-3">
+        <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 text-sm"></i>
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Buscar por nome ou e-mail..."
+          className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl pl-11 pr-10 py-3 text-white text-sm outline-none focus:border-green-500/50 transition-colors placeholder:text-zinc-600"
+        />
+        {search && (
+          <button
+            onClick={() => setSearch('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center text-zinc-500 hover:text-white transition-colors"
+          >
+            <i className="fas fa-times text-sm"></i>
+          </button>
+        )}
       </div>
+
+      {/* Filtro por status */}
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+        {FILTERS.map(f => (
+          <button
+            key={f.key}
+            onClick={() => setFilter(f.key)}
+            className={`shrink-0 px-3.5 py-2 rounded-xl text-[11px] font-black uppercase tracking-wide transition-all border ${
+              filter === f.key ? 'bg-green-500 text-black border-green-500' : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Lista */}
+      {visible.length === 0 ? (
+        <div className="text-center py-12 text-zinc-600">
+          <i className="fas fa-user-slash text-3xl mb-3 block"></i>
+          <p className="text-xs uppercase font-black tracking-widest">
+            {showHidden ? 'Nenhum usuário oculto' : 'Nenhum cliente encontrado'}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {visible.map(c => {
+            const access = lastAccessLabel(c.lastSignInAt);
+            const meta = STATUS_META[c.status];
+            return (
+              <div key={c.id} className={`bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 flex items-center gap-3 ${c.hidden ? 'opacity-60' : ''}`}>
+                <div className={`w-2 h-2 rounded-full shrink-0 ${access.fresh ? 'bg-green-400' : 'bg-zinc-700'}`}></div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm font-bold truncate">{c.name}</p>
+                  <p className="text-zinc-600 text-[11px] truncate">{c.email}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className={`text-[11px] font-bold ${access.fresh ? 'text-green-400' : 'text-zinc-500'}`}>{access.text}</p>
+                  <span className={`inline-block mt-1 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${meta.classes}`}>
+                    {chipText(c)}
+                  </span>
+                </div>
+                <button
+                  onClick={() => toggleHidden(c)}
+                  disabled={togglingId === c.id}
+                  title={c.hidden ? 'Voltar a mostrar nas métricas' : 'Ocultar das métricas (não apaga a conta)'}
+                  className="shrink-0 w-9 h-9 flex items-center justify-center rounded-xl bg-zinc-800 text-zinc-500 hover:text-white active:scale-95 transition-all"
+                >
+                  {togglingId === c.id
+                    ? <i className="fas fa-circle-notch animate-spin text-xs"></i>
+                    : <i className={`fas ${c.hidden ? 'fa-eye' : 'fa-eye-slash'} text-xs`}></i>}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Alternar visão de ocultos */}
+      {(hiddenCount > 0 || showHidden) && (
+        <button
+          onClick={() => setShowHidden(v => !v)}
+          className="mt-4 w-full text-zinc-500 hover:text-zinc-300 text-[11px] font-black uppercase tracking-widest py-3 border border-zinc-800 rounded-2xl transition-colors"
+        >
+          {showHidden ? '← Voltar para a lista' : `Ver ocultos (${hiddenCount})`}
+        </button>
+      )}
     </div>
   );
 };
