@@ -7,16 +7,25 @@ export interface AccessInfo {
   daysLeft: number | null;
 }
 
-// Promo de lançamento: toda conta ganha 5 meses grátis a partir da criação.
-// Para encerrar a promo no futuro, basta usar PROMO_CUTOFF (contas criadas
-// depois dessa data recebem TRIAL_MONTHS_AFTER_PROMO). Quem já entrou mantém.
-export const TRIAL_MONTHS = 5;
-export const PROMO_CUTOFF: Date | null = null; // ex.: new Date('2026-12-31')
-export const TRIAL_MONTHS_AFTER_PROMO = 0;
+// Regra de trial (decisão Eduardo, 2026-07-16):
+// - Cliente da consultoria (tem coach_access): 5 meses grátis desde a criação
+//   da conta — cobre até o fim da consultoria.
+// - Cadastro espontâneo (entrou sozinho pelo site): 30 dias grátis.
+// - Contas espontâneas criadas ANTES do cutoff mantêm os 5 meses prometidos
+//   na promo de lançamento (ninguém perde acesso retroativamente).
+export const TRIAL_MONTHS_COACH_CLIENT = 5;
+export const TRIAL_DAYS_SELF_SIGNUP = 30;
+export const SELF_SIGNUP_CUTOFF = new Date('2026-07-16T23:59:59-03:00');
 
 function addMonths(date: Date, months: number): Date {
   const d = new Date(date);
   d.setMonth(d.getMonth() + months);
+  return d;
+}
+
+function addDays(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
   return d;
 }
 
@@ -27,14 +36,16 @@ function daysUntil(target: Date): number {
 
 /**
  * Determina o acesso do usuário sem gravar nada no banco — o trial é derivado
- * do created_at da conta. Ordem: consultor ativo → assinatura paga → trial de
- * lançamento → expirado.
+ * do created_at da conta. Ordem: consultor ativo → assinatura paga → trial
+ * (5 meses p/ cliente de consultoria, 30 dias p/ cadastro espontâneo) → expirado.
  */
 export function computeAccess(params: {
   createdAt?: string | null;
   subscriptionStatus?: string | null;
   subscriptionExpiresAt?: string | null;
   hasActiveCoach?: boolean;
+  /** true se o household tem (ou já teve) coach_access aprovado — cliente da consultoria */
+  isCoachClient?: boolean;
 }): AccessInfo {
   const now = Date.now();
 
@@ -51,8 +62,10 @@ export function computeAccess(params: {
 
   if (params.createdAt) {
     const created = new Date(params.createdAt);
-    const months = PROMO_CUTOFF && created > PROMO_CUTOFF ? TRIAL_MONTHS_AFTER_PROMO : TRIAL_MONTHS;
-    const trialEnd = addMonths(created, months);
+    const keepsLaunchPromo = created <= SELF_SIGNUP_CUTOFF;
+    const trialEnd = params.isCoachClient || keepsLaunchPromo
+      ? addMonths(created, TRIAL_MONTHS_COACH_CLIENT)
+      : addDays(created, TRIAL_DAYS_SELF_SIGNUP);
     if (trialEnd.getTime() > now) {
       return { mode: 'trial', hasAccess: true, endsAt: trialEnd, daysLeft: daysUntil(trialEnd) };
     }

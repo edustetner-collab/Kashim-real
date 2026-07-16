@@ -248,12 +248,14 @@ const App: React.FC = () => {
         const coachExpired = coachAccessRes?.expired ?? false;
         const hasCoach = coachAccessRes?.hasCoach ?? false;
 
-        // Trial de lançamento (5 meses desde a criação) + assinatura paga + consultor
+        // Trial: 5 meses p/ cliente da consultoria (coach_access), 30 dias p/
+        // cadastro espontâneo + assinatura paga + consultor ativo
         const access = computeAccess({
           createdAt: (household as any)?.created_at,
           subscriptionStatus: status,
           subscriptionExpiresAt: (household as any)?.subscription_expires_at,
           hasActiveCoach: hasCoach && !coachExpired,
+          isCoachClient: hasCoach,
         });
         setAccessInfo(access);
         // Apple 3.1.1 / 3.1.3(a): no iOS o app é totalmente gratuito. Nenhum
