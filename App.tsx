@@ -34,6 +34,8 @@ import { hasAcceptedTerms, recordTermsAcceptance } from './lib/terms';
 
 const ADMIN_IDS = (import.meta.env.VITE_ADMIN_USER_IDS ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
 const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
+// Fallback CSS p/ esconder login social no nativo (ver regra .native-app no index.html)
+if (isNativeApp) document.documentElement.classList.add('native-app');
 
 const DEFAULT_FIXED_EXPENSES = [
   'Moradia', 'Condominio', 'Telefone fixo', 'Internet', 'Celular',
@@ -1193,8 +1195,12 @@ ${renderSection(CategoryType.PERSONAL_LEISURE, 'Lazer e Gastos Pessoais',    '#a
               elements: {
                 headerTitle: 'hidden',
                 headerSubtitle: 'hidden',
+                // Google bloqueia OAuth em WebView (403 disallowed_useragent),
+                // então no app nativo escondemos os botões sociais.
                 ...(isNativeApp ? {
-                  socialButtonsBlock: { display: 'none' },
+                  socialButtons: { display: 'none' },
+                  socialButtonsBlockButton: { display: 'none' },
+                  socialButtonsIconButton: { display: 'none' },
                   dividerRow: { display: 'none' },
                 } : {}),
               }
@@ -1205,7 +1211,9 @@ ${renderSection(CategoryType.PERSONAL_LEISURE, 'Lazer e Gastos Pessoais',    '#a
                 headerTitle: 'hidden',
                 headerSubtitle: 'hidden',
                 ...(isNativeApp ? {
-                  socialButtonsBlock: { display: 'none' },
+                  socialButtons: { display: 'none' },
+                  socialButtonsBlockButton: { display: 'none' },
+                  socialButtonsIconButton: { display: 'none' },
                   dividerRow: { display: 'none' },
                 } : {}),
               }

@@ -249,6 +249,14 @@
         #blocks input, #blocks select { display: none !important; }
       }
 
+      /* ---- App nativo (Capacitor): esconde login social ----
+         Google bloqueia OAuth em WebView (403 disallowed_useragent).
+         A classe .native-app é adicionada ao <html> no App.tsx. ---- */
+      .native-app .cl-socialButtons,
+      .native-app .cl-socialButtonsBlockButton,
+      .native-app .cl-socialButtonsIconButton,
+      .native-app .cl-dividerRow { display: none !important; }
+
       /* ---- Respect reduced motion: kill all decorative motion ---- */
       @media (prefers-reduced-motion: reduce) {
         .k-aurora, .k-reveal, .k-stagger > *, .k-sweep::after,
