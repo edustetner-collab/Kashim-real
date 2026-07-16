@@ -1418,7 +1418,7 @@ ${renderSection(CategoryType.PERSONAL_LEISURE, 'Lazer e Gastos Pessoais',    '#a
             >
               <i className="fas fa-times"></i>
             </button>
-            <InvitePartner db={db} householdId={householdId} currentUserId={user.id} />
+            <InvitePartner db={db} householdId={householdId} currentUserId={user.id} inviterName={user.fullName ?? user.firstName ?? undefined} getToken={getToken} />
           </div>
         </div>
       )}

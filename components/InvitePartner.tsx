@@ -7,7 +7,7 @@ interface InvitePartnerProps {
   householdId: string;
   currentUserId: string;
   inviterName?: string;
-  getToken?: () => Promise<string | null>;
+  getToken?: (options?: { template: string }) => Promise<string | null>;
 }
 
 interface Member {
@@ -91,8 +91,9 @@ const InvitePartner: React.FC<InvitePartnerProps> = ({ db, householdId, currentU
       setEmail('');
       loadInvites();
 
-      // Tenta mandar por e-mail em segundo plano, sem bloquear nem depender do resultado
-      const token2 = getToken ? await getToken() : null;
+      // Tenta mandar por e-mail em segundo plano, sem bloquear nem depender do resultado.
+      // IMPORTANTE: template 'supabase' (HS256) — a API rejeita o token padrão do Clerk (RS256).
+      const token2 = getToken ? await getToken({ template: 'supabase' }) : null;
       fetch('/api/invite-partner', {
         method: 'POST',
         headers: {
