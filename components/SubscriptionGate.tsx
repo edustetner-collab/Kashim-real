@@ -4,6 +4,10 @@ import { useAuth } from '@clerk/clerk-react';
 
 interface SubscriptionGateProps {
   onClose: () => void;
+  /** App nativo (iOS/Android): versão neutra, sem QUALQUER menção a pagamento
+      nem direcionamento de compra (Apple 3.1.1 — modelo Netflix). */
+  isNative?: boolean;
+  onSignOut?: () => void;
 }
 
 
@@ -15,7 +19,7 @@ const FEATURES = [
   'Suporte prioritário',
 ];
 
-const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onClose }) => {
+const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onClose, isNative = false, onSignOut }) => {
   const { getToken } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -41,6 +45,36 @@ const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onClose }) => {
       setError(e.message || 'Erro inesperado');
       setLoading(false);
     }
+  }
+
+  // App nativo: tela neutra e bloqueante. Sem preço, sem botão de compra, sem
+  // link externo — apenas informa que o período de avaliação terminou.
+  // Quem avisa onde continuar é o e-mail (fora do app, canal permitido).
+  if (isNative) {
+    return (
+      <div className="fixed inset-0 z-[300] bg-black/95 backdrop-blur-sm flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-[30px] p-8 shadow-2xl relative overflow-hidden text-center">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-500 to-green-300"></div>
+          <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mb-6 border border-green-500/30 mx-auto">
+            <i className="fas fa-hourglass-end text-2xl text-green-400"></i>
+          </div>
+          <h2 className="text-white text-2xl font-black uppercase italic tracking-tighter mb-3">
+            Período de avaliação encerrado
+          </h2>
+          <p className="text-zinc-400 text-sm leading-relaxed mb-8">
+            Seu período de avaliação gratuito do Kashim terminou. Obrigado por experimentar o app!
+          </p>
+          {onSignOut && (
+            <button
+              onClick={onSignOut}
+              className="w-full text-zinc-500 hover:text-zinc-300 text-xs font-bold uppercase py-3 transition-colors border border-zinc-800 rounded-2xl"
+            >
+              Sair da conta
+            </button>
+          )}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -69,9 +103,6 @@ const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onClose }) => {
           ))}
         </ul>
 
-        {/* Esta tela NUNCA é renderizada no app nativo (ver App.tsx): no iOS o
-            Kashim é gratuito e não pode exibir paywall nem direcionar o usuário
-            para uma compra externa (Apple 3.1.1 / 3.1.3(a)). */}
         {error && <p className="text-red-400 text-xs mb-4 text-center">{error}</p>}
         <button
           onClick={handleSubscribe}

@@ -41,6 +41,8 @@ function getSuperAdminId(authHeader: string): string | null {
   return verifyAdminToken(authHeader);
 }
 
+// Layout oficial Kashim (mesmo padrão do convite de casal e da régua de
+// trial): fundo #f5f5f7, card branco, logo $ verde-lima, CTA gradiente lime.
 function buildInviteEmail(name: string, email: string, inviteUrl: string): string {
   return `<!DOCTYPE html>
 <html lang="pt-br">
@@ -49,62 +51,66 @@ function buildInviteEmail(name: string, email: string, inviteUrl: string): strin
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Convite Kashim</title>
 </head>
-<body style="margin:0;padding:0;background:#0a0a0a;font-family:'Helvetica Neue',Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0a;padding:40px 20px;">
+<body style="margin:0;padding:0;background:#f5f5f7;font-family:'Helvetica Neue',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f7;padding:40px 20px;">
     <tr>
       <td align="center">
         <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;">
 
-          <!-- Logo + Header -->
+          <!-- Logo -->
           <tr>
-            <td style="padding-bottom:32px;text-align:center;">
-              <div style="display:inline-block;background:#111;border:1px solid #2a2a2a;border-radius:16px;padding:16px 28px;">
-                <span style="font-size:22px;font-weight:900;color:#EAB308;letter-spacing:4px;text-transform:uppercase;font-style:italic;">KASHIM</span>
+            <td style="padding-bottom:28px;text-align:center;">
+              <div style="display:inline-flex;align-items:center;gap:10px;">
+                <div style="background:#a8e716;border-radius:12px;width:40px;height:40px;display:inline-block;line-height:40px;text-align:center;">
+                  <span style="font-size:20px;font-weight:900;color:#182200;">$</span>
+                </div>
+                <span style="font-size:20px;font-weight:900;color:#1d1d1f;letter-spacing:2px;text-transform:uppercase;font-style:italic;">KASHIM</span>
               </div>
             </td>
           </tr>
 
-          <!-- Main card -->
+          <!-- Card principal -->
           <tr>
-            <td style="background:#111111;border:1px solid #1f1f1f;border-radius:24px;padding:40px 36px;">
+            <td style="background:#ffffff;border:1px solid #e8e8ed;border-radius:24px;padding:40px 36px;box-shadow:0 2px 12px rgba(0,0,0,0.06);">
 
-              <!-- Icon -->
-              <div style="text-align:center;margin-bottom:28px;">
-                <div style="display:inline-block;background:#EAB308;border-radius:50%;width:56px;height:56px;line-height:56px;text-align:center;">
-                  <span style="font-size:24px;">★</span>
+              <!-- Ícone -->
+              <div style="text-align:center;margin-bottom:24px;">
+                <div style="display:inline-block;background:#f0fad0;border-radius:50%;width:60px;height:60px;line-height:60px;text-align:center;border:1px solid rgba(122,184,0,0.2);">
+                  <span style="font-size:26px;">⭐</span>
                 </div>
               </div>
 
-              <!-- Title -->
-              <h1 style="margin:0 0 8px;text-align:center;color:#ffffff;font-size:24px;font-weight:900;text-transform:uppercase;letter-spacing:-0.5px;font-style:italic;">
-                Você foi convidada
+              <!-- Título -->
+              <h1 style="margin:0 0 8px;text-align:center;color:#1d1d1f;font-size:22px;font-weight:900;text-transform:uppercase;letter-spacing:-0.5px;">
+                Você foi convidada!
               </h1>
-              <p style="margin:0 0 28px;text-align:center;color:#EAB308;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:3px;">
-                para a equipe Kashim
+              <p style="margin:0 0 28px;text-align:center;color:#7ab800;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:3px;">
+                Equipe Kashim
               </p>
 
-              <!-- Body text -->
-              <p style="margin:0 0 12px;color:#a1a1aa;font-size:15px;line-height:1.6;">
-                Olá, <strong style="color:#ffffff;">${name}</strong>!
+              <!-- Corpo -->
+              <p style="margin:0 0 12px;color:#6e6e73;font-size:15px;line-height:1.7;">
+                Olá, <strong style="color:#1d1d1f;">${name}</strong>!
               </p>
-              <p style="margin:0 0 28px;color:#a1a1aa;font-size:15px;line-height:1.6;">
-                Você foi adicionada como <strong style="color:#EAB308;">Assistente Consultora</strong> no Kashim. Crie sua conta para acessar o painel e começar a apoiar os clientes da equipe.
+              <p style="margin:0 0 28px;color:#6e6e73;font-size:15px;line-height:1.7;">
+                Você foi adicionada como <strong style="color:#1d1d1f;">Assistente Consultora</strong> no Kashim. Clique no botão abaixo para acessar o painel e começar a apoiar os clientes da equipe.
               </p>
 
-              <!-- CTA Button -->
+              <!-- Botão CTA -->
               <div style="text-align:center;margin-bottom:28px;">
-                <a href="${inviteUrl}" style="display:inline-block;background:#EAB308;color:#000000;font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:2px;padding:16px 40px;border-radius:14px;text-decoration:none;">
-                  Criar minha conta →
+                <a href="${inviteUrl}"
+                   style="display:inline-block;background:linear-gradient(180deg,#c5f23a 0%,#a2d800 50%,#8cc400 100%);color:#182200;font-size:14px;font-weight:900;text-transform:uppercase;letter-spacing:2px;padding:18px 48px;border-radius:14px;text-decoration:none;box-shadow:0 4px 14px rgba(130,192,0,0.35);">
+                  Acessar meu painel →
                 </a>
               </div>
 
               <!-- Divider -->
-              <hr style="border:none;border-top:1px solid #1f1f1f;margin:0 0 20px;" />
+              <hr style="border:none;border-top:1px solid #f0f0f5;margin:0 0 20px;" />
 
-              <!-- Link fallback -->
-              <p style="margin:0;color:#52525b;font-size:11px;text-align:center;line-height:1.6;">
-                Se o botão não funcionar, copie e cole este link no navegador:<br />
-                <a href="${inviteUrl}" style="color:#EAB308;word-break:break-all;">${inviteUrl}</a>
+              <!-- Link de texto -->
+              <p style="margin:0;color:#aeaeb2;font-size:11px;text-align:center;line-height:1.8;">
+                Se o botão não funcionar, copie e cole este link:<br />
+                <a href="${inviteUrl}" style="color:#7ab800;word-break:break-all;font-size:11px;">${inviteUrl}</a>
               </p>
             </td>
           </tr>
@@ -112,8 +118,8 @@ function buildInviteEmail(name: string, email: string, inviteUrl: string): strin
           <!-- Footer -->
           <tr>
             <td style="padding-top:24px;text-align:center;">
-              <p style="margin:0;color:#3f3f46;font-size:11px;line-height:1.6;">
-                Kashim · Sistema de Gestão Financeira<br />
+              <p style="margin:0;color:#aeaeb2;font-size:11px;line-height:1.7;">
+                Kashim — Finanças Pessoais com Coach<br />
                 Este convite é pessoal e intransferível.
               </p>
             </td>

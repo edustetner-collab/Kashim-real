@@ -258,10 +258,11 @@ const App: React.FC = () => {
           isCoachClient: hasCoach,
         });
         setAccessInfo(access);
-        // Apple 3.1.1 / 3.1.3(a): no iOS o app é totalmente gratuito. Nenhum
-        // paywall, nenhuma menção a assinatura, nenhum direcionamento para
-        // compra externa. Assinatura existe apenas na web.
-        if (!access.hasAccess && !isNativeApp) {
+        // Ao expirar, bloqueia em TODAS as plataformas (decisão Eduardo 16/07).
+        // No nativo a tela é NEUTRA: sem preço, sem botão de compra, sem link
+        // (Apple 3.1.1 — modelo Netflix). Quem direciona ao pagamento é o
+        // e-mail da régua de trial, fora do app.
+        if (!access.hasAccess) {
           setShowSubscriptionGate(true);
         }
 
@@ -1282,7 +1283,11 @@ ${renderSection(CategoryType.PERSONAL_LEISURE, 'Lazer e Gastos Pessoais',    '#a
 
 
       {showSubscriptionGate && (
-        <SubscriptionGate onClose={() => setShowSubscriptionGate(false)} />
+        <SubscriptionGate
+          onClose={() => setShowSubscriptionGate(false)}
+          isNative={isNativeApp}
+          onSignOut={() => signOut()}
+        />
       )}
 
       {showSettings && isAdmin ? (
