@@ -40,8 +40,12 @@ async function canAccess(sub: string, householdId: string): Promise<boolean> {
   if (member) return true;
   const { data: coach } = await db
     .from('coach_access').select('id')
-    .eq('household_id', householdId).eq('coach_user_id', sub).maybeSingle();
+    .eq('household_id', householdId).eq('coach_clerk_user_id', sub).maybeSingle();
   if (coach) return true;
+  const { data: coachLegacy } = await db
+    .from('coach_access').select('id')
+    .eq('household_id', householdId).eq('coach_user_id', sub).maybeSingle();
+  if (coachLegacy) return true;
   try {
     const r = await fetch(`https://api.clerk.com/v1/users/${sub}`, {
       headers: { Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}` },

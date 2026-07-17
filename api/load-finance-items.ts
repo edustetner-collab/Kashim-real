@@ -51,16 +51,27 @@ async function isAssistantAllowed(sub: string, householdId: string): Promise<boo
   }
 }
 
+// Coluna real do coach é coach_clerk_user_id; coach_user_id fica como
+// fallback de schema legado (a query numa coluna inexistente retorna erro,
+// que tratamos como "sem linha").
+async function hasCoachRow(sub: string, householdId: string): Promise<boolean> {
+  const { data: c1 } = await db
+    .from('coach_access').select('id')
+    .eq('household_id', householdId).eq('coach_clerk_user_id', sub).maybeSingle();
+  if (c1) return true;
+  const { data: c2 } = await db
+    .from('coach_access').select('id')
+    .eq('household_id', householdId).eq('coach_user_id', sub).maybeSingle();
+  return !!c2;
+}
+
 async function canAccess(sub: string, householdId: string): Promise<boolean> {
   if (ADMIN_IDS.includes(sub)) return true;
   const { data: member } = await db
     .from('household_members').select('id')
     .eq('household_id', householdId).eq('clerk_user_id', sub).maybeSingle();
   if (member) return true;
-  const { data: coach } = await db
-    .from('coach_access').select('id')
-    .eq('household_id', householdId).eq('coach_user_id', sub).maybeSingle();
-  if (coach) return true;
+  if (await hasCoachRow(sub, householdId)) return true;
   return isAssistantAllowed(sub, householdId);
 }
 

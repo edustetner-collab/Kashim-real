@@ -61,13 +61,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .eq('clerk_user_id', payload.sub)
     .maybeSingle();
 
-  // Allow if user is a direct member OR if they are a coach with coach_access
-  const { data: coachAccess } = member ? { data: null } : await supabase
-    .from('coach_access')
-    .select('id')
-    .eq('household_id', householdId)
-    .eq('coach_user_id', payload.sub)
-    .maybeSingle();
+  // Allow if user is a direct member OR if they are a coach with coach_access.
+  // Coluna real: coach_clerk_user_id (coach_user_id como fallback legado).
+  let coachAccess: { id: string } | null = null;
+  if (!member) {
+    const { data: c1 } = await supabase
+      .from('coach_access').select('id')
+      .eq('household_id', householdId).eq('coach_clerk_user_id', payload.sub).maybeSingle();
+    coachAccess = c1;
+    if (!coachAccess) {
+      const { data: c2 } = await supabase
+        .from('coach_access').select('id')
+        .eq('household_id', householdId).eq('coach_user_id', payload.sub).maybeSingle();
+      coachAccess = c2;
+    }
+  }
 
   // Assistente (e-mail em admin_users) também pode — exceto perfis privados
   let isAssistant = false;

@@ -82,22 +82,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const householdId = household.id;
 
-    // Coach access para todos os super-admins E para a assistente que criou
-    // (o RLS do coach view checa coach_access — sem a linha dela, ela criaria
-    // o perfil mas não conseguiria preenchê-lo). coach_user_id + coach_clerk_
-    // user_id: a tabela tem as duas colunas (legado) e rotas diferentes
-    // filtram por uma ou outra — preenche ambas.
+    // Coach access para todos os super-admins E para a assistente que criou.
+    // A coluna real é coach_clerk_user_id (ver índices em security-hardening
+    // .sql); coach_user_id pode não existir — tentar as duas colunas juntas
+    // derrubava o insert INTEIRO em silêncio e o perfil nascia órfão
+    // (invisível para todos — bug real com a assistente, 2026-07-16).
+    // Agora: insere com a coluna certa, VERIFICA o erro e, se nenhum vínculo
+    // for criado, desfaz o household e devolve o erro real.
     const coachIds = Array.from(new Set([...ADMIN_IDS, requesterId]));
+    const coachRow = (coachId: string) => ({
+      household_id: householdId,
+      status: 'approved',
+      coaching_started_at: new Date().toISOString(),
+      coaching_ends_at: new Date(Date.now() + 5 * 30 * 24 * 60 * 60 * 1000).toISOString(),
+      approved_at: new Date().toISOString(),
+    });
+    let linked = 0;
+    let lastError = '';
     for (const coachId of coachIds) {
-      await db.from('coach_access').insert({
-        household_id: householdId,
-        coach_clerk_user_id: coachId,
-        coach_user_id: coachId,
-        status: 'approved',
-        coaching_started_at: new Date().toISOString(),
-        coaching_ends_at: new Date(Date.now() + 5 * 30 * 24 * 60 * 60 * 1000).toISOString(),
-        approved_at: new Date().toISOString(),
-      });
+      const { error: e1 } = await db.from('coach_access')
+        .insert({ ...coachRow(coachId), coach_clerk_user_id: coachId });
+      if (!e1) { linked++; continue; }
+      // fallback: schema alternativo com coach_user_id
+      const { error: e2 } = await db.from('coach_access')
+        .insert({ ...coachRow(coachId), coach_user_id: coachId });
+      if (!e2) { linked++; continue; }
+      lastError = e1.message;
+      console.error('coach_access insert failed for', coachId, e1.message, '/', e2.message);
+    }
+    if (linked === 0) {
+      await db.from('households').delete().eq('id', householdId);
+      return res.status(500).json({ error: 'Falha ao vincular o perfil ao consultor: ' + lastError });
     }
 
     if (parsedItems && parsedItems.length > 0) {

@@ -119,24 +119,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await db.from('households').update({ status: 'active' }).eq('id', householdId);
 
     // Grant 5 months of free coaching access — para os super-admins E para a
-    // assistente que ativou (sem a linha dela, o RLS bloqueia o preenchimento).
+    // assistente que ativou. Coluna real: coach_clerk_user_id (a versão antiga
+    // desta rota inserção com coach_user_id + expires_at FALHAVA em silêncio
+    // desde sempre — o acesso funcionava só pela linha do create-client).
     const now = new Date();
-    const expiresAt = new Date(now);
-    expiresAt.setMonth(expiresAt.getMonth() + 5);
+    const endsAt = new Date(now);
+    endsAt.setMonth(endsAt.getMonth() + 5);
     const coachIds = Array.from(new Set([...ADMIN_IDS, requesterId]));
     for (const coachId of coachIds) {
       const { data: existing } = await db
         .from('coach_access').select('id')
-        .eq('household_id', householdId).eq('coach_user_id', coachId).maybeSingle();
+        .eq('household_id', householdId).eq('coach_clerk_user_id', coachId).maybeSingle();
       if (existing) continue;
-      await db.from('coach_access').insert({
+      const { error: caError } = await db.from('coach_access').insert({
         household_id: householdId,
-        coach_user_id: coachId,
         coach_clerk_user_id: coachId,
         status: 'approved',
-        expires_at: expiresAt.toISOString(),
+        coaching_started_at: now.toISOString(),
+        coaching_ends_at: endsAt.toISOString(),
         approved_at: now.toISOString(),
       });
+      if (caError) console.error('coach_access insert failed for', coachId, caError.message);
     }
 
     // Gera link mágico de acesso (válido por 7 dias)
