@@ -92,29 +92,53 @@ interface Snapshot {
   }>;
 }
 
-// E-mail-cópia do registro: layout Kashim + Compilação Financeira completa +
-// hash. A cópia na caixa do cliente, datada pelo provedor dele, é a prova
-// externa de que o cenário foi registrado naquele dia.
+// E-mail-cópia do registro: layout Kashim + raio-X COMPLETO (todas as seções,
+// item a item, 12 meses — igual ao PDF) + hash. A cópia na caixa do cliente,
+// datada pelo provedor dele, é a prova externa do cenário registrado.
 function buildRecordEmail(clientFirstName: string, dateLabel: string, snap: Snapshot, hash: string): string {
   const monthHead = snap.months.map(m =>
     `<th style="border:1px solid #e8e8ed;padding:4px 6px;background:#f5f5f7;font-size:9px;white-space:nowrap;">${m.monthName}<br/><span style="color:#aeaeb2;font-weight:400;">${m.year}</span></th>`
   ).join('');
-  const row = (label: string, vals: number[], bold = false, color = '#6e6e73') =>
-    `<tr><td style="border:1px solid #e8e8ed;padding:4px 6px;font-size:9px;font-weight:${bold ? 800 : 600};color:${color};white-space:nowrap;">${label}</td>${vals.map(v =>
-      `<td style="border:1px solid #e8e8ed;padding:4px 6px;font-size:9px;text-align:right;font-family:monospace;white-space:nowrap;color:${v < 0 ? '#dc2626' : '#1d1d1f'};font-weight:${bold ? 700 : 400};">${fmtBRL(v)}</td>`).join('')}</tr>`;
+  const row = (label: string, vals: Array<number | null>, bold = false, color = '#6e6e73') =>
+    `<tr><td style="border:1px solid #e8e8ed;padding:4px 6px;font-size:9px;font-weight:${bold ? 800 : 600};color:${color};white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis;">${label}</td>${vals.map(v =>
+      `<td style="border:1px solid #e8e8ed;padding:4px 6px;font-size:9px;text-align:right;font-family:monospace;white-space:nowrap;color:${(v ?? 0) < 0 ? '#dc2626' : '#1d1d1f'};font-weight:${bold ? 700 : 400};">${v == null ? '' : fmtBRL(v)}</td>`).join('')}</tr>`;
+
+  const wrapTable = (headLabel: string, bodyRows: string) =>
+    `<div style="overflow-x:auto;margin-bottom:4px;"><table style="border-collapse:collapse;width:100%;">
+      <thead><tr><th style="border:1px solid #e8e8ed;padding:4px 6px;background:#f5f5f7;font-size:9px;text-align:left;">${headLabel}</th>${monthHead}</tr></thead>
+      <tbody>${bodyRows}</tbody></table></div>`;
+
+  // Seções item a item (mesma ordem e categorias do PDF — enum CategoryType)
+  const SECTIONS: Array<{ category: string; title: string; color: string }> = [
+    { category: 'Renda',                   title: 'Entradas (Rendas)',       color: '#15803d' },
+    { category: 'Cartão de Crédito',       title: 'Faturas de Cartão',       color: '#ea580c' },
+    { category: 'Contas Fixas',            title: 'Contas Fixas',            color: '#dc2626' },
+    { category: 'Contas Variáveis',        title: 'Contas Variáveis',        color: '#0891b2' },
+    { category: 'Lazer e Gastos Pessoais', title: 'Lazer e Gastos Pessoais', color: '#9333ea' },
+  ];
+  const sectionsHtml = SECTIONS.map(sec => {
+    const catItems = snap.items.filter(i => i.category === sec.category);
+    if (catItems.length === 0) return '';
+    const itemRows = catItems.map(item =>
+      row(item.description || '—', item.values.map(v => (v > 0 ? v : null)))
+    ).join('');
+    const totalRow = row('TOTAL', snap.months.map((_, idx) =>
+      catItems.reduce((sum, i) => sum + (i.values[idx] || 0), 0)), true);
+    return `<p style="margin:16px 0 6px;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:1px;color:${sec.color};border-left:4px solid ${sec.color};padding-left:8px;">${sec.title}</p>
+      ${wrapTable('Descrição', itemRows + totalRow)}`;
+  }).join('');
+
   const s = snap.summaries;
-  const table = `<div style="overflow-x:auto;"><table style="border-collapse:collapse;width:100%;">
-    <thead><tr><th style="border:1px solid #e8e8ed;padding:4px 6px;background:#f5f5f7;font-size:9px;text-align:left;">Resumo</th>${monthHead}</tr></thead>
-    <tbody>
-      ${row('Total de Entradas', s.map(x => x.totalIncome), false, '#15803d')}
-      ${row('Faturas de Cartão', s.map(x => x.totalCreditCard))}
-      ${row('Custos Fixos', s.map(x => x.totalFixed))}
-      ${row('Custos Variáveis', s.map(x => x.totalVariable))}
-      ${row('Gastos Pessoais e Lazer', s.map(x => x.totalLeisure))}
-      ${row('Total de Custos', s.map(x => x.totalCost), true)}
-      ${row('Saldo Mensal', s.map(x => x.balance), true)}
-      ${row('Acumulado', s.map(x => x.accumulated), true, '#7ab800')}
-    </tbody></table></div>`;
+  const table = wrapTable('Resumo', [
+    row('Total de Entradas', s.map(x => x.totalIncome), false, '#15803d'),
+    row('Faturas de Cartão', s.map(x => x.totalCreditCard)),
+    row('Custos Fixos', s.map(x => x.totalFixed)),
+    row('Custos Variáveis', s.map(x => x.totalVariable)),
+    row('Gastos Pessoais e Lazer', s.map(x => x.totalLeisure)),
+    row('Total de Custos', s.map(x => x.totalCost), true),
+    row('Saldo Mensal', s.map(x => x.balance), true),
+    row('Acumulado', s.map(x => x.accumulated), true, '#7ab800'),
+  ].join(''));
 
   return `<!DOCTYPE html>
 <html lang="pt-br">
@@ -137,9 +161,11 @@ function buildRecordEmail(clientFirstName: string, dateLabel: string, snap: Snap
           <p style="margin:0 0 12px;color:#6e6e73;font-size:14px;line-height:1.7;">
             Olá, <strong style="color:#1d1d1f;">${clientFirstName}</strong>! Este é o retrato do seu planejamento financeiro conforme registrado na consultoria de <strong style="color:#1d1d1f;">${dateLabel}</strong>. Guarde este e-mail — ele é o seu comprovante do cenário acordado nesta data.
           </p>
-          <p style="margin:0 0 20px;color:#6e6e73;font-size:14px;line-height:1.7;">
-            Abaixo, a compilação dos 12 meses. O documento completo (todas as contas, item a item) fica registrado no sistema e pode ser solicitado ao seu consultor a qualquer momento.
+          <p style="margin:0 0 8px;color:#6e6e73;font-size:14px;line-height:1.7;">
+            Abaixo, o seu raio-X completo: todas as contas, item a item, nos 12 meses do plano.
           </p>
+          ${sectionsHtml}
+          <p style="margin:20px 0 6px;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:1px;color:#1d1d1f;border-left:4px solid #a8e716;padding-left:8px;">Compilação Financeira</p>
           ${table}
           <p style="margin:20px 0 0;color:#6e6e73;font-size:13px;line-height:1.7;">
             Se algo não refletir o que foi combinado na reunião, <strong style="color:#1d1d1f;">responda este e-mail</strong> apontando a diferença.
