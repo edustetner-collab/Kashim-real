@@ -69,7 +69,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .eq('coach_user_id', payload.sub)
     .maybeSingle();
 
+  // Assistente (e-mail em admin_users) também pode — exceto perfis privados
+  let isAssistant = false;
   if (!member && !coachAccess) {
+    try {
+      const r = await fetch(`https://api.clerk.com/v1/users/${payload.sub}`, {
+        headers: { Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}` },
+      });
+      if (r.ok) {
+        const u = await r.json() as { email_addresses?: Array<{ email_address: string }> };
+        const email = (u.email_addresses?.[0]?.email_address ?? '').toLowerCase();
+        if (email) {
+          const { data: assistant } = await supabase.from('admin_users').select('id').eq('email', email).maybeSingle();
+          if (assistant) {
+            const { data: hh } = await supabase.from('households').select('is_private').eq('id', householdId).maybeSingle();
+            isAssistant = !hh?.is_private;
+          }
+        }
+      }
+    } catch { /* segue bloqueado */ }
+  }
+
+  if (!member && !coachAccess && !isAssistant) {
     return res.status(403).json({ error: 'Sem permissão para este household' });
   }
 

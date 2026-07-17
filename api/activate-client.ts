@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET ?? '';
@@ -23,18 +23,32 @@ function verifyAuthToken(authHeader?: string): { sub: string; [k: string]: unkno
     return null;
   }
 }
-function verifyAdminToken(authHeader?: string): string | null {
-  const claims = verifyAuthToken(authHeader);
-  if (!claims) return null;
-  const adminIds = (process.env.ADMIN_USER_IDS ?? '').split(',').map((x) => x.trim()).filter(Boolean);
-  return adminIds.includes(claims.sub) ? claims.sub : null;
-}
-
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY!;
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!;
 const ADMIN_IDS = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean);
 const APP_URL = 'https://app.kashim.com.br';
+
+// Aceita super-admin OU assistente (e-mail em admin_users) — liberado
+// 2026-07-16 para a assistente ativar perfis. Mesmo padrão do list-clients.
+async function getStaffId(authHeader: string, db: SupabaseClient): Promise<string | null> {
+  const claims = verifyAuthToken(authHeader);
+  if (!claims) return null;
+  if (ADMIN_IDS.includes(claims.sub)) return claims.sub;
+  try {
+    const r = await fetch(`https://api.clerk.com/v1/users/${claims.sub}`, {
+      headers: { Authorization: `Bearer ${CLERK_SECRET_KEY}` },
+    });
+    if (!r.ok) return null;
+    const u = await r.json() as { email_addresses?: Array<{ email_address: string }> };
+    const email = (u.email_addresses?.[0]?.email_address ?? '').toLowerCase();
+    if (!email) return null;
+    const { data } = await db.from('admin_users').select('id').eq('email', email).maybeSingle();
+    return data ? claims.sub : null;
+  } catch {
+    return null;
+  }
+}
 
 async function shortenUrl(longUrl: string): Promise<string> {
   try {
@@ -47,21 +61,16 @@ async function shortenUrl(longUrl: string): Promise<string> {
   }
 }
 
-function getAdminId(authHeader: string): string | null {
-  return verifyAdminToken(authHeader);
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const requesterId = getAdminId(req.headers.authorization ?? '');
+  const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  const requesterId = await getStaffId(req.headers.authorization ?? '', db);
   if (!requesterId) return res.status(403).json({ error: 'Forbidden: not an admin' });
 
   try {
     const { householdId } = req.body;
     if (!householdId) return res.status(400).json({ error: 'householdId required' });
-
-    const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
     const { data: household, error: hhError } = await db
       .from('households')
@@ -109,17 +118,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     await db.from('households').update({ status: 'active' }).eq('id', householdId);
 
-    // Grant 5 months of free coaching access
+    // Grant 5 months of free coaching access — para os super-admins E para a
+    // assistente que ativou (sem a linha dela, o RLS bloqueia o preenchimento).
     const now = new Date();
     const expiresAt = new Date(now);
     expiresAt.setMonth(expiresAt.getMonth() + 5);
-    await db.from('coach_access').insert({
-      household_id: householdId,
-      coach_user_id: requesterId,
-      status: 'approved',
-      expires_at: expiresAt.toISOString(),
-      approved_at: now.toISOString(),
-    });
+    const coachIds = Array.from(new Set([...ADMIN_IDS, requesterId]));
+    for (const coachId of coachIds) {
+      const { data: existing } = await db
+        .from('coach_access').select('id')
+        .eq('household_id', householdId).eq('coach_user_id', coachId).maybeSingle();
+      if (existing) continue;
+      await db.from('coach_access').insert({
+        household_id: householdId,
+        coach_user_id: coachId,
+        coach_clerk_user_id: coachId,
+        status: 'approved',
+        expires_at: expiresAt.toISOString(),
+        approved_at: now.toISOString(),
+      });
+    }
 
     // Gera link mágico de acesso (válido por 7 dias)
     let signInUrl: string | null = null;

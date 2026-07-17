@@ -26,9 +26,30 @@ function verifyAuthToken(authHeader?: string): { sub: string; [k: string]: unkno
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!;
+const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY!;
 const ADMIN_IDS = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean);
 
 const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+// Assistente (e-mail em admin_users) pode acessar clientes — MENOS perfis
+// privados (cadeado, is_private), que são exclusivos do super-admin.
+async function isAssistantAllowed(sub: string, householdId: string): Promise<boolean> {
+  try {
+    const r = await fetch(`https://api.clerk.com/v1/users/${sub}`, {
+      headers: { Authorization: `Bearer ${CLERK_SECRET_KEY}` },
+    });
+    if (!r.ok) return false;
+    const u = await r.json() as { email_addresses?: Array<{ email_address: string }> };
+    const email = (u.email_addresses?.[0]?.email_address ?? '').toLowerCase();
+    if (!email) return false;
+    const { data: assistant } = await db.from('admin_users').select('id').eq('email', email).maybeSingle();
+    if (!assistant) return false;
+    const { data: hh } = await db.from('households').select('is_private').eq('id', householdId).maybeSingle();
+    return !hh?.is_private;
+  } catch {
+    return false;
+  }
+}
 
 async function canAccess(sub: string, householdId: string): Promise<boolean> {
   if (ADMIN_IDS.includes(sub)) return true;
@@ -39,7 +60,8 @@ async function canAccess(sub: string, householdId: string): Promise<boolean> {
   const { data: coach } = await db
     .from('coach_access').select('id')
     .eq('household_id', householdId).eq('coach_user_id', sub).maybeSingle();
-  return !!coach;
+  if (coach) return true;
+  return isAssistantAllowed(sub, householdId);
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

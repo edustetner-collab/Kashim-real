@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET ?? '';
@@ -23,26 +23,38 @@ function verifyAuthToken(authHeader?: string): { sub: string; [k: string]: unkno
     return null;
   }
 }
-function verifyAdminToken(authHeader?: string): string | null {
-  const claims = verifyAuthToken(authHeader);
-  if (!claims) return null;
-  const adminIds = (process.env.ADMIN_USER_IDS ?? '').split(',').map((x) => x.trim()).filter(Boolean);
-  return adminIds.includes(claims.sub) ? claims.sub : null;
-}
-
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY!;
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!;
 const ADMIN_IDS = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean);
 
-function getAdminId(authHeader: string): string | null {
-  return verifyAdminToken(authHeader);
+// Aceita super-admin OU assistente (e-mail cadastrado em admin_users) —
+// mesmo padrão do list-clients. Liberado em 2026-07-16 a pedido do Eduardo
+// para a assistente criar/ativar perfis de clientes.
+async function getStaffId(authHeader: string, db: SupabaseClient): Promise<string | null> {
+  const claims = verifyAuthToken(authHeader);
+  if (!claims) return null;
+  if (ADMIN_IDS.includes(claims.sub)) return claims.sub;
+  try {
+    const r = await fetch(`https://api.clerk.com/v1/users/${claims.sub}`, {
+      headers: { Authorization: `Bearer ${CLERK_SECRET_KEY}` },
+    });
+    if (!r.ok) return null;
+    const u = await r.json() as { email_addresses?: Array<{ email_address: string }> };
+    const email = (u.email_addresses?.[0]?.email_address ?? '').toLowerCase();
+    if (!email) return null;
+    const { data } = await db.from('admin_users').select('id').eq('email', email).maybeSingle();
+    return data ? claims.sub : null;
+  } catch {
+    return null;
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const requesterId = getAdminId(req.headers.authorization ?? '');
+  const authDb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  const requesterId = await getStaffId(req.headers.authorization ?? '', authDb);
   if (!requesterId) return res.status(403).json({ error: 'Forbidden: not an admin' });
 
   try {
@@ -70,10 +82,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const householdId = household.id;
 
-    for (const adminId of ADMIN_IDS) {
+    // Coach access para todos os super-admins E para a assistente que criou
+    // (o RLS do coach view checa coach_access — sem a linha dela, ela criaria
+    // o perfil mas não conseguiria preenchê-lo). coach_user_id + coach_clerk_
+    // user_id: a tabela tem as duas colunas (legado) e rotas diferentes
+    // filtram por uma ou outra — preenche ambas.
+    const coachIds = Array.from(new Set([...ADMIN_IDS, requesterId]));
+    for (const coachId of coachIds) {
       await db.from('coach_access').insert({
         household_id: householdId,
-        coach_clerk_user_id: adminId,
+        coach_clerk_user_id: coachId,
+        coach_user_id: coachId,
         status: 'approved',
         coaching_started_at: new Date().toISOString(),
         coaching_ends_at: new Date(Date.now() + 5 * 30 * 24 * 60 * 60 * 1000).toISOString(),
