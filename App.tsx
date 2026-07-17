@@ -1263,7 +1263,12 @@ ${renderSection(CategoryType.PERSONAL_LEISURE, 'Lazer e Gastos Pessoais',    '#a
         <TermsGate onAccept={handleAcceptTerms} onSignOut={() => signOut()} />
       )}
 
-      {!needsTermsAcceptance && showOnboarding && user && (
+      {/* Wizard NUNCA para admin/assistente nem na visão de coach: a
+          assistente (admin por DB, que NÃO pula o loadData) tinha o wizard da
+          própria conta vazia armado, e ele estourava POR CIMA do perfil do
+          cliente ao entrar — e o completar gravaria na conta do CLIENTE
+          (2026-07-16). */}
+      {!needsTermsAcceptance && showOnboarding && user && !isAdmin && !coachViewHouseholdId && (
         <OnboardingWizard
           userName={user.firstName || user.emailAddresses[0]?.emailAddress.split('@')[0] || ''}
           onComplete={handleWizardComplete}
