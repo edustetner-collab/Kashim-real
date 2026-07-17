@@ -10,7 +10,7 @@ import TetoGastos from './components/TetoGastos';
 import AICoach from './components/AICoach';
 import OnboardingManager from './components/onboarding/OnboardingManager';
 import { useSupabase } from './lib/useSupabase';
-import { getOrCreateHousehold, getHousehold, loadFinanceItems, loadFinanceItemsForCoach, saveFinanceItem, deleteFinanceItem, addPartialExpense, deletePartialExpense, loadGoals, loadTetoColumns, saveTetoColumns } from './lib/db';
+import { getOrCreateHousehold, getHousehold, loadFinanceItems, loadFinanceItemsForCoach, saveFinanceItem, deleteFinanceItem, addPartialExpense, deletePartialExpense, loadGoals, loadTetoColumns } from './lib/db';
 import { processInviteFromUrl } from './lib/invites';
 import InvitePartner from './components/InvitePartner';
 import CoachDashboard from './components/CoachDashboard';
@@ -391,7 +391,14 @@ const App: React.FC = () => {
         // para as linhas do banco do cliente anterior → dados de um vazavam
         // para o outro (contaminação, 2026-07-11).
         itemIdMapRef.current = {};
-        pendingDeletesRef.current.clear();
+        // Limpa SÓ os tombstones de IDs locais ("default-fixed-N" se repete
+        // entre clientes e bloquearia o save do novo). Tombstones de UUID são
+        // únicos globalmente e ficam — remover permitia um ciclo de salvamento
+        // atrasado ressuscitar itens excluídos do perfil anterior (2026-07-16).
+        const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        for (const tid of Array.from(pendingDeletesRef.current)) {
+          if (!uuidRe.test(tid)) pendingDeletesRef.current.delete(tid);
+        }
         setHouseholdId(coachViewHouseholdId!);
         // Usa service key (via API) para carregar finance_items + partial_expenses
         // porque o RLS do Supabase bloqueia partial_expenses para o JWT do coach.
@@ -459,6 +466,10 @@ const App: React.FC = () => {
       (async () => {
         try {
           for (let i = 0; i < items.length; i++) {
+            // Aborta se o usuário trocou de perfil no meio do ciclo — sem isto,
+            // um loop em voo continuava gravando o snapshot do perfil ANTERIOR
+            // (inclusive itens recém-excluídos) depois da troca (2026-07-16).
+            if (currentHouseholdIdRef.current !== householdId) break;
             const item = items[i];
             const dbId = itemIdMapRef.current[item.id] ?? item.id;
             if (pendingDeletesRef.current.has(item.id) || pendingDeletesRef.current.has(dbId)) continue;
@@ -723,19 +734,23 @@ const App: React.FC = () => {
     setItems(prev => prev.map(item => item.id === id ? { ...item, paidStatus: item.paidStatus.map((s, i) => i === monthIdx ? !s : s) } : item));
   };
 
+  // Exclui no banco com retry. Os tombstones em pendingDeletesRef são
+  // PERMANENTES na sessão — NUNCA remova ao fim do delete: um ciclo de
+  // salvamento em voo com snapshot antigo dos items re-upsertava a linha
+  // logo após o DELETE (ressurreição de excluídos, bug real 2026-07-16).
+  const deleteItemWithRetry = (dbId: string, attempt: number) => {
+    if (!db) { if (attempt < 10) setTimeout(() => deleteItemWithRetry(dbId, attempt + 1), 1000 * attempt); return; }
+    deleteFinanceItem(db, dbId).catch(() => {
+      if (attempt < 5) setTimeout(() => deleteItemWithRetry(dbId, attempt + 1), 1500 * attempt);
+    });
+  };
+
   const handleRemoveItem = (id: string) => {
     const dbId = itemIdMapRef.current[id] ?? id;
     pendingDeletesRef.current.add(id);
     pendingDeletesRef.current.add(dbId);
     setItems(prev => prev.filter(item => item.id !== id));
-    if (db) {
-      deleteFinanceItem(db, dbId)
-        .catch(console.error)
-        .finally(() => {
-          pendingDeletesRef.current.delete(id);
-          pendingDeletesRef.current.delete(dbId);
-        });
-    }
+    deleteItemWithRetry(dbId, 1);
   };
 
   const handleUpdateCardConfig = (id: string, field: 'closingDay' | 'dueDay', value: number) => {
@@ -851,14 +866,10 @@ ${renderSection(CategoryType.PERSONAL_LEISURE, 'Lazer e Gastos Pessoais',    '#a
     if (!confirm(`Excluir ${blanks.length} conta(s) fixa(s) em branco deste cliente?`)) return;
     for (const item of blanks) {
       const dbId = itemIdMapRef.current[item.id] ?? item.id;
+      // Tombstones permanentes — ver comentário em deleteItemWithRetry
       pendingDeletesRef.current.add(item.id);
       pendingDeletesRef.current.add(dbId);
-      if (db) {
-        deleteFinanceItem(db, dbId).catch(console.error).finally(() => {
-          pendingDeletesRef.current.delete(item.id);
-          pendingDeletesRef.current.delete(dbId);
-        });
-      }
+      deleteItemWithRetry(dbId, 1);
     }
     const blankIds = new Set(blanks.map(b => b.id));
     setItems(prev => prev.filter(i => !blankIds.has(i.id)));
@@ -906,17 +917,17 @@ ${renderSection(CategoryType.PERSONAL_LEISURE, 'Lazer e Gastos Pessoais',    '#a
     };
     setItems(prev => [...prev, newItem]);
 
-    // Auto-create a Gastos column linked to the new item (only if none exists yet)
+    // NÃO grava teto_columns daqui: a cópia do App fica defasada da do
+    // TetoGastos e o saveTetoColumns (delete-all + insert) APAGAVA colunas
+    // criadas lá (escritores concorrentes na mesma tabela, 2026-07-16).
+    // O auto-link do TetoGastos cria e persiste a coluna de Lazer sozinho.
     setTetoColumns(prev => {
       const alreadyHas = prev.some(c => {
         const linked = items.find(i => i.id === c.linkedItemId);
         return linked?.category === CategoryType.PERSONAL_LEISURE;
       });
       if (alreadyHas) return prev;
-      const newCol = { id: crypto.randomUUID(), title: 'LAZER', linkedItemId: newId };
-      const next = [...prev, newCol];
-      if (db && householdId) saveTetoColumns(db, householdId, next).catch(() => {});
-      return next;
+      return [...prev, { id: crypto.randomUUID(), title: 'LAZER', linkedItemId: newId }];
     });
 
     setActiveTab('teto');

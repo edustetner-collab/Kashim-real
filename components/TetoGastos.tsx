@@ -74,34 +74,50 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
   // Isolamento de perfil: limpa estado e refs ao trocar de householdId
   // Sem isso, colunas de um cliente vazam para outro via localStorage ou estado residual
-  const isFirstRender = useRef(true);
   const autoLinkedRef = useRef(false);
+  const loadedForRef = useRef<string | null>(null);   // household já carregado
+  const lastSavedRef = useRef<string>('[]');           // JSON do último estado persistido
   useEffect(() => {
     setColumns([]);
     setColumnsLoaded(false);
-    isFirstRender.current = true;
     autoLinkedRef.current = false;
+    loadedForRef.current = null;
+    lastSavedRef.current = '[]';
   }, [householdId]);
 
   useEffect(() => {
     if (!db || !householdId) { setColumnsLoaded(true); return; }
+    // Carrega UMA vez por household. O client do Supabase é recriado a cada
+    // ~50s (renovação de token) — sem esta trava, o load redisparava e
+    // SOBRESCREVIA o que o usuário tinha na tela (perda do 1º lançamento,
+    // bug real 2026-07-16).
+    if (loadedForRef.current === householdId) return;
+    loadedForRef.current = householdId;
     loadTetoColumns(db, householdId).then((rows) => {
-      if (rows.length > 0) {
-        const loaded = rows.map((r: any) => ({
-          id: r.id,
-          title: r.title,
-          linkedItemId: r.linked_item_id ?? '',
-        }));
-        // Dedup: keep only the first column per linkedItemId to fix accumulated duplicates
-        const seen = new Set<string>();
-        const deduped = loaded.filter(col => {
-          if (!col.linkedItemId) return true;
-          if (seen.has(col.linkedItemId)) return false;
-          seen.add(col.linkedItemId);
-          return true;
-        });
-        setColumns(deduped);
-      }
+      const loaded = rows.map((r: any) => ({
+        id: r.id,
+        title: r.title,
+        linkedItemId: r.linked_item_id ?? '',
+      }));
+      // Dedup: keep only the first column per linkedItemId to fix accumulated duplicates
+      const seen = new Set<string>();
+      const deduped = loaded.filter(col => {
+        if (!col.linkedItemId) return true;
+        if (seen.has(col.linkedItemId)) return false;
+        seen.add(col.linkedItemId);
+        return true;
+      });
+      lastSavedRef.current = JSON.stringify(deduped);
+      // MERGE com o que o usuário digitou ENQUANTO o load estava em voo —
+      // substituir o estado apagava a primeira adição (setColumns(deduped)
+      // chegava depois do Enter do usuário). Local vem por último.
+      setColumns(prev => {
+        if (prev.length === 0) return deduped;
+        const dbIds = new Set(deduped.map(c => c.id));
+        const dbLinked = new Set(deduped.map(c => c.linkedItemId).filter(Boolean));
+        const localOnly = prev.filter(c => !dbIds.has(c.id) && !(c.linkedItemId && dbLinked.has(c.linkedItemId)));
+        return [...deduped, ...localOnly];
+      });
       // When Supabase has no columns, start empty — do NOT fall back to localStorage.
       // localStorage is not isolated per profile and causes cross-profile contamination.
       setColumnsLoaded(true);
@@ -110,11 +126,15 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
   useEffect(() => {
     if (!columnsLoaded) return;
-    if (isFirstRender.current) { isFirstRender.current = false; return; }
+    // Salva só quando o estado difere do último persistido (substitui o antigo
+    // guard isFirstRender, que engolia o save da 1ª adição pós-load).
+    const json = JSON.stringify(columns);
+    if (json === lastSavedRef.current) return;
     if (db && householdId) {
+      lastSavedRef.current = json;
       saveTetoColumns(db, householdId, columns).catch(() => {});
     }
-  }, [columns, columnsLoaded]);
+  }, [columns, columnsLoaded, db, householdId]);
   // Only run with real Supabase items (UUID IDs). Default placeholder items load before
   // Supabase completes and would cause incorrect auto-link and cleanedFixed behaviour.
   const hasRealItems = items.some(i => /^[0-9a-f]{8}-[0-9a-f]{4}/.test(i.id));
