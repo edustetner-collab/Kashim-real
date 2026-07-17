@@ -25,12 +25,16 @@ interface BlockSectionProps {
   onMoveItem?: (id: string, direction: 'up' | 'down') => void;
   trackedByCardId?: Record<string, number>;
   trackedByCardAllMonths?: Record<string, Record<number, number>>;
+  /** Coach/assistente: pula os recados educativos (modal de instrução ao
+      adicionar e aviso de parcelas) — eles são para o cliente. */
+  isAdmin?: boolean;
 }
 
 const BlockSection: React.FC<BlockSectionProps> = ({
   title, subtitle, category, items, allCards = [], months, totalIncome, mobileMonthIdx = 0,
   onAddItem, onUpdateValue, onTogglePaid, onRemoveItem, onUpdateDescription, onReplicateValue, onLinkCard,
-  onUpdateCardConfig, onMoveItem, trackedByCardId, trackedByCardAllMonths, onRequestExpenseSheet, onAddLeisureItem
+  onUpdateCardConfig, onMoveItem, trackedByCardId, trackedByCardAllMonths, onRequestExpenseSheet, onAddLeisureItem,
+  isAdmin = false
 }) => {
   const [showInstructionModal, setShowInstructionModal] = useState(false);
   const [installmentWarning, setInstallmentWarning] = useState<string | null>(null);
@@ -84,7 +88,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
   };
 
   const handleAddWithInstruction = () => {
-    const skipModal = localStorage.getItem(`skip_modal_${category}`);
+    const skipModal = isAdmin || localStorage.getItem(`skip_modal_${category}`);
     if (!skipModal) {
       setShowInstructionModal(true);
     } else {
@@ -136,6 +140,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
   };
 
   const checkInstallments = (itemId: string) => {
+    if (isAdmin) return;
     if (category !== CategoryType.FIXED_EXPENSE) return;
     if (timersRef.current[itemId]) window.clearTimeout(timersRef.current[itemId]);
 

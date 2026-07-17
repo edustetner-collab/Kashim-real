@@ -1706,6 +1706,7 @@ ${renderSection(CategoryType.PERSONAL_LEISURE, 'Lazer e Gastos Pessoais',    '#a
                       }
                     : undefined}
                   onAddLeisureItem={block.type === CategoryType.PERSONAL_LEISURE ? handleAddLeisureItem : undefined}
+                  isAdmin={isAdmin}
                 />
                 </React.Fragment>
               ))}
