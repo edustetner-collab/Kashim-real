@@ -26,6 +26,7 @@ import MoneyCountUp from './components/MoneyCountUp';
 import { fireConfetti } from './lib/confetti';
 import { useTilt } from './lib/useTilt';
 import { computeAccess, AccessInfo } from './lib/access';
+import { buildRaioXHtml, openRaioXWindow, RaioXSnapshot } from './lib/raioX';
 import { Quote, getQuoteForUser, getMondayKey } from './lib/quotes';
 import { refreshNotifications } from './lib/notifications';
 import { getNotifPrefs } from './lib/notifPrefs';
@@ -117,6 +118,10 @@ const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [coachViewHouseholdId, setCoachViewHouseholdId] = useState<string | null>(null);
   const [coachViewClientName, setCoachViewClientName] = useState<string>('');
+  // Registros da consultoria (raio-X imutável) do cliente em visão de coach
+  const [consultRecords, setConsultRecords] = useState<Array<{ id: string; created_at: string; content_hash: string; email_sent_to: string | null; snapshot: RaioXSnapshot }> | null>(null);
+  const [showRecordsModal, setShowRecordsModal] = useState(false);
+  const [registeringConsult, setRegisteringConsult] = useState(false);
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
   const [showSubscriptionGate, setShowSubscriptionGate] = useState(false);
   const [accessInfo, setAccessInfo] = useState<AccessInfo | null>(null);
@@ -391,6 +396,9 @@ const App: React.FC = () => {
         // para as linhas do banco do cliente anterior → dados de um vazavam
         // para o outro (contaminação, 2026-07-11).
         itemIdMapRef.current = {};
+        // Registros da consultoria são por cliente — zera ao trocar
+        setConsultRecords(null);
+        setShowRecordsModal(false);
         // Limpa SÓ os tombstones de IDs locais ("default-fixed-N" se repete
         // entre clientes e bloquearia o save do novo). Tombstones de UUID são
         // únicos globalmente e ficam — remover permitia um ciclo de salvamento
@@ -758,99 +766,64 @@ const App: React.FC = () => {
   };
 
   // Ferramenta do coach (só web): remove de uma vez todas as contas fixas
+  // Snapshot autocontido do raio-X — o mesmo formato serve para o PDF avulso
+  // e para o registro imutável da consultoria (consultation_records).
+  const buildRaioXSnapshot = (): RaioXSnapshot => ({
+    clientName: coachViewClientName || 'Cliente',
+    months: months.map(m => ({ monthName: m.monthName, year: m.year })),
+    items: items.map(i => ({ description: i.description, category: i.category, values: i.values })),
+    summaries: monthlySummaries.map(s => ({
+      totalIncome: s.totalIncome, totalCreditCard: s.totalCreditCard,
+      totalFixed: s.totalFixed, totalVariable: s.totalVariable,
+      totalLeisure: s.totalLeisure, totalCost: s.totalCost,
+      balance: s.balance, accumulated: s.accumulated,
+    })),
+  });
+
   const handleGeneratePDF = () => {
-    const clientName = coachViewClientName || 'Cliente';
-    const today = new Date().toLocaleDateString('pt-BR');
-    const fmt = (v: number) =>
-      new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+    openRaioXWindow(buildRaioXHtml(buildRaioXSnapshot(), new Date().toLocaleDateString('pt-BR')));
+  };
 
-    const monthHeaders = months
-      .map(m => `<th>${m.monthName}<span class="year">${m.year}</span></th>`)
-      .join('');
+  // Registra a consultoria: snapshot imutável no banco + e-mail-cópia ao cliente
+  const handleRegisterConsultation = async () => {
+    if (!coachViewHouseholdId) return;
+    if (!confirm('Registrar a consultoria de hoje? O retrato atual do planejamento será gravado de forma permanente e uma cópia será enviada por e-mail ao cliente.')) return;
+    setRegisteringConsult(true);
+    try {
+      const token = await getToken({ template: 'supabase' });
+      const res = await fetch('/api/consultation-records', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          householdId: coachViewHouseholdId,
+          clientName: coachViewClientName,
+          snapshot: buildRaioXSnapshot(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert('Erro ao registrar: ' + (data.error ?? res.status)); return; }
+      setConsultRecords(null); // força recarga na próxima abertura da lista
+      alert(`Consultoria registrada em ${new Date(data.createdAt).toLocaleString('pt-BR')}.\nE-mail: ${data.emailStatus}`);
+    } catch {
+      alert('Erro de conexão ao registrar a consultoria.');
+    } finally {
+      setRegisteringConsult(false);
+    }
+  };
 
-    const renderSection = (category: CategoryType, title: string, color: string) => {
-      const catItems = items.filter(i => i.category === category);
-      if (catItems.length === 0) return '';
-      const rows = catItems.map(item => {
-        const cells = months.map((_, idx) => {
-          const v = item.values[idx] || 0;
-          return `<td class="val">${v > 0 ? fmt(v) : ''}</td>`;
-        }).join('');
-        return `<tr><td class="desc">${item.description || '—'}</td>${cells}</tr>`;
-      }).join('');
-      const totals = months.map((_, idx) =>
-        `<td class="total-val">${fmt(catItems.reduce((s, i) => s + (i.values[idx] || 0), 0))}</td>`
-      ).join('');
-      return `<div class="section">
-        <h2 style="border-left:4px solid ${color}">${title}</h2>
-        <table>
-          <thead><tr><th class="desc-th">Descrição</th>${monthHeaders}</tr></thead>
-          <tbody>${rows}<tr class="total-row"><td>TOTAL</td>${totals}</tr></tbody>
-        </table></div>`;
-    };
-
-    const summaryRows = [
-      { label: 'Total de Entradas',        vals: monthlySummaries.map(s => s.totalIncome),    cls: 'income' },
-      { label: 'Faturas de Cartão',         vals: monthlySummaries.map(s => s.totalCreditCard), cls: 'credit' },
-      { label: 'Custos Fixos',              vals: monthlySummaries.map(s => s.totalFixed),      cls: 'fixed' },
-      { label: 'Custos Variáveis',          vals: monthlySummaries.map(s => s.totalVariable),   cls: 'variable' },
-      { label: 'Gastos Pessoais e Lazer',   vals: monthlySummaries.map(s => s.totalLeisure),    cls: 'leisure' },
-      { label: 'Total de Custos',           vals: monthlySummaries.map(s => s.totalCost),       cls: 'costtotal' },
-      { label: 'Saldo Mensal',              vals: monthlySummaries.map(s => s.balance),         cls: 'balance' },
-      { label: 'Acumulado',                 vals: monthlySummaries.map(s => s.accumulated),     cls: 'accumulated' },
-    ].map(row =>
-      `<tr class="sr-${row.cls}"><td>${row.label}</td>${row.vals.map(v =>
-        `<td class="val${v < 0 ? ' neg' : ''}">${fmt(v)}</td>`).join('')}</tr>`
-    ).join('');
-
-    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
-<title>Raio-X — ${clientName}</title><style>
-@page{size:A4 landscape;margin:0.8cm}
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Arial,sans-serif;font-size:7.5px;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #a8e716}
-header h1{font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:-.5px}
-header p{font-size:7px;color:#666}
-.section{margin-bottom:12px}
-.section h2{font-size:8px;font-weight:900;text-transform:uppercase;letter-spacing:1px;padding:3px 6px;margin-bottom:4px;background:#f5f5f5}
-table{width:100%;border-collapse:collapse}
-th,td{border:1px solid #ddd;padding:2.5px 4px;text-align:right;white-space:nowrap}
-th{background:#f0f0f0;font-size:6.5px;font-weight:700}
-.desc-th{text-align:left;min-width:110px}
-.desc{text-align:left;max-width:140px;overflow:hidden;text-overflow:ellipsis}
-.val{font-family:monospace}
-.year{display:block;font-size:6px;color:#999;font-weight:400}
-.total-row td{background:#e8e8e8;font-weight:800;border-top:2px solid #bbb}
-.total-val{font-family:monospace;font-weight:800}
-.sr-income td{color:#15803d;font-weight:700}
-.sr-costtotal td{background:#f0f0f0;font-weight:800;border-top:2px solid #bbb}
-.sr-balance td{background:#fff7f0}
-.sr-accumulated td{background:#111;color:#a8e716;font-weight:900}
-.neg{color:#dc2626!important}
-.summary-section h2{background:#111;color:#a8e716}
-</style></head><body>
-<header>
-  <div><h1>Raio-X Financeiro — ${clientName}</h1>
-  <p>Período: ${months[0].monthName} ${months[0].year} → ${months[11].monthName} ${months[11].year}</p></div>
-  <p>Emitido em ${today} | Kashim</p>
-</header>
-${renderSection(CategoryType.INCOME,           'Entradas (Rendas)',          '#22c55e')}
-${renderSection(CategoryType.CREDIT_CARD,      'Faturas de Cartão',          '#f97316')}
-${renderSection(CategoryType.FIXED_EXPENSE,    'Contas Fixas',               '#ef4444')}
-${renderSection(CategoryType.VARIABLE_EXPENSE, 'Contas Variáveis',           '#06b6d4')}
-${renderSection(CategoryType.PERSONAL_LEISURE, 'Lazer e Gastos Pessoais',    '#a855f7')}
-<div class="section summary-section">
-  <h2>Compilação Financeira</h2>
-  <table><thead><tr><th class="desc-th">Resumo</th>${monthHeaders}</tr></thead>
-  <tbody>${summaryRows}</tbody></table>
-</div>
-</body></html>`;
-
-    const win = window.open('', '_blank', 'width=1200,height=800');
-    if (!win) { alert('Permita pop-ups para gerar o PDF.'); return; }
-    win.document.write(html);
-    win.document.close();
-    setTimeout(() => { win.focus(); win.print(); }, 400);
+  const openConsultRecords = async () => {
+    setShowRecordsModal(true);
+    if (consultRecords !== null) return; // já carregado nesta visita
+    try {
+      const token = await getToken({ template: 'supabase' });
+      const res = await fetch(`/api/consultation-records?householdId=${coachViewHouseholdId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setConsultRecords(res.ok ? (data.records ?? []) : []);
+    } catch {
+      setConsultRecords([]);
+    }
   };
 
   // deixadas em branco ao montar o plano do cliente — sem valor em nenhum mês e
@@ -1656,7 +1629,28 @@ ${renderSection(CategoryType.PERSONAL_LEISURE, 'Lazer e Gastos Pessoais',    '#a
             </div>
 
             {isAdmin && !isNativeApp && (
-              <div id="coach-pdf-btn" className="px-3 mb-4 flex justify-end">
+              <div id="coach-pdf-btn" className="px-3 mb-4 flex justify-end gap-2 flex-wrap">
+                {coachViewHouseholdId && (
+                  <>
+                    <button
+                      onClick={openConsultRecords}
+                      className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wide text-zinc-300 bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 active:scale-95 transition-all shadow-sm hover:bg-zinc-800"
+                      title="Registros imutáveis das consultorias deste cliente — reabra o raio-X de qualquer data"
+                    >
+                      <i className="fas fa-folder-open text-zinc-400"></i> Registros
+                    </button>
+                    <button
+                      onClick={handleRegisterConsultation}
+                      disabled={registeringConsult}
+                      className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wide text-black bg-green-500 rounded-xl px-4 py-2.5 active:scale-95 transition-all shadow-sm hover:bg-green-400 disabled:opacity-50"
+                      title="Grava o retrato de hoje de forma permanente e envia cópia por e-mail ao cliente (comprovante da consultoria)"
+                    >
+                      {registeringConsult
+                        ? <i className="fas fa-circle-notch animate-spin"></i>
+                        : <i className="fas fa-stamp"></i>} Registrar consultoria
+                    </button>
+                  </>
+                )}
                 <button
                   onClick={handleGeneratePDF}
                   className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wide text-white bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 active:scale-95 transition-all shadow-sm hover:bg-zinc-800"
@@ -1664,6 +1658,49 @@ ${renderSection(CategoryType.PERSONAL_LEISURE, 'Lazer e Gastos Pessoais',    '#a
                 >
                   <i className="fas fa-file-pdf text-[#ff3b30]"></i> Gerar PDF da consultoria
                 </button>
+              </div>
+            )}
+
+            {showRecordsModal && (
+              <div className="fixed inset-0 z-[300] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowRecordsModal(false)}>
+                <div className="max-w-lg w-full bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-2xl max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-white font-black uppercase italic tracking-tight">Registros — {coachViewClientName}</h3>
+                    <button onClick={() => setShowRecordsModal(false)} className="w-8 h-8 bg-zinc-800 rounded-full text-zinc-400 hover:text-white">
+                      <i className="fas fa-times"></i>
+                    </button>
+                  </div>
+                  {consultRecords === null ? (
+                    <div className="text-center py-10"><i className="fas fa-circle-notch animate-spin text-green-400 text-2xl"></i></div>
+                  ) : consultRecords.length === 0 ? (
+                    <p className="text-zinc-500 text-sm text-center py-8">Nenhuma consultoria registrada ainda.<br/>Use "Registrar consultoria" ao fim da reunião.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {consultRecords.map(r => (
+                        <button
+                          key={r.id}
+                          onClick={() => openRaioXWindow(buildRaioXHtml(
+                            r.snapshot,
+                            new Date(r.created_at).toLocaleDateString('pt-BR'),
+                            `Registro imutável da consultoria de ${new Date(r.created_at).toLocaleString('pt-BR')} · Integridade SHA-256: ${r.content_hash}`
+                          ))}
+                          className="w-full text-left bg-zinc-800/60 hover:bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-white text-sm font-bold">
+                              <i className="fas fa-file-shield text-green-400 mr-2"></i>
+                              {new Date(r.created_at).toLocaleDateString('pt-BR')} às {new Date(r.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            <span className="text-zinc-500 text-[10px] uppercase font-black">Abrir PDF</span>
+                          </div>
+                          <p className="text-zinc-500 text-[11px] mt-1 truncate">
+                            {r.email_sent_to ? `Cópia enviada: ${r.email_sent_to}` : 'Sem e-mail de cópia'} · hash {r.content_hash.slice(0, 12)}…
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
