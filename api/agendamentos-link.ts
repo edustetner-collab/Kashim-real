@@ -62,17 +62,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const [{ data: hh }, { data: rawClients, error: agendErr }] = await Promise.all([
         kashim.from('households').select('agendamentos_client_id').eq('id', householdId).maybeSingle(),
-        agend.from('clients').select('id, name, phone_digits, start_month_year').order('name'),
+        agend.from('clients').select('id, name, phone_digits, start_month_year, status_by_month').order('name'),
       ]);
 
       if (agendErr) return res.status(500).json({ error: 'Erro ao buscar clientes do agendamentos: ' + agendErr.message });
 
-      const clients = (rawClients ?? []).map((c: any) => ({
-        id: c.id as string,
-        name: c.name as string,
-        phoneDigits: (c.phone_digits ?? '') as string,
-        startMonthYear: (c.start_month_year ?? '') as string,
-      }));
+      const TERMINAL_STATUSES = new Set(['CANCELLED_EARLY', 'FINALIZADO', 'CANCELED']);
+      const clients = (rawClients ?? [])
+        .filter((c: any) => {
+          const sbm = (c.status_by_month ?? {}) as Record<string, { status?: string }>;
+          return !Object.values(sbm).some(v => TERMINAL_STATUSES.has(v?.status ?? ''));
+        })
+        .map((c: any) => ({
+          id: c.id as string,
+          name: c.name as string,
+          phoneDigits: (c.phone_digits ?? '') as string,
+          startMonthYear: (c.start_month_year ?? '') as string,
+        }));
 
       return res.status(200).json({
         currentLinkId: hh?.agendamentos_client_id ?? null,
