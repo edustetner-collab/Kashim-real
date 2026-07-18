@@ -245,7 +245,58 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      return res.status(200).json({ ok: true, id: record.id, createdAt: record.created_at, hash: contentHash, emailStatus });
+      // ── Sincroniza com o sistema de agendamentos (best-effort) ─────────────
+      let agendamentosStatus = 'nao_vinculado';
+      const AGEND_URL = process.env.AGENDAMENTOS_SUPABASE_URL ?? '';
+      const AGEND_KEY = process.env.AGENDAMENTOS_SERVICE_KEY ?? '';
+
+      if (AGEND_URL && AGEND_KEY) {
+        const { data: hhLink } = await db
+          .from('households')
+          .select('agendamentos_client_id')
+          .eq('id', householdId)
+          .maybeSingle();
+
+        const agendClientId = hhLink?.agendamentos_client_id as string | null | undefined;
+        if (agendClientId) {
+          try {
+            const agend = createClient(AGEND_URL, AGEND_KEY);
+            const today = new Date();
+            const monthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+            const dayOfMonth = today.getDate();
+
+            const { data: agendClient } = await agend
+              .from('clients')
+              .select('status_by_month')
+              .eq('id', agendClientId)
+              .maybeSingle();
+
+            if (!agendClient) {
+              agendamentosStatus = 'cliente_nao_encontrado';
+            } else {
+              const statusByMonth = (agendClient.status_by_month as Record<string, { status: string; customDate?: number; notified?: boolean }>) || {};
+              if (statusByMonth[monthKey]?.status === 'DONE') {
+                agendamentosStatus = 'ja_marcado';
+              } else {
+                const updated = {
+                  ...statusByMonth,
+                  [monthKey]: { ...(statusByMonth[monthKey] ?? {}), status: 'DONE', customDate: dayOfMonth },
+                };
+                const { error: agendErr } = await agend
+                  .from('clients')
+                  .update({ status_by_month: updated })
+                  .eq('id', agendClientId);
+                agendamentosStatus = agendErr ? `erro: ${agendErr.message}` : 'atualizado';
+              }
+            }
+          } catch (e) {
+            agendamentosStatus = 'erro: ' + (e instanceof Error ? e.message : 'desconhecido');
+          }
+        }
+      }
+      // ────────────────────────────────────────────────────────────────────────
+
+      return res.status(200).json({ ok: true, id: record.id, createdAt: record.created_at, hash: contentHash, emailStatus, agendamentosStatus });
     }
 
     return res.status(405).json({ error: 'Method not allowed' });

@@ -122,6 +122,12 @@ const App: React.FC = () => {
   const [consultRecords, setConsultRecords] = useState<Array<{ id: string; created_at: string; content_hash: string; email_sent_to: string | null; snapshot: RaioXSnapshot }> | null>(null);
   const [showRecordsModal, setShowRecordsModal] = useState(false);
   const [registeringConsult, setRegisteringConsult] = useState(false);
+  // Vínculo com o sistema de agendamentos: null=carregando, false=sem vínculo, objeto=vinculado
+  const [agendLink, setAgendLink] = useState<{ id: string; name: string } | false | null>(null);
+  const [agendAllClients, setAgendAllClients] = useState<{ id: string; name: string; phoneDigits: string; startMonthYear: string }[]>([]);
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [linkSearch, setLinkSearch] = useState('');
+  const [savingLink, setSavingLink] = useState(false);
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
   const [showSubscriptionGate, setShowSubscriptionGate] = useState(false);
   const [accessInfo, setAccessInfo] = useState<AccessInfo | null>(null);
@@ -399,6 +405,9 @@ const App: React.FC = () => {
         // Registros da consultoria são por cliente — zera ao trocar
         setConsultRecords(null);
         setShowRecordsModal(false);
+        // Vínculo com agendamentos — reseta ao trocar de cliente (carregado em useEffect separado)
+        setAgendLink(null);
+        setAgendAllClients([]);
         // Limpa SÓ os tombstones de IDs locais ("default-fixed-N" se repete
         // entre clientes e bloquearia o save do novo). Tombstones de UUID são
         // únicos globalmente e ficam — remover permitia um ciclo de salvamento
@@ -457,6 +466,27 @@ const App: React.FC = () => {
     setStartMonth(snap.startMonth);
     setStartYear(snap.startYear);
   }, [coachViewHouseholdId]);
+
+  // Carrega o vínculo com o sistema de agendamentos ao abrir o painel de um cliente
+  useEffect(() => {
+    if (!coachViewHouseholdId || !isAdmin) return;
+    let cancelled = false;
+    getToken({ template: 'supabase' }).then(token =>
+      fetch(`/api/agendamentos-link?householdId=${coachViewHouseholdId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    ).then(r => r.ok ? r.json() : null).then(data => {
+      if (cancelled || !data) { if (!cancelled) setAgendLink(false); return; }
+      setAgendAllClients(data.clients ?? []);
+      if (data.currentLinkId) {
+        const found = (data.clients ?? []).find((c: any) => c.id === data.currentLinkId);
+        setAgendLink(found ? { id: found.id, name: found.name } : false);
+      } else {
+        setAgendLink(false);
+      }
+    }).catch(() => { if (!cancelled) setAgendLink(false); });
+    return () => { cancelled = true; };
+  }, [coachViewHouseholdId, isAdmin]);
 
   // Salva item no Supabase sempre que items mudar (debounced)
   const saveTimeoutRef = useRef<any>(null);
@@ -803,7 +833,13 @@ const App: React.FC = () => {
       const data = await res.json();
       if (!res.ok) { alert('Erro ao registrar: ' + (data.error ?? res.status)); return; }
       setConsultRecords(null); // força recarga na próxima abertura da lista
-      alert(`Consultoria registrada em ${new Date(data.createdAt).toLocaleString('pt-BR')}.\nE-mail: ${data.emailStatus}`);
+      const agendMsg =
+        data.agendamentosStatus === 'atualizado' ? '\n✅ Agendamento: reunião marcada como realizada'
+        : data.agendamentosStatus === 'ja_marcado' ? '\nℹ️ Agendamento: reunião deste mês já estava marcada'
+        : data.agendamentosStatus === 'nao_vinculado' ? '\n⚠️ Agendamento: cliente não vinculado — use o botão "Vincular agendamento"'
+        : data.agendamentosStatus ? `\n⚠️ Agendamento: ${data.agendamentosStatus}`
+        : '';
+      alert(`Consultoria registrada em ${new Date(data.createdAt).toLocaleString('pt-BR')}.\nE-mail: ${data.emailStatus}${agendMsg}`);
     } catch {
       alert('Erro de conexão ao registrar a consultoria.');
     } finally {
@@ -1632,6 +1668,21 @@ const App: React.FC = () => {
               <div id="coach-pdf-btn" className="px-3 mb-4 flex justify-end gap-2 flex-wrap">
                 {coachViewHouseholdId && (
                   <>
+                    {/* Badge de vínculo com agendamentos */}
+                    {agendLink !== null && (
+                      <button
+                        onClick={() => setShowLinkModal(true)}
+                        className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide rounded-xl px-3 py-2.5 transition-all ${
+                          agendLink === false
+                            ? 'text-amber-900 bg-amber-100 border border-amber-300 hover:bg-amber-200'
+                            : 'text-green-900 bg-green-100 border border-green-300 hover:bg-green-200'
+                        }`}
+                        title={agendLink === false ? 'Vincular ao sistema de agendamentos' : `Vinculado a: ${agendLink.name} — clique para alterar`}
+                      >
+                        <i className={`fas ${agendLink === false ? 'fa-calendar-xmark text-amber-600' : 'fa-calendar-check text-green-600'}`}></i>
+                        {agendLink === false ? 'Vincular agendamento' : agendLink.name}
+                      </button>
+                    )}
                     <button
                       onClick={openConsultRecords}
                       className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wide text-zinc-300 bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 active:scale-95 transition-all shadow-sm hover:bg-zinc-800"
@@ -1658,6 +1709,114 @@ const App: React.FC = () => {
                 >
                   <i className="fas fa-file-pdf text-[#ff3b30]"></i> Gerar PDF da consultoria
                 </button>
+              </div>
+            )}
+
+            {/* Modal de vinculação ao sistema de agendamentos */}
+            {showLinkModal && (
+              <div className="fixed inset-0 z-[300] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => { setShowLinkModal(false); setLinkSearch(''); }}>
+                <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-2xl max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                    <div>
+                      <h3 className="text-white font-black uppercase italic tracking-tight">Vincular ao Agendamento</h3>
+                      <p className="text-zinc-400 text-[11px] mt-0.5">Selecione quem é <strong className="text-white">{coachViewClientName}</strong> no sistema de agendamentos</p>
+                    </div>
+                    <button onClick={() => { setShowLinkModal(false); setLinkSearch(''); }} className="w-8 h-8 bg-zinc-800 rounded-full text-zinc-400 hover:text-white flex items-center justify-center">
+                      <i className="fas fa-times"></i>
+                    </button>
+                  </div>
+
+                  {/* Busca */}
+                  <div className="relative mb-3 flex-shrink-0">
+                    <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-xs"></i>
+                    <input
+                      type="text"
+                      placeholder="Buscar por nome..."
+                      value={linkSearch}
+                      onChange={e => setLinkSearch(e.target.value)}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl pl-8 pr-4 py-2 text-white text-sm placeholder:text-zinc-500 focus:outline-none focus:border-green-500"
+                      autoFocus
+                    />
+                  </div>
+
+                  {/* Lista de clientes do agendamentos */}
+                  <div className="overflow-y-auto flex-1 space-y-1">
+                    {agendAllClients.length === 0 ? (
+                      <p className="text-zinc-500 text-sm text-center py-6">Nenhum cliente encontrado no agendamento.<br/><span className="text-zinc-600 text-xs">Verifique as env vars AGENDAMENTOS_*</span></p>
+                    ) : (
+                      agendAllClients
+                        .filter(c => c.name.toLowerCase().includes(linkSearch.toLowerCase()))
+                        .map(c => {
+                          const isSelected = agendLink !== false && agendLink !== null && agendLink.id === c.id;
+                          return (
+                            <button
+                              key={c.id}
+                              disabled={savingLink}
+                              onClick={async () => {
+                                setSavingLink(true);
+                                try {
+                                  const token = await getToken({ template: 'supabase' });
+                                  const r = await fetch('/api/agendamentos-link', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                    body: JSON.stringify({ householdId: coachViewHouseholdId, agendamentosClientId: c.id }),
+                                  });
+                                  if (r.ok) {
+                                    setAgendLink({ id: c.id, name: c.name });
+                                    setShowLinkModal(false);
+                                    setLinkSearch('');
+                                  } else {
+                                    alert('Erro ao salvar vínculo');
+                                  }
+                                } catch { alert('Erro de conexão'); }
+                                finally { setSavingLink(false); }
+                              }}
+                              className={`w-full text-left rounded-2xl px-4 py-3 transition-colors border ${
+                                isSelected
+                                  ? 'bg-green-500/20 border-green-500/40 hover:bg-green-500/30'
+                                  : 'bg-zinc-800/60 border-zinc-700 hover:bg-zinc-800'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className={`font-bold text-sm ${isSelected ? 'text-green-400' : 'text-white'}`}>
+                                  {isSelected && <i className="fas fa-check-circle text-green-400 mr-2"></i>}
+                                  {c.name}
+                                </span>
+                                {c.phoneDigits && <span className="text-zinc-500 text-[11px] font-mono">{c.phoneDigits}</span>}
+                              </div>
+                              {c.startMonthYear && (
+                                <p className="text-zinc-600 text-[10px] mt-0.5">Início: {c.startMonthYear}</p>
+                              )}
+                            </button>
+                          );
+                        })
+                    )}
+                  </div>
+
+                  {/* Remover vínculo */}
+                  {agendLink !== false && agendLink !== null && (
+                    <button
+                      disabled={savingLink}
+                      onClick={async () => {
+                        setSavingLink(true);
+                        try {
+                          const token = await getToken({ template: 'supabase' });
+                          const r = await fetch('/api/agendamentos-link', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                            body: JSON.stringify({ householdId: coachViewHouseholdId, agendamentosClientId: null }),
+                          });
+                          if (r.ok) { setAgendLink(false); setShowLinkModal(false); setLinkSearch(''); }
+                          else alert('Erro ao remover vínculo');
+                        } catch { alert('Erro de conexão'); }
+                        finally { setSavingLink(false); }
+                      }}
+                      className="mt-3 w-full text-[11px] font-black uppercase tracking-wide text-zinc-500 hover:text-red-400 py-2 transition-colors flex-shrink-0"
+                    >
+                      <i className="fas fa-link-slash mr-1"></i> Remover vínculo
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
