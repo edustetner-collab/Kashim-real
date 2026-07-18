@@ -1,12 +1,20 @@
 ﻿
 import React from 'react';
-import { SummaryData } from '../types';
+import { SummaryData, FinanceItem, CategoryType } from '../types';
 import { IDEAL_LIMITS, formatCurrency } from '../constants';
 
-interface DiagnosisProps { summary: SummaryData; monthName: string; }
+interface DiagnosisProps { summary: SummaryData; items: FinanceItem[]; monthIdx: number; monthName: string; }
 
-const Diagnosis: React.FC<DiagnosisProps> = ({ summary, monthName }) => {
-  const { totalIncome, totalFixed, totalLeisure, balance } = summary;
+const Diagnosis: React.FC<DiagnosisProps> = ({ summary, items, monthIdx, monthName }) => {
+  const { totalIncome, balance } = summary;
+  // Gross totals direto dos itens (igual ao BlockSection).
+  // summary.totalFixed usa deduplicacao de cartao — distorce % no mes 0 do plano.
+  const totalFixed = items
+    .filter(i => i.category === CategoryType.FIXED_EXPENSE)
+    .reduce((sum, i) => sum + (i.values[monthIdx] || 0), 0);
+  const totalLeisure = items
+    .filter(i => i.category === CategoryType.PERSONAL_LEISURE)
+    .reduce((sum, i) => sum + (i.values[monthIdx] || 0), 0);
   const fixedPercent = totalIncome > 0 ? (totalFixed / totalIncome) : 0;
   const leisurePercent = totalIncome > 0 ? (totalLeisure / totalIncome) : 0;
   

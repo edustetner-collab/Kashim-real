@@ -1566,7 +1566,7 @@ const App: React.FC = () => {
         ) : activeTab === 'plan' ? (
           <>
             <div id="stets"><AICoach summary={monthlySummaries[mobileMonthIdx]} items={items} monthName={months[mobileMonthIdx].monthName} onExpenseDetected={handleExpenseDetected} tetoColumns={tetoColumns} /></div>
-            <div id="diagnosis" className="hidden lg:block"><Diagnosis summary={monthlySummaries[mobileMonthIdx]} monthName={months[mobileMonthIdx].monthName} /></div>
+            <div id="diagnosis" className="hidden lg:block"><Diagnosis summary={monthlySummaries[mobileMonthIdx]} items={items} monthIdx={mobileMonthIdx} monthName={months[mobileMonthIdx].monthName} /></div>
 
             {/* ── MOBILE SUMMARY CARDS ──────────────────────────────── */}
             {/* Hero dark card — Acumulado */}
