@@ -74,10 +74,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         startMonthYear: (c.start_month_year ?? '') as string,
       }));
 
+      // Decodifica o role do JWT para confirmar service vs anon
+      let keyRole = 'unknown';
+      try { keyRole = JSON.parse(Buffer.from(AGEND_KEY.split('.')[1], 'base64url').toString()).role ?? 'unknown'; } catch {}
+
       return res.status(200).json({
         currentLinkId: hh?.agendamentos_client_id ?? null,
         clients,
-        _debug: { agendUrl: AGEND_URL.slice(0, 40), hasKey: !!AGEND_KEY, rawCount: rawClients?.length ?? 0 },
+        _debug: { agendUrl: AGEND_URL.slice(0, 40), hasKey: !!AGEND_KEY, rawCount: rawClients?.length ?? 0, keyRole },
       });
     }
 
