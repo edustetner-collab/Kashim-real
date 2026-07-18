@@ -395,7 +395,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
                         <i className="fas fa-eye text-xs"></i> Acessar
                       </button>
 
-                      {isDraft ? (
+                      {isSuperAdmin && (isDraft ? (
                         <button
                           onClick={() => handleActivateClient(client.householdId)}
                           disabled={activating === client.householdId}
@@ -415,7 +415,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
                             ? <i className="fas fa-circle-notch animate-spin"></i>
                             : <><i className="fas fa-link text-xs"></i> Link</>}
                         </button>
-                      )}
+                      ))}
 
                       <div className="flex gap-1.5 ml-auto">
                         <button
