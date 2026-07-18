@@ -65,7 +65,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         agend.from('clients').select('id, name, phone_digits, start_month_year').order('name'),
       ]);
 
-      if (agendErr) return res.status(500).json({ error: 'Erro ao buscar clientes do agendamentos: ' + agendErr.message, _debug: { agendUrl: AGEND_URL.slice(0, 40), hasKey: !!AGEND_KEY } });
+      if (agendErr) return res.status(500).json({ error: 'Erro ao buscar clientes do agendamentos: ' + agendErr.message });
 
       const clients = (rawClients ?? []).map((c: any) => ({
         id: c.id as string,
@@ -74,14 +74,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         startMonthYear: (c.start_month_year ?? '') as string,
       }));
 
-      // Decodifica o role do JWT para confirmar service vs anon
-      let keyRole = 'unknown';
-      try { keyRole = JSON.parse(Buffer.from(AGEND_KEY.split('.')[1], 'base64url').toString()).role ?? 'unknown'; } catch {}
-
       return res.status(200).json({
         currentLinkId: hh?.agendamentos_client_id ?? null,
         clients,
-        _debug: { agendUrl: AGEND_URL.slice(0, 40), hasKey: !!AGEND_KEY, rawCount: rawClients?.length ?? 0, keyRole },
       });
     }
 

@@ -469,18 +469,13 @@ const App: React.FC = () => {
 
   // Carrega o vínculo com o sistema de agendamentos ao abrir o painel de um cliente
   useEffect(() => {
-    console.log('[agend-link] useEffect householdId=', coachViewHouseholdId, 'isAdmin=', isAdmin);
     if (!coachViewHouseholdId || !isAdmin) return;
     let cancelled = false;
     getToken({ template: 'supabase' }).then(token =>
       fetch(`/api/agendamentos-link?householdId=${coachViewHouseholdId}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
-    ).then(async r => {
-      if (!r.ok) { const txt = await r.text().catch(() => ''); console.error('[agend-link] HTTP', r.status, txt); return null; }
-      return r.json();
-    }).then(data => {
-      console.log('[agend-link] data=', JSON.stringify(data));
+    ).then(r => r.ok ? r.json() : null).then(data => {
       if (cancelled || !data) { if (!cancelled) setAgendLink(false); return; }
       setAgendAllClients(data.clients ?? []);
       if (data.currentLinkId) {
@@ -489,7 +484,7 @@ const App: React.FC = () => {
       } else {
         setAgendLink(false);
       }
-    }).catch(e => { console.error('[agend-link] catch', e); if (!cancelled) setAgendLink(false); });
+    }).catch(() => { if (!cancelled) setAgendLink(false); });
     return () => { cancelled = true; };
   }, [coachViewHouseholdId, isAdmin]);
 
