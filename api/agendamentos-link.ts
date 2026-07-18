@@ -65,7 +65,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         agend.from('clients').select('id, name, phone_digits, start_month_year').order('name'),
       ]);
 
-      if (agendErr) return res.status(500).json({ error: 'Erro ao buscar clientes do agendamentos: ' + agendErr.message });
+      if (agendErr) return res.status(500).json({ error: 'Erro ao buscar clientes do agendamentos: ' + agendErr.message, _debug: { agendUrl: AGEND_URL.slice(0, 40), hasKey: !!AGEND_KEY } });
 
       const clients = (rawClients ?? []).map((c: any) => ({
         id: c.id as string,
@@ -77,6 +77,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({
         currentLinkId: hh?.agendamentos_client_id ?? null,
         clients,
+        _debug: { agendUrl: AGEND_URL.slice(0, 40), hasKey: !!AGEND_KEY, rawCount: rawClients?.length ?? 0 },
       });
     }
 
