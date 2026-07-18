@@ -475,7 +475,10 @@ const App: React.FC = () => {
       fetch(`/api/agendamentos-link?householdId=${coachViewHouseholdId}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
-    ).then(r => r.ok ? r.json() : null).then(data => {
+    ).then(async r => {
+      if (!r.ok) { const txt = await r.text().catch(() => ''); console.error('[agend-link] HTTP', r.status, txt); return null; }
+      return r.json();
+    }).then(data => {
       if (cancelled || !data) { if (!cancelled) setAgendLink(false); return; }
       setAgendAllClients(data.clients ?? []);
       if (data.currentLinkId) {
@@ -484,7 +487,7 @@ const App: React.FC = () => {
       } else {
         setAgendLink(false);
       }
-    }).catch(() => { if (!cancelled) setAgendLink(false); });
+    }).catch(e => { console.error('[agend-link] catch', e); if (!cancelled) setAgendLink(false); });
     return () => { cancelled = true; };
   }, [coachViewHouseholdId, isAdmin]);
 
