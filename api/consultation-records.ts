@@ -248,7 +248,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // ── Sincroniza com o sistema de agendamentos (best-effort) ─────────────
       let agendamentosStatus = 'nao_vinculado';
       const AGEND_URL = process.env.AGENDAMENTOS_SUPABASE_URL ?? '';
-      const AGEND_KEY = process.env.AGENDAMENTOS_SERVICE_KEY ?? '';
+      const AGEND_KEY = process.env.AGENDAMENTOS_SERVICE_KEY || process.env.AGENDAMENTOS_ANON_KEY || '';
 
       if (AGEND_URL && AGEND_KEY) {
         const { data: hhLink } = await db

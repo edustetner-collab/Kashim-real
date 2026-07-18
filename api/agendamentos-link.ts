@@ -36,8 +36,9 @@ const KASHIM_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!;
 const ADMIN_IDS = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean);
 
 // Supabase do sistema de agendamentos (projeto separado)
+// Aceita service key (preferencial) ou anon key (suficiente pois clients não tem RLS com Supabase Auth)
 const AGEND_URL = process.env.AGENDAMENTOS_SUPABASE_URL ?? '';
-const AGEND_KEY = process.env.AGENDAMENTOS_SERVICE_KEY ?? '';
+const AGEND_KEY = process.env.AGENDAMENTOS_SERVICE_KEY || process.env.AGENDAMENTOS_ANON_KEY || '';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Cache-Control', 'no-store');
