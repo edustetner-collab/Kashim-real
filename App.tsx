@@ -1053,7 +1053,15 @@ const App: React.FC = () => {
     setPendingExpense(null);
   };
 
-  const handleCreateItem = (description: string, category: CategoryType): string => {
+  const handleCreateItem = (description: string, category: CategoryType, isOneTime?: boolean): string => {
+    if (isOneTime && category === CategoryType.VARIABLE_EXPENSE) {
+      const BUCKET = 'Gastos Avulsos';
+      const existing = items.find(i => i.category === CategoryType.VARIABLE_EXPENSE && i.description === BUCKET);
+      if (existing) return existing.id;
+      const newId = crypto.randomUUID();
+      setItems(prev => [...prev, { id: newId, description: BUCKET, category: CategoryType.VARIABLE_EXPENSE, values: new Array(12).fill(0), paidStatus: new Array(12).fill(false) }]);
+      return newId;
+    }
     const newId = crypto.randomUUID();
     setItems(prev => [...prev, {
       id: newId,
@@ -1938,7 +1946,7 @@ const App: React.FC = () => {
                     ? () => {
                         const vm = months[mobileMonthIdx];
                         const isNow = vm.index === currentActualMonth && vm.year === currentActualYear;
-                        setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1, isCredit: false, purchaseDate: { day: isNow ? new Date().getDate() : 1, month: vm.index, year: vm.year } });
+                        setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1, isCredit: false, category: CategoryType.VARIABLE_EXPENSE, purchaseDate: { day: isNow ? new Date().getDate() : 1, month: vm.index, year: vm.year } });
                       }
                     : undefined}
                   onAddLeisureItem={block.type === CategoryType.PERSONAL_LEISURE ? handleAddLeisureItem : undefined}
@@ -2164,6 +2172,7 @@ const App: React.FC = () => {
         initialValue={pendingExpense?.value}
         initialDescription={pendingExpense?.description}
         initialInstallments={pendingExpense?.installments}
+        initialCategory={pendingExpense?.category}
         defaultPurchaseDate={pendingExpense?.purchaseDate}
         onConfirm={(data) => { if (data.itemId) fireConfetti(); handleConfirmExpense(data); }}
         onClose={() => setPendingExpense(null)}

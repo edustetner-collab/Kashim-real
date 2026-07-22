@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { CategoryType, FinanceItem, LinkType } from '../types';
 import { formatCurrency } from '../constants';
 import { isEducationItem } from '../lib/educationUtils';
+import CurrencyInput from './CurrencyInput';
 
 interface BlockSectionProps {
   title: string;
@@ -573,7 +574,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
           const isPaid = item.paidStatus[mobileMonthIdx];
           const isIncome = category === CategoryType.INCOME;
 
-          const canReplicate = category === CategoryType.INCOME || category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE;
+          const canReplicate = category === CategoryType.INCOME || category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE || category === CategoryType.VARIABLE_EXPENSE;
           return (
             <div key={item.id} className={`relative px-3 py-3 ${canReplicate ? 'pb-9' : ''} ${isPaid ? 'bg-[#f8fdf0]' : ''}`}>
               <div className="flex items-center gap-2">
@@ -589,16 +590,13 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   placeholder="Nome do item..."
                 />
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={item.values[mobileMonthIdx] === 0 ? '' : item.values[mobileMonthIdx]}
-                    onChange={(e) => {
-                      onUpdateValue(item.id, mobileMonthIdx, e.target.value);
+                  <CurrencyInput
+                    value={item.values[mobileMonthIdx]}
+                    onChange={(float) => {
+                      onUpdateValue(item.id, mobileMonthIdx, String(float));
                       checkInstallments(item.id);
                     }}
                     className={`w-24 text-right rounded-xl px-2.5 py-1.5 text-sm font-black k-num outline-none border ${isPaid ? 'bg-[#f0fad0] text-[#7ab800] border-[rgba(122,184,0,0.3)]' : 'bg-[#f5f5f7] text-[#1d1d1f] border-[#e8e8ed]'}`}
-                    placeholder="0,00"
                   />
                   {!isIncome && (
                     <button
@@ -1017,16 +1015,13 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                     <td key={mIdx} className={`p-2 border-l text-center transition-colors focus-within:!bg-white ${isPaid ? 'bg-green-50/30' : val === 0 ? 'bg-zinc-100' : ''}`}>
                       <div className="flex flex-col gap-1.5 items-center">
                         <div className="relative w-full group">
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={val === 0 ? '' : val}
-                            onChange={(e) => {
-                              onUpdateValue(item.id, mIdx, e.target.value);
+                          <CurrencyInput
+                            value={val}
+                            onChange={(float) => {
+                              onUpdateValue(item.id, mIdx, String(float));
                               checkInstallments(item.id);
                             }}
                             className={`w-full text-center bg-transparent border-none focus:ring-0 outline-none transition-all text-sm ${isPaid ? 'text-green-700 font-bold' : val === 0 ? 'text-zinc-400' : 'text-gray-900'}`}
-                            placeholder="0,00"
                           />
                           <button
                             onClick={() => onReplicateValue(item.id, mIdx)}

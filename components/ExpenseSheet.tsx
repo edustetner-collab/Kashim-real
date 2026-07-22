@@ -22,10 +22,11 @@ interface ExpenseSheetProps {
   initialValue?: number;
   initialDescription?: string;
   initialInstallments?: number;
+  initialCategory?: CategoryType;
   defaultPurchaseDate?: { day: number; month: number; year: number };
   onConfirm: (data: DetectedExpense) => void;
   onClose: () => void;
-  onCreateItem?: (description: string, category: CategoryType) => string;
+  onCreateItem?: (description: string, category: CategoryType, isOneTime?: boolean) => string;
 }
 
 type Step = 'category' | 'variable-entry' | 'item-picker' | 'value-payment';
@@ -70,6 +71,7 @@ const MONTHS_BR_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','
 const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
   open, source, items,
   initialItemId, initialValue, initialDescription, initialInstallments,
+  initialCategory,
   defaultPurchaseDate,
   onConfirm, onClose, onCreateItem,
 }) => {
@@ -112,8 +114,14 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
       const matchedItem = items.find(i => i.id === (initialItemId ?? ''));
       setSelectedCardId(matchedItem?.linkedCardId ?? '');
     } else {
-      setStep('category');
-      setCategory(null);
+      const precat = initialCategory ?? null;
+      if (precat === CategoryType.VARIABLE_EXPENSE) {
+        setStep('variable-entry');
+        setCategory(CategoryType.VARIABLE_EXPENSE);
+      } else {
+        setStep('category');
+        setCategory(null);
+      }
       setItemId('');
       setVariableDesc(initialDescription ?? '');
       setValue(initialValue ? String(initialValue) : '');
@@ -124,7 +132,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
       const initManual = Math.max(1, initialInstallments ?? 1);
       setInstallCount(initManual > 1 ? String(initManual) : '');
     }
-  }, [open, source, initialItemId, initialValue, initialDescription, initialInstallments, defaultPurchaseDate]);
+  }, [open, source, initialItemId, initialValue, initialDescription, initialInstallments, initialCategory, defaultPurchaseDate]);
 
   useEffect(() => {
     if (step === 'value-payment' && open && !showItemPicker) {
@@ -165,7 +173,8 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
       : (selectedItem?.description ?? variableDesc.trim());
 
     if (!itemId && category === CategoryType.VARIABLE_EXPENSE && variableDesc.trim() && onCreateItem) {
-      finalItemId = onCreateItem(variableDesc.trim(), CategoryType.VARIABLE_EXPENSE);
+      const isOneTime = !isParcelado && !isCredit;
+      finalItemId = onCreateItem(variableDesc.trim(), CategoryType.VARIABLE_EXPENSE, isOneTime);
       finalDesc = variableDesc.trim();
     }
     if (!finalItemId) return;
@@ -446,9 +455,12 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
               onClick={() => {
                 setSearch('');
                 if (showItemPicker) { setShowItemPicker(false); return; }
-                if (step === 'variable-entry') setStep('category');
-                else if (step === 'item-picker') setStep('category');
-                else if (step === 'value-payment') {
+                if (step === 'variable-entry') {
+                  if (initialCategory === CategoryType.VARIABLE_EXPENSE) onClose();
+                  else setStep('category');
+                } else if (step === 'item-picker') {
+                  setStep('category');
+                } else if (step === 'value-payment') {
                   if (category === CategoryType.VARIABLE_EXPENSE) setStep('variable-entry');
                   else setStep('item-picker');
                 }
