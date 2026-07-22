@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CategoryType, FinanceItem, LinkType } from '../types';
 import { formatCurrency } from '../constants';
+import { isEducationItem } from '../lib/educationUtils';
 
 interface BlockSectionProps {
   title: string;
@@ -448,41 +449,106 @@ const BlockSection: React.FC<BlockSectionProps> = ({
         </div>
       </div>
 
-      {/* 2 progress bars: Ideal / Definido */}
+      {/* Progress bars: Ideal / Realizado */}
       {(category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE) && totalIncome > 0 && (() => {
-        const idealPct = category === CategoryType.PERSONAL_LEISURE ? 15 : 55;
-        const idealValue = Math.round(totalIncome * (idealPct / 100));
-        const determinedValue = items.reduce((s, i) => s + (i.values[mobileMonthIdx] || 0), 0);
         const toBarPct = (v: number) => Math.min(100, (v / totalIncome) * 100);
-        const detOk = determinedValue <= idealValue * 1.05;
-        return (
-          <div className="bg-[#fafafa] px-4 py-3 border-b border-[#e8e8ed] space-y-3">
-            {/* Ideal */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-black uppercase tracking-[1px] text-[#6e6e73]">Ideal</span>
-                  <span className="text-[9px] font-black text-[#7ab800] bg-[#f0fad0] border border-[rgba(122,184,0,0.25)] rounded-full px-2 py-0.5 leading-none">{idealPct}%</span>
+
+        if (category === CategoryType.PERSONAL_LEISURE) {
+          const idealPct = 15;
+          const idealValue = Math.round(totalIncome * 0.15);
+          const determinedValue = items.reduce((s, i) => s + (i.values[mobileMonthIdx] || 0), 0);
+          const detOk = determinedValue <= idealValue * 1.05;
+          return (
+            <div className="bg-[#fafafa] px-4 py-3 border-b border-[#e8e8ed] space-y-3">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] font-black uppercase tracking-[1px] text-[#6e6e73]">Ideal</span>
+                    <span className="text-[9px] font-black text-[#7ab800] bg-[#f0fad0] border border-[rgba(122,184,0,0.25)] rounded-full px-2 py-0.5 leading-none">{idealPct}%</span>
+                  </div>
+                  <span className="text-[10px] font-black k-num text-[#7ab800]">{formatCurrency(idealValue)}</span>
                 </div>
-                <span className="text-[10px] font-black k-num text-[#7ab800]">{formatCurrency(idealValue)}</span>
+                <div className="h-1.5 bg-[#e8e8ed] rounded-full overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: `${idealPct}%`, background: 'linear-gradient(90deg,#a8e716,#7ab800)' }} />
+                </div>
               </div>
-              <div className="h-1.5 bg-[#e8e8ed] rounded-full overflow-hidden">
-                <div className="h-full rounded-full" style={{ width: `${idealPct}%`, background:'linear-gradient(90deg,#a8e716,#7ab800)' }} />
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[9px] font-black uppercase tracking-[1px] ${detOk ? 'text-[#007aff]' : 'text-[#ff3b30]'}`}>Realizado</span>
+                    <span className={`text-[9px] font-black rounded-full px-2 py-0.5 leading-none ${detOk ? 'bg-[#f0f4ff] border border-[rgba(0,122,255,0.25)] text-[#007aff]' : 'bg-[#fff0f0] border border-[rgba(255,59,48,0.2)] text-[#ff3b30]'}`}>{toBarPct(determinedValue).toFixed(0)}%</span>
+                  </div>
+                  <span className={`text-[10px] font-black k-num ${detOk ? 'text-[#007aff]' : 'text-[#ff3b30]'}`}>{formatCurrency(determinedValue)}</span>
+                </div>
+                <div className="h-1.5 bg-[#e8e8ed] rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all duration-500 ${detOk ? 'bg-[#007aff]' : 'bg-[#ff3b30]'}`} style={{ width: `${toBarPct(determinedValue)}%` }} />
+                </div>
               </div>
+            </div>
+          );
+        }
+
+        // FIXED_EXPENSE: split into contas fixas core + educação
+        const eduItems = items.filter(i => isEducationItem(i.description));
+        const coreItems = items.filter(i => !isEducationItem(i.description));
+        const eduValue = eduItems.reduce((s, i) => s + (i.values[mobileMonthIdx] || 0), 0);
+        const coreValue = coreItems.reduce((s, i) => s + (i.values[mobileMonthIdx] || 0), 0);
+        const coreIdealValue = Math.round(totalIncome * 0.55);
+        const eduIdealValue = Math.round(totalIncome * 0.10);
+        const coreOk = coreValue <= coreIdealValue * 1.05;
+        const eduMissing = eduValue === 0;
+        const eduOk = !eduMissing && eduValue <= eduIdealValue * 1.05;
+
+        const barRow = (
+          label: string,
+          idealPct: number,
+          idealVal: number,
+          realVal: number,
+          ok: boolean,
+          missing: boolean
+        ) => (
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1 mb-0.5">
+              <span className="text-[9px] font-black uppercase tracking-[1px] text-[#6e6e73]">{label}</span>
+              {missing && (
+                <span className="ml-auto text-[9px] font-black text-[#ff9500] bg-[#fff8f0] border border-[rgba(255,149,0,0.25)] rounded-full px-2 py-0.5 leading-none">sem lançamento</span>
+              )}
+            </div>
+            {/* Ideal */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-black uppercase tracking-[1px] text-[#6e6e73]">Ideal</span>
+                <span className="text-[9px] font-black text-[#7ab800] bg-[#f0fad0] border border-[rgba(122,184,0,0.25)] rounded-full px-2 py-0.5 leading-none">{idealPct}%</span>
+              </div>
+              <span className="text-[10px] font-black k-num text-[#7ab800]">{formatCurrency(idealVal)}</span>
+            </div>
+            <div className="h-1.5 bg-[#e8e8ed] rounded-full overflow-hidden">
+              <div className="h-full rounded-full" style={{ width: `${idealPct}%`, background: 'linear-gradient(90deg,#a8e716,#7ab800)' }} />
             </div>
             {/* Realizado */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className={`text-[9px] font-black uppercase tracking-[1px] ${detOk ? 'text-[#007aff]' : 'text-[#ff3b30]'}`}>Realizado</span>
-                  <span className={`text-[9px] font-black rounded-full px-2 py-0.5 leading-none ${detOk ? 'bg-[#f0f4ff] border border-[rgba(0,122,255,0.25)] text-[#007aff]' : 'bg-[#fff0f0] border border-[rgba(255,59,48,0.2)] text-[#ff3b30]'}`}>{toBarPct(determinedValue).toFixed(0)}%</span>
-                </div>
-                <span className={`text-[10px] font-black k-num ${detOk ? 'text-[#007aff]' : 'text-[#ff3b30]'}`}>{formatCurrency(determinedValue)}</span>
+            <div className="flex items-center justify-between mt-1">
+              <div className="flex items-center gap-2">
+                <span className={`text-[9px] font-black uppercase tracking-[1px] ${missing ? 'text-[#ff9500]' : ok ? 'text-[#007aff]' : 'text-[#ff3b30]'}`}>Realizado</span>
+                <span className={`text-[9px] font-black rounded-full px-2 py-0.5 leading-none ${missing ? 'bg-[#fff8f0] border border-[rgba(255,149,0,0.25)] text-[#ff9500]' : ok ? 'bg-[#f0f4ff] border border-[rgba(0,122,255,0.25)] text-[#007aff]' : 'bg-[#fff0f0] border border-[rgba(255,59,48,0.2)] text-[#ff3b30]'}`}>
+                  {toBarPct(realVal).toFixed(0)}%
+                </span>
               </div>
-              <div className="h-1.5 bg-[#e8e8ed] rounded-full overflow-hidden">
-                <div className={`h-full rounded-full transition-all duration-500 ${detOk ? 'bg-[#007aff]' : 'bg-[#ff3b30]'}`} style={{ width: `${toBarPct(determinedValue)}%` }} />
-              </div>
+              <span className={`text-[10px] font-black k-num ${missing ? 'text-[#ff9500]' : ok ? 'text-[#007aff]' : 'text-[#ff3b30]'}`}>{formatCurrency(realVal)}</span>
             </div>
+            <div className="h-1.5 bg-[#e8e8ed] rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${missing ? 'bg-[#ff9500]' : ok ? 'bg-[#007aff]' : 'bg-[#ff3b30]'}`}
+                style={{ width: `${Math.max(toBarPct(realVal), missing ? 0 : 0.5)}%` }}
+              />
+            </div>
+          </div>
+        );
+
+        return (
+          <div className="bg-[#fafafa] px-4 py-3 border-b border-[#e8e8ed] space-y-4">
+            {barRow('Contas Fixas', 55, coreIdealValue, coreValue, coreOk, false)}
+            <div className="border-t border-[#e8e8ed]" />
+            {barRow('Educação', 10, eduIdealValue, eduValue, eduOk, eduMissing)}
           </div>
         );
       })()}

@@ -1,19 +1,21 @@
 ﻿
 import React from 'react';
-import { SummaryData, FinanceItem, Goal } from '../types';
-import { formatCurrency } from '../constants';
+import { SummaryData, FinanceItem, Goal, CategoryType } from '../types';
+import { formatCurrency, IDEAL_LIMITS } from '../constants';
 import {
   calculateScore, getLevel, getNextLevel, getLevelProgress,
   calculateStreak, checkBadges, BADGE_DEFS, LEVELS,
 } from '../lib/gamification';
 import ScoreRing from './ScoreRing';
 import { useTilt } from '../lib/useTilt';
+import { isEducationItem } from '../lib/educationUtils';
 
 interface DesempenhoProps {
   summary: SummaryData;
   summaries: SummaryData[];
   items: FinanceItem[];
   goals: Goal[];
+  monthIdx: number;
 }
 
 interface Category {
@@ -26,7 +28,7 @@ interface Category {
   description: string;
 }
 
-const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goals }) => {
+const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goals, monthIdx }) => {
   const { totalIncome, totalFixed, totalVariable, totalLeisure, totalCreditCard, balance } = summary;
   const scoreTilt = useTilt(8);
 
@@ -48,27 +50,40 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
   const streak = calculateStreak(summaries);
   const unlockedBadges = checkBadges(summaries, items, goals);
 
+  const educationTotal = items
+    .filter(i => i.category === CategoryType.FIXED_EXPENSE && isEducationItem(i.description))
+    .reduce((sum, i) => sum + (i.values[monthIdx] || 0), 0);
+  const fixedCoreTotal = Math.max(0, totalFixed - educationTotal);
+
   const poupanca = Math.max(0, balance);
   const poupancaPct = (poupanca / totalIncome) * 100;
-  const fixosPct = (totalFixed / totalIncome) * 100;
+  const fixedCorePct = (fixedCoreTotal / totalIncome) * 100;
+  const educationPct = (educationTotal / totalIncome) * 100;
   const lazerPct = (totalLeisure / totalIncome) * 100;
 
   const categories: Category[] = [
-    { label: 'Contas Fixas', icon: 'fa-home', actual: fixosPct, ideal: 55, color: 'bg-red-500', idealColor: 'text-red-400', description: 'Moradia, contas e despesas fixas' },
-    { label: 'Poupança', icon: 'fa-piggy-bank', actual: poupancaPct, ideal: 20, color: 'bg-green-500', idealColor: 'text-green-400', description: 'O que sobra depois de tudo' },
-    { label: 'Lazer', icon: 'fa-star', actual: lazerPct, ideal: 15, color: 'bg-purple-500', idealColor: 'text-purple-400', description: 'Gastos pessoais e entretenimento' },
+    { label: 'Contas Fixas', icon: 'fa-home', actual: fixedCorePct, ideal: IDEAL_LIMITS.FIXED * 100, color: 'bg-red-500', idealColor: 'text-red-400', description: 'Moradia, contas e despesas fixas' },
+    { label: 'Educação', icon: 'fa-graduation-cap', actual: educationPct, ideal: IDEAL_LIMITS.EDUCATION * 100, color: 'bg-blue-500', idealColor: 'text-blue-400', description: 'Escola, faculdade, cursos e aprendizado' },
+    { label: 'Poupança', icon: 'fa-piggy-bank', actual: poupancaPct, ideal: IDEAL_LIMITS.SAVINGS * 100, color: 'bg-green-500', idealColor: 'text-green-400', description: 'O que sobra depois de tudo' },
+    { label: 'Lazer', icon: 'fa-star', actual: lazerPct, ideal: IDEAL_LIMITS.LEISURE * 100, color: 'bg-purple-500', idealColor: 'text-purple-400', description: 'Gastos pessoais e entretenimento' },
   ];
 
   const suggestions: string[] = [];
-  const idealFixos = totalIncome * 0.55;
-  if (totalFixed > idealFixos) {
-    suggestions.push(`Suas contas fixas estão ${formatCurrency(totalFixed - idealFixos)} acima do ideal. Reveja assinaturas ou despesas que podem ser reduzidas.`);
+  const idealFixos = totalIncome * IDEAL_LIMITS.FIXED;
+  if (fixedCoreTotal > idealFixos) {
+    suggestions.push(`Suas contas fixas estão ${formatCurrency(fixedCoreTotal - idealFixos)} acima do ideal. Reveja assinaturas ou despesas que podem ser reduzidas.`);
   }
-  const idealLazer = totalIncome * 0.15;
+  const idealEducation = totalIncome * IDEAL_LIMITS.EDUCATION;
+  if (educationTotal === 0) {
+    suggestions.push(`Nenhum gasto com educação registrado. Considere reservar ${formatCurrency(idealEducation)} (10% da renda) para escola, cursos ou capacitação.`);
+  } else if (educationTotal > idealEducation * 1.05) {
+    suggestions.push(`Gastos com educação estão ${formatCurrency(educationTotal - idealEducation)} acima do ideal de 10%.`);
+  }
+  const idealLazer = totalIncome * IDEAL_LIMITS.LEISURE;
   if (totalLeisure > idealLazer) {
     suggestions.push(`Lazer e gastos pessoais estão ${formatCurrency(totalLeisure - idealLazer)} acima do ideal. Tente limitar a ${formatCurrency(idealLazer)} por mês.`);
   }
-  const idealPoupanca = totalIncome * 0.20;
+  const idealPoupanca = totalIncome * IDEAL_LIMITS.SAVINGS;
   if (poupanca < idealPoupanca) {
     suggestions.push(`Para guardar 20% da sua renda você precisa de mais ${formatCurrency(idealPoupanca - poupanca)} de sobra. Reduza gastos ou aumente a renda.`);
   }
@@ -197,7 +212,7 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
           const actualCapped = Math.min(cat.actual, 100);
           const idealCapped = Math.min(cat.ideal, 100);
           const isOver = cat.actual > cat.ideal + 2;
-          const isUnder = cat.actual < cat.ideal - 2 && cat.label === 'Poupança';
+          const isUnder = cat.actual < cat.ideal - 2 && (cat.label === 'Poupança' || cat.label === 'Educação');
           const statusColor = isOver ? 'text-[#ff3b30]' : isUnder ? 'text-orange-500' : 'text-[#7ab800]';
           const statusIcon = isOver ? 'fa-arrow-up' : isUnder ? 'fa-arrow-down' : 'fa-check';
 
@@ -218,7 +233,7 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
                     <i className={`fas ${statusIcon} mr-1 text-[10px]`}></i>
                     {cat.actual.toFixed(0)}%
                   </div>
-                  <div className="text-[#aeaeb2] text-[10px]">ideal: {cat.ideal}%</div>
+                  <div className="text-[#6e6e73] text-[10px] font-bold">meta: {cat.ideal}%</div>
                 </div>
               </div>
               <div className="relative h-4 bg-[#f5f5f7] rounded-full overflow-hidden">
@@ -226,14 +241,14 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
                 <div
                   className="h-full rounded-full transition-all duration-700"
                   style={{
-                    width: `${Math.max(actualCapped, 0.5)}%`,
+                    width: `${cat.actual > 0 ? Math.max(actualCapped, 0.5) : 0}%`,
                     background: isOver ? '#ff3b30' : isUnder ? '#ff9500' : 'linear-gradient(90deg,#a8e716,#7ab800)'
                   }}
                 />
               </div>
               <div className="flex justify-between mt-1">
                 <span className="text-[#aeaeb2] text-[9px] k-num">0%</span>
-                <span className="text-[#aeaeb2] text-[9px] k-num">Ideal: {cat.ideal}% ({formatCurrency(totalIncome * cat.ideal / 100)})</span>
+                <span className="text-[#6e6e73] text-[10px] font-bold k-num">Meta: {cat.ideal}% · {formatCurrency(totalIncome * cat.ideal / 100)}</span>
                 <span className="text-[#aeaeb2] text-[9px] k-num">100%</span>
               </div>
             </div>

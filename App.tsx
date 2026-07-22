@@ -1594,7 +1594,7 @@ const App: React.FC = () => {
 
       <main key={activeTab} className={`k-reveal ${activeTab === 'plan' ? 'max-w-[1600px]' : 'w-full px-2'} mx-auto px-2 lg:px-8 mt-2 lg:mt-8`} style={(activeTab === 'desempenho' || activeTab === 'metas') ? { maxWidth: '100%' } : {}}>
         {activeTab === 'desempenho' ? (
-          <Desempenho summary={monthlySummaries[mobileMonthIdx]} summaries={monthlySummaries.slice(0, mobileMonthIdx + 1)} items={items} goals={goals} />
+          <Desempenho summary={monthlySummaries[mobileMonthIdx]} summaries={monthlySummaries.slice(0, mobileMonthIdx + 1)} items={items} goals={goals} monthIdx={mobileMonthIdx} />
         ) : activeTab === 'metas' ? (
           <Metas goals={goals} onGoalsChange={handleGoalsChange} db={db} householdId={householdId} />
         ) : activeTab === 'dividas' ? (
