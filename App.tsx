@@ -97,6 +97,21 @@ function dedupeItems(dbItems: FinanceItem[]): { deduped: FinanceItem[]; toDelete
   return { deduped, toDelete };
 }
 
+const TOMBSTONE_KEY = 'kashim_deleted_items';
+function getTombstones(): Set<string> {
+  try {
+    const raw = localStorage.getItem(TOMBSTONE_KEY);
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+  } catch { return new Set(); }
+}
+function addTombstone(...ids: string[]): void {
+  try {
+    const existing = getTombstones();
+    for (const id of ids) if (id) existing.add(id);
+    localStorage.setItem(TOMBSTONE_KEY, JSON.stringify(Array.from(existing)));
+  } catch {}
+}
+
 const App: React.FC = () => {
   const { isSignedIn, user, isLoaded } = useUser();
   const { signOut } = useClerk();
@@ -284,7 +299,15 @@ const App: React.FC = () => {
           if (toDelete.length > 0) {
             toDelete.forEach(id => deleteFinanceItem(db!, id).catch(() => {}));
           }
-          setItems(deduped);
+          const tombstones = getTombstones();
+          const liveItems = deduped.filter(item => {
+            if (tombstones.has(item.id)) {
+              deleteFinanceItem(db!, item.id).catch(() => {});
+              return false;
+            }
+            return true;
+          });
+          setItems(liveItems);
         }
 
         // Libera a gravação assim que o load termina com sucesso — MESMO com o
@@ -691,9 +714,11 @@ const App: React.FC = () => {
           allUpdated.push(updated);
           return updated;
         }
-        // Update fixed expense by description
+        // Update fixed expense by description (mercado/transporte become VARIABLE_EXPENSE below)
         const expVal = result.expenses[item.description];
-        if (expVal !== undefined && expVal > 0) {
+        if (expVal !== undefined && expVal > 0 &&
+            item.description !== 'Compras mercado (média mensal)' &&
+            item.description !== 'Gasolina/uber (media mensal)') {
           const updated = { ...item, values: new Array(12).fill(expVal) };
           allUpdated.push(updated);
           return updated;
@@ -714,6 +739,20 @@ const App: React.FC = () => {
         const newItem: FinanceItem = { id: crypto.randomUUID(), description: extra.description, category: CategoryType.FIXED_EXPENSE, values: new Array(12).fill(extra.value), paidStatus: new Array(12).fill(false) };
         allUpdated.push(newItem);
         next.push(newItem);
+      }
+
+      // Mercado e transporte são gastos variáveis — evita dupla contagem com FIXED_EXPENSE
+      const mercadoVal = result.expenses['Compras mercado (média mensal)'] || 0;
+      const transporteVal = result.expenses['Gasolina/uber (media mensal)'] || 0;
+      if (mercadoVal > 0) {
+        const mercado: FinanceItem = { id: crypto.randomUUID(), description: 'Mercado', category: CategoryType.VARIABLE_EXPENSE, values: new Array(12).fill(mercadoVal), paidStatus: new Array(12).fill(false) };
+        allUpdated.push(mercado);
+        next.push(mercado);
+      }
+      if (transporteVal > 0) {
+        const transporte: FinanceItem = { id: crypto.randomUUID(), description: 'Gasolina / Transporte', category: CategoryType.VARIABLE_EXPENSE, values: new Array(12).fill(transporteVal), paidStatus: new Array(12).fill(false) };
+        allUpdated.push(transporte);
+        next.push(transporte);
       }
 
       // Add leisure item
@@ -787,6 +826,7 @@ const App: React.FC = () => {
     const dbId = itemIdMapRef.current[id] ?? id;
     pendingDeletesRef.current.add(id);
     pendingDeletesRef.current.add(dbId);
+    addTombstone(id, dbId);
     setItems(prev => prev.filter(item => item.id !== id));
     deleteItemWithRetry(dbId, 1);
   };

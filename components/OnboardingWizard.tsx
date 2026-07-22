@@ -1,6 +1,7 @@
-﻿
+
 import React, { useState, useEffect, useRef } from 'react';
 import { formatCurrency } from '../constants';
+import CurrencyInput from './CurrencyInput';
 
 interface WizardStep {
   id: string;
@@ -61,7 +62,7 @@ interface Props {
 const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
   const [stepIdx, setStepIdx] = useState(0);
   const [values, setValues] = useState<Record<string, number>>({});
-  const [inputValue, setInputValue] = useState('');
+  const [currentValue, setCurrentValue] = useState(0);
   const [extraDesc, setExtraDesc] = useState('');
   const [extraItems, setExtraItems] = useState<{ description: string; value: number }[]>([]);
   const [visible, setVisible] = useState(true);
@@ -80,14 +81,14 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
     .reduce((s, [, v]) => s + v, 0);
 
   useEffect(() => {
-    if (step.type !== 'welcome' && step.type !== 'summary' && step.type !== 'leisure') {
+    if (step.type === 'leisure') {
+      setCurrentValue(leisureSuggested);
+      setTimeout(() => inputRef.current?.focus(), 350);
+    } else if (step.type !== 'welcome' && step.type !== 'summary') {
       setTimeout(() => {
         if (step.type === 'extra') descRef.current?.focus();
         else inputRef.current?.focus();
       }, 350);
-    }
-    if (step.type === 'leisure') {
-      setInputValue(String(leisureSuggested));
     }
   }, [stepIdx]);
 
@@ -100,32 +101,41 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
     if (val !== undefined) setValues(v => ({ ...v, [step.id]: val }));
     transition(() => {
       setStepIdx(i => i + 1);
-      setInputValue('');
+      setCurrentValue(0);
       setExtraDesc('');
     });
   };
 
   const goBack = () => {
     if (stepIdx === 0) return;
-    transition(() => { setStepIdx(i => i - 1); setInputValue(''); });
+    const prevStep = STEPS[stepIdx - 1];
+    transition(() => {
+      setStepIdx(i => i - 1);
+      setCurrentValue(values[prevStep.id] || 0);
+      setExtraDesc('');
+    });
+  };
+
+  const handleAddExtra = () => {
+    if (extraDesc.trim() && currentValue > 0) {
+      setExtraItems(prev => [...prev, { description: extraDesc.trim(), value: currentValue }]);
+      setCurrentValue(0);
+      setExtraDesc('');
+      descRef.current?.focus();
+    }
   };
 
   const handleAdvance = () => {
     if (step.type === 'welcome' || step.type === 'transition') { advance(); return; }
 
     if (step.type === 'income' || step.type === 'expense') {
-      const val = parseFloat(inputValue.replace(',', '.'));
-      advance(isNaN(val) || val < 0 ? 0 : val);
+      advance(currentValue > 0 ? currentValue : 0);
       return;
     }
 
     if (step.type === 'extra') {
-      const val = parseFloat(inputValue.replace(',', '.'));
-      if (extraDesc.trim() && !isNaN(val) && val > 0) {
-        setExtraItems(prev => [...prev, { description: extraDesc.trim(), value: val }]);
-        setInputValue('');
-        setExtraDesc('');
-        descRef.current?.focus();
+      if (extraDesc.trim() && currentValue > 0) {
+        handleAddExtra();
       } else {
         advance(0);
       }
@@ -133,8 +143,7 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
     }
 
     if (step.type === 'leisure') {
-      const val = parseFloat(inputValue.replace(',', '.'));
-      advance(isNaN(val) || val < 0 ? leisureSuggested : val);
+      advance(currentValue > 0 ? currentValue : leisureSuggested);
       return;
     }
 
@@ -153,10 +162,6 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
 
   const handleSkip = () => advance(0);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleAdvance();
-  };
-
   const clamp = progress > 100 ? 100 : progress < 0 ? 0 : progress;
 
   return (
@@ -165,10 +170,11 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
       {/* Top bar */}
       <div className="flex items-center justify-between px-5 pt-6 pb-4 shrink-0">
         {stepIdx > 0 ? (
-          <button onClick={goBack} className="w-9 h-9 flex items-center justify-center text-zinc-500 active:text-white transition-colors">
-            <i className="fas fa-arrow-left text-base"></i>
+          <button onClick={goBack} className="flex items-center gap-1.5 text-zinc-400 active:text-white transition-colors px-1">
+            <i className="fas fa-arrow-left text-sm"></i>
+            <span className="text-sm font-bold">Voltar</span>
           </button>
-        ) : <div className="w-9" />}
+        ) : <div className="w-16" />}
 
         {/* Logo */}
         <div className="flex items-center gap-2">
@@ -176,7 +182,7 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
           <span className="text-white font-black text-base uppercase tracking-widest italic">Kashim</span>
         </div>
 
-        <div className="w-9" />
+        <div className="w-16" />
       </div>
 
       {/* Progress bar */}
@@ -281,16 +287,12 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
 
             {/* Input */}
             <div className="bg-zinc-900 border-2 border-green-400 rounded-2xl flex items-center px-4 mb-2 focus-within:border-green-300 transition-colors">
-              <span className="text-zinc-400 font-black text-sm mr-2">R$</span>
-              <input
+              <CurrencyInput
                 ref={inputRef}
-                type="number"
-                inputMode="decimal"
-                min="0"
-                value={inputValue}
-                onChange={e => setInputValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="0,00"
+                value={currentValue}
+                onChange={setCurrentValue}
+                onEnter={handleAdvance}
+                placeholder="R$0"
                 className="flex-1 bg-transparent py-4 text-white text-right font-mono text-lg font-black outline-none placeholder:text-zinc-700"
               />
             </div>
@@ -348,28 +350,16 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
                 className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-green-400 transition-colors placeholder:text-zinc-600"
               />
               <div className="flex items-center gap-2">
-                <span className="text-zinc-500 font-black text-sm">R$</span>
-                <input
+                <CurrencyInput
                   ref={inputRef}
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  value={inputValue}
-                  onChange={e => setInputValue(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="0,00"
+                  value={currentValue}
+                  onChange={setCurrentValue}
+                  onEnter={handleAddExtra}
+                  placeholder="R$0"
                   className="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white font-mono text-sm outline-none focus:border-green-400 transition-colors placeholder:text-zinc-600 text-right"
                 />
                 <button
-                  onClick={() => {
-                    const val = parseFloat(inputValue.replace(',', '.'));
-                    if (extraDesc.trim() && !isNaN(val) && val > 0) {
-                      setExtraItems(prev => [...prev, { description: extraDesc.trim(), value: val }]);
-                      setInputValue('');
-                      setExtraDesc('');
-                      descRef.current?.focus();
-                    }
-                  }}
+                  onClick={handleAddExtra}
                   className="w-10 h-10 bg-green-400 active:bg-green-300 text-black rounded-xl flex items-center justify-center shrink-0"
                 >
                   <i className="fas fa-plus text-sm font-black"></i>
@@ -411,16 +401,12 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
             <p className="text-zinc-500 text-xs mb-5">Isso representa 15% da sua renda — o percentual ideal do método.</p>
 
             <div className="bg-zinc-900 border-2 border-green-400 rounded-2xl flex items-center px-4 mb-6 focus-within:border-green-300 transition-colors">
-              <span className="text-zinc-400 font-black text-sm mr-2">R$</span>
-              <input
+              <CurrencyInput
                 ref={inputRef}
-                type="number"
-                inputMode="decimal"
-                min="0"
-                value={inputValue}
-                onChange={e => setInputValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={String(leisureSuggested)}
+                value={currentValue}
+                onChange={setCurrentValue}
+                onEnter={handleAdvance}
+                placeholder="R$0"
                 className="flex-1 bg-transparent py-4 text-white text-right font-mono text-lg font-black outline-none placeholder:text-zinc-500"
               />
             </div>
