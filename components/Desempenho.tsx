@@ -62,10 +62,10 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
   const lazerPct = (totalLeisure / totalIncome) * 100;
 
   const categories: Category[] = [
-    { label: 'Contas Fixas', icon: 'fa-home', actual: fixedCorePct, ideal: IDEAL_LIMITS.FIXED * 100, color: 'bg-red-500', idealColor: 'text-red-400', description: 'Moradia, contas e despesas fixas' },
-    { label: 'Educação', icon: 'fa-graduation-cap', actual: educationPct, ideal: IDEAL_LIMITS.EDUCATION * 100, color: 'bg-blue-500', idealColor: 'text-blue-400', description: 'Escola, faculdade, cursos e aprendizado' },
-    { label: 'Poupança', icon: 'fa-piggy-bank', actual: poupancaPct, ideal: IDEAL_LIMITS.SAVINGS * 100, color: 'bg-green-500', idealColor: 'text-green-400', description: 'O que sobra depois de tudo' },
-    { label: 'Lazer', icon: 'fa-star', actual: lazerPct, ideal: IDEAL_LIMITS.LEISURE * 100, color: 'bg-purple-500', idealColor: 'text-purple-400', description: 'Gastos pessoais e entretenimento' },
+    { label: 'Contas Fixas', icon: 'fa-home', actual: fixedCorePct, ideal: Math.round(IDEAL_LIMITS.FIXED * 100), color: 'bg-red-500', idealColor: 'text-red-400', description: 'Moradia, contas e despesas fixas' },
+    { label: 'Educação', icon: 'fa-graduation-cap', actual: educationPct, ideal: Math.round(IDEAL_LIMITS.EDUCATION * 100), color: 'bg-blue-500', idealColor: 'text-blue-400', description: 'Escola, faculdade, cursos e aprendizado' },
+    { label: 'Poupança', icon: 'fa-piggy-bank', actual: poupancaPct, ideal: Math.round(IDEAL_LIMITS.SAVINGS * 100), color: 'bg-green-500', idealColor: 'text-green-400', description: 'O que sobra depois de tudo' },
+    { label: 'Lazer', icon: 'fa-star', actual: lazerPct, ideal: Math.round(IDEAL_LIMITS.LEISURE * 100), color: 'bg-purple-500', idealColor: 'text-purple-400', description: 'Gastos pessoais e entretenimento' },
   ];
 
   const suggestions: string[] = [];
