@@ -88,6 +88,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   const failuresRef = useRef(0);                       // falhas seguidas do mesmo estado
   const lastAttemptRef = useRef<string>('');           // JSON da última tentativa
   const [saveTick, setSaveTick] = useState(0);         // reexecuta o save após cada tentativa
+  const [saveFailed, setSaveFailed] = useState(false); // gravação falhando → aviso na tela
 
   // Cards que o usuário apagou de propósito. O auto-link agora reage a QUALQUER
   // mudança nos itens, então sem este registro um card removido voltaria
@@ -200,6 +201,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
         lastSavedRef.current = json;
         failuresRef.current = 0;
         savingRef.current = false;
+        setSaveFailed(false);
         setSaveTick(t => t + 1);
       })
       .catch((err) => {
@@ -208,6 +210,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
         console.error('[TetoGastos] falha ao salvar os cards:', err);
         failuresRef.current += 1;
         savingRef.current = false;
+        if (failuresRef.current >= 2) setSaveFailed(true);
         setTimeout(() => setSaveTick(t => t + 1), 1500 * failuresRef.current);
       });
   }, [columns, dbSynced, db, householdId, saveTick]);
@@ -501,6 +504,21 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
   return (
     <div className="p-3 lg:p-6 animate-in fade-in zoom-in-95 duration-500">
+      {/* Gravação falhando: avisa NA TELA. Card sumindo em silêncio já custou
+          horas de debug e confiança — o usuário precisa saber na hora que o
+          que ele criou não foi salvo, em vez de descobrir na próxima aba. */}
+      {saveFailed && (
+        <div className="mb-3 flex items-start gap-3 rounded-2xl border border-orange-400/40 bg-orange-50 px-4 py-3">
+          <i className="fas fa-triangle-exclamation text-orange-500 mt-0.5 shrink-0"></i>
+          <div className="flex-1">
+            <p className="text-orange-900 text-xs font-black uppercase tracking-wide">Não foi possível salvar os cards</p>
+            <p className="text-orange-800/80 text-[11px] leading-relaxed mt-0.5">
+              O que você criou agora pode não aparecer quando voltar. Verifique a conexão — o app segue tentando sozinho.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Pop-up de alerta de teto */}
       {tetoAlertData && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setTetoAlertData(null)}>
