@@ -143,17 +143,35 @@ export async function saveTetoColumns(
   householdId: string,
   columns: { id: string; title: string; linkedItemId: string }[]
 ) {
-  // Deleta tudo e reinsere (simples para poucos registros)
-  await db.from('teto_columns').delete().eq('household_id', householdId);
-  if (columns.length === 0) return;
-  await db.from('teto_columns').insert(
-    columns.map((c, i) => ({
-      household_id: householdId,
-      title: c.title,
-      linked_item_id: c.linkedItemId || null,
-      sort_order: i,
-    }))
-  );
+  // NUNCA "delete-all + insert" aqui. Essa era a forma antiga e ela destruía
+  // cards em produção de duas maneiras (2026-07-23):
+  //   1. o insert não preservava o `id` → o banco gerava outro a cada save, o
+  //      estado do React e o banco divergiam e o merge do load duplicava/perdia;
+  //   2. se o insert falhasse DEPOIS do delete (rede, RLS, token expirado), as
+  //      colunas sumiam permanentemente — e o erro era engolido por um .catch().
+  // Agora: UPSERT primeiro (id estável, vindo do cliente), remoção das órfãs
+  // depois. Se o upsert falhar, nada foi apagado e o erro sobe para o chamador
+  // decidir o retry.
+  if (columns.length > 0) {
+    const { error } = await db.from('teto_columns').upsert(
+      columns.map((c, i) => ({
+        id: c.id,
+        household_id: householdId,
+        title: c.title,
+        linked_item_id: c.linkedItemId || null,
+        sort_order: i,
+      })),
+      { onConflict: 'id' }
+    );
+    if (error) throw error;
+  }
+
+  // Remove só o que realmente saiu da lista.
+  const keep = columns.map(c => c.id).filter(Boolean);
+  let del = db.from('teto_columns').delete().eq('household_id', householdId);
+  if (keep.length > 0) del = del.not('id', 'in', `(${keep.join(',')})`);
+  const { error: delError } = await del;
+  if (delError) throw delError;
 }
 
 // ─── USER PREFERENCES ────────────────────────────────────────────────────────

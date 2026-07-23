@@ -72,21 +72,62 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   const [columns, setColumns] = useState<ColumnData[]>([]);
   const [tetoAlertData, setTetoAlertData] = useState<{ name: string; pct: number; teto: number; spent: number } | null>(null);
 
+  // `columnsLoaded` controla só o skeleton da UI. Quem libera GRAVAR e
+  // AUTO-CRIAR é `dbSynced`, que só vira true quando o load do banco realmente
+  // resolveu. Separar os dois é essencial: antes, quando `db`/`householdId`
+  // ainda não estavam prontos, o componente marcava "carregado", o auto-link
+  // rodava sobre uma lista VAZIA e o save seguinte apagava no banco os cards
+  // que o usuário tinha criado (bug dos cards que sumiam ao trocar de aba).
+  const [dbSynced, setDbSynced] = useState(false);
+
   // Isolamento de perfil: limpa estado e refs ao trocar de householdId
   // Sem isso, colunas de um cliente vazam para outro via localStorage ou estado residual
-  const autoLinkedRef = useRef(false);
   const loadedForRef = useRef<string | null>(null);   // household já carregado
   const lastSavedRef = useRef<string>('[]');           // JSON do último estado persistido
+  const savingRef = useRef(false);                     // save em voo (evita corrida)
+  const failuresRef = useRef(0);                       // falhas seguidas do mesmo estado
+  const lastAttemptRef = useRef<string>('');           // JSON da última tentativa
+  const [saveTick, setSaveTick] = useState(0);         // reexecuta o save após cada tentativa
+
+  // Cards que o usuário apagou de propósito. O auto-link agora reage a QUALQUER
+  // mudança nos itens, então sem este registro um card removido voltaria
+  // sozinho no render seguinte (ressurreição — mesmo padrão de bug que já
+  // aconteceu com os lançamentos excluídos).
+  const dismissedRef = useRef<Set<string>>(new Set());
+  const dismissKey = householdId ? `kashim_teto_dismissed_${householdId}` : '';
+  const rememberDismissed = (linkedItemId: string) => {
+    if (!linkedItemId) return;
+    dismissedRef.current.add(linkedItemId);
+    if (!dismissKey) return;
+    try { localStorage.setItem(dismissKey, JSON.stringify(Array.from(dismissedRef.current))); } catch {}
+  };
+
   useEffect(() => {
     setColumns([]);
     setColumnsLoaded(false);
-    autoLinkedRef.current = false;
+    setDbSynced(false);
     loadedForRef.current = null;
     lastSavedRef.current = '[]';
+    savingRef.current = false;
+    failuresRef.current = 0;
+    lastAttemptRef.current = '';
+    let restored = new Set<string>();
+    if (householdId) {
+      try {
+        const raw = localStorage.getItem(`kashim_teto_dismissed_${householdId}`);
+        if (raw) restored = new Set(JSON.parse(raw) as string[]);
+      } catch {}
+    }
+    dismissedRef.current = restored;
   }, [householdId]);
 
   useEffect(() => {
-    if (!db || !householdId) { setColumnsLoaded(true); return; }
+    if (!db || !householdId) {
+      // Sem banco ainda: libera só o skeleton. NÃO marca dbSynced — nada pode
+      // ser gravado nem auto-criado enquanto a verdade do banco não chegou.
+      setColumnsLoaded(true);
+      return;
+    }
     // Carrega UMA vez por household. O client do Supabase é recriado a cada
     // ~50s (renovação de token) — sem esta trava, o load redisparava e
     // SOBRESCREVIA o que o usuário tinha na tela (perda do 1º lançamento,
@@ -107,7 +148,6 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
         seen.add(col.linkedItemId);
         return true;
       });
-      lastSavedRef.current = JSON.stringify(deduped);
       // MERGE com o que o usuário digitou ENQUANTO o load estava em voo —
       // substituir o estado apagava a primeira adição (setColumns(deduped)
       // chegava depois do Enter do usuário). Local vem por último.
@@ -118,50 +158,98 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
         const localOnly = prev.filter(c => !dbIds.has(c.id) && !(c.linkedItemId && dbLinked.has(c.linkedItemId)));
         return [...deduped, ...localOnly];
       });
+      // Só considera "salvo" o que veio do banco; se houve merge local, o save
+      // logo abaixo persiste a diferença.
+      lastSavedRef.current = JSON.stringify(deduped);
       // When Supabase has no columns, start empty — do NOT fall back to localStorage.
       // localStorage is not isolated per profile and causes cross-profile contamination.
       setColumnsLoaded(true);
-    }).catch(() => setColumnsLoaded(true));
+      setDbSynced(true);
+    }).catch(() => {
+      // Load falhou: mostra a UI, mas continua PROIBIDO gravar. Gravar aqui
+      // apagaria no banco tudo que não conseguimos ler.
+      setColumnsLoaded(true);
+    });
   }, [db, householdId]);
 
   useEffect(() => {
-    if (!columnsLoaded) return;
-    // Salva só quando o estado difere do último persistido (substitui o antigo
-    // guard isFirstRender, que engolia o save da 1ª adição pós-load).
+    if (!dbSynced || !db || !householdId) return;
     const json = JSON.stringify(columns);
     if (json === lastSavedRef.current) return;
-    if (db && householdId) {
-      lastSavedRef.current = json;
-      saveTetoColumns(db, householdId, columns).catch(() => {});
+    // Uma gravação por vez: duas em paralelo podem chegar fora de ordem e a
+    // mais antiga apagaria as colunas da mais nova na limpeza de órfãs.
+    // O `saveTick` no fim reexecuta este efeito, então a mudança mais recente
+    // nunca fica para trás.
+    if (savingRef.current) return;
+
+    // Backoff limitado por conteúdo: um estado novo zera as tentativas, um
+    // estado que falha repetidamente para de martelar o servidor.
+    if (lastAttemptRef.current !== json) {
+      lastAttemptRef.current = json;
+      failuresRef.current = 0;
+    } else if (failuresRef.current > 5) {
+      return;
     }
-  }, [columns, columnsLoaded, db, householdId]);
+
+    savingRef.current = true;
+    saveTetoColumns(db, householdId, columns)
+      .then(() => {
+        // Só aqui vira "persistido". Antes o estado era marcado como salvo
+        // ANTES do await, e uma falha do insert (depois do delete) virava
+        // perda silenciosa e definitiva dos cards.
+        lastSavedRef.current = json;
+        failuresRef.current = 0;
+        savingRef.current = false;
+        setSaveTick(t => t + 1);
+      })
+      .catch(() => {
+        failuresRef.current += 1;
+        savingRef.current = false;
+        setTimeout(() => setSaveTick(t => t + 1), 1500 * failuresRef.current);
+      });
+  }, [columns, dbSynced, db, householdId, saveTick]);
+
   // Only run with real Supabase items (UUID IDs). Default placeholder items load before
   // Supabase completes and would cause incorrect auto-link and cleanedFixed behaviour.
   const hasRealItems = items.some(i => /^[0-9a-f]{8}-[0-9a-f]{4}/.test(i.id));
 
+  // Auto-criação dos cards. Roda sempre que os itens mudam (não mais uma única
+  // vez por montagem): assim que o cliente preenche mercado, transporte/
+  // gasolina ou lazer no planejamento, o card aparece aqui sozinho.
+  // É idempotente — nunca cria um card para um item que já tem coluna, e nunca
+  // recria um que o usuário apagou.
   useEffect(() => {
-    if (!columnsLoaded || autoLinkedRef.current || !hasRealItems) return;
-    autoLinkedRef.current = true;
+    if (!dbSynced || !hasRealItems) return;
 
     setColumns(prev => {
       const alreadyLinked = new Set(prev.map(c => c.linkedItemId).filter(Boolean));
-      // Contas fixas que "gastam ao longo do mês" e merecem card de teto quando
-      // preenchidas: mercado e gasolina. Lazer sempre tem card. Variáveis só
-      // quando já têm lançamentos. Demais contas fixas NÃO criam card automático.
-      const TETO_FIXED_KEYWORDS = ['mercado', 'gasolina'];
+      // Gastos que se consomem ao longo do mês e merecem card de teto assim que
+      // são planejados — independentemente de estarem como conta fixa ou
+      // variável (o onboarding cria mercado/transporte como variáveis).
+      const TETO_KEYWORDS = ['mercado', 'supermercado', 'gasolina', 'combustivel', 'combustível', 'transporte', 'uber'];
+      const isPlanned = (item: FinanceItem) => item.values.some(v => v > 0);
+      const hasEntries = (item: FinanceItem) =>
+        Object.values(item.partialExpenses ?? {}).some(arr => (arr as PartialExpense[]).length > 0);
+
       const isTetoWorthy = (item: FinanceItem): boolean => {
         if (item.category === CategoryType.PERSONAL_LEISURE) return true;
-        if (item.category === CategoryType.VARIABLE_EXPENSE) {
-          return Object.values(item.partialExpenses ?? {}).some(arr => (arr as PartialExpense[]).length > 0);
-        }
-        if (item.category === CategoryType.FIXED_EXPENSE) {
-          const desc = item.description.toLowerCase();
-          return TETO_FIXED_KEYWORDS.some(k => desc.includes(k)) && item.values.some(v => v > 0);
-        }
+        const desc = item.description.toLowerCase();
+        // Balde de gastos pontuais (pix/débito à vista): por decisão do produto
+        // não vira card de teto — foi um gasto único, não algo a acompanhar.
+        if (desc === 'gastos avulsos') return false;
+        if (TETO_KEYWORDS.some(k => desc.includes(k))) return isPlanned(item) || hasEntries(item);
+        // Demais variáveis só ganham card depois de ter lançamento.
+        if (item.category === CategoryType.VARIABLE_EXPENSE) return hasEntries(item);
         return false;
       };
-      const toAdd = items.filter(item => isTetoWorthy(item) && !alreadyLinked.has(item.id));
+
+      const toAdd = items.filter(item =>
+        isTetoWorthy(item) &&
+        !alreadyLinked.has(item.id) &&
+        !dismissedRef.current.has(item.id)
+      );
       if (toAdd.length === 0) return prev;
+
       const updatedPrev = prev.map(col => {
         if (col.linkedItemId) return col;
         const colTitle = col.title.toLowerCase();
@@ -188,7 +276,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
         return true;
       });
     });
-  }, [columnsLoaded, items, hasRealItems]);
+  }, [dbSynced, items, hasRealItems]);
 
   // NOTA: havia aqui um efeito que removia automaticamente colunas ligadas a
   // Contas Fixas sem gastos registrados. Isso foi REMOVIDO (bug em produção
@@ -207,15 +295,18 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
   const removeColumn = (id: string) => {
     if (columns.length <= 1) return;
-    setColumns(columns.filter(c => c.id !== id));
+    const target = columns.find(c => c.id === id);
+    if (target?.linkedItemId) rememberDismissed(target.linkedItemId);
+    setColumns(prev => prev.filter(c => c.id !== id));
   };
 
   const updateColumn = (id: string, field: keyof ColumnData, value: string) => {
-    setColumns(columns.map(c => c.id === id ? { ...c, [field]: value } : c));
+    setColumns(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
   };
 
-  // Variable expense columns only show when they have entries in the viewed month.
-  // Fixed, Leisure, CreditCard columns always show.
+  // Colunas de gasto variável só aparecem quando têm lançamento no mês — EXCETO
+  // quando o gasto foi planejado (mercado/transporte vindos do onboarding têm
+  // teto definido e precisam aparecer desde o primeiro dia, ainda sem lançamento).
   const displayColumns = useMemo(() => {
     return columns.filter(col => {
       if (!col.linkedItemId) return true;
@@ -223,11 +314,12 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       if (!linkedItem) return true;
       if (linkedItem.category === CategoryType.VARIABLE_EXPENSE) {
         const partials = linkedItem.partialExpenses?.[monthKey] || [];
-        return partials.length > 0;
+        if (partials.length > 0) return true;
+        return tetoSlotIdx >= 0 && (linkedItem.values[tetoSlotIdx] || 0) > 0;
       }
       return true;
     });
-  }, [columns, items, monthKey]);
+  }, [columns, items, monthKey, tetoSlotIdx]);
 
   const columnsScrollRef = useRef<HTMLDivElement>(null);
   const [visibleColIdx, setVisibleColIdx] = useState(0);
