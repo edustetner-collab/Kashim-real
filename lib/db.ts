@@ -143,34 +143,40 @@ export async function saveTetoColumns(
   householdId: string,
   columns: { id: string; title: string; linkedItemId: string }[]
 ) {
-  // NUNCA "delete-all + insert" aqui. Essa era a forma antiga e ela destruía
-  // cards em produção de duas maneiras (2026-07-23):
-  //   1. o insert não preservava o `id` → o banco gerava outro a cada save, o
-  //      estado do React e o banco divergiam e o merge do load duplicava/perdia;
-  //   2. se o insert falhasse DEPOIS do delete (rede, RLS, token expirado), as
-  //      colunas sumiam permanentemente — e o erro era engolido por um .catch().
-  // Agora: UPSERT primeiro (id estável, vindo do cliente), remoção das órfãs
-  // depois. Se o upsert falhar, nada foi apagado e o erro sobe para o chamador
-  // decidir o retry.
-  if (columns.length > 0) {
-    const { error } = await db.from('teto_columns').upsert(
-      columns.map((c, i) => ({
-        id: c.id,
-        household_id: householdId,
-        title: c.title,
-        linked_item_id: c.linkedItemId || null,
-        sort_order: i,
-      })),
-      { onConflict: 'id' }
-    );
-    if (error) throw error;
+  // ORDEM É A SEGURANÇA AQUI: INSERE a geração nova primeiro, APAGA a antiga
+  // depois. Duas armadilhas já custaram os cards do usuário em produção:
+  //   1. "delete-all + insert" (forma original): se o insert falhasse depois do
+  //      delete, as colunas sumiam do banco para sempre;
+  //   2. "upsert" (tentativa de 2026-07-23): é INSERT ... ON CONFLICT DO UPDATE
+  //      e exige política de UPDATE, que esta tabela NÃO tem — só SELECT,
+  //      INSERT e DELETE. Toda gravação falhava silenciosamente e nenhum card
+  //      criado à mão sobrevivia à troca de aba.
+  // Com esta ordem, o pior caso é uma linha duplicada (o load deduplica), nunca
+  // perda. NÃO troque por upsert/update sem antes confirmar as policies.
+  if (columns.length === 0) {
+    // Um estado vazio nunca é motivo para limpar a tabela: a UI impede remover
+    // a última coluna, então lista vazia aqui só pode ser estado transitório.
+    return;
   }
 
-  // Remove só o que realmente saiu da lista.
-  const keep = columns.map(c => c.id).filter(Boolean);
-  let del = db.from('teto_columns').delete().eq('household_id', householdId);
-  if (keep.length > 0) del = del.not('id', 'in', `(${keep.join(',')})`);
-  const { error: delError } = await del;
+  const { data, error } = await db.from('teto_columns').insert(
+    columns.map((c, i) => ({
+      household_id: householdId,
+      title: c.title,
+      linked_item_id: c.linkedItemId || null,
+      sort_order: i,
+    }))
+  ).select('id');
+  if (error) throw error;
+
+  // Só agora remove as linhas da geração anterior.
+  const keep = (data ?? []).map((r: any) => r.id).filter(Boolean);
+  if (keep.length === 0) return;
+  const { error: delError } = await db
+    .from('teto_columns')
+    .delete()
+    .eq('household_id', householdId)
+    .not('id', 'in', `(${keep.join(',')})`);
   if (delError) throw delError;
 }
 

@@ -202,7 +202,10 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
         savingRef.current = false;
         setSaveTick(t => t + 1);
       })
-      .catch(() => {
+      .catch((err) => {
+        // Falha de gravação NUNCA pode ser silenciosa: foi exatamente assim que
+        // os cards sumiram sem deixar rastro. Se acontecer, o motivo está aqui.
+        console.error('[TetoGastos] falha ao salvar os cards:', err);
         failuresRef.current += 1;
         savingRef.current = false;
         setTimeout(() => setSaveTick(t => t + 1), 1500 * failuresRef.current);
@@ -231,16 +234,22 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       const hasEntries = (item: FinanceItem) =>
         Object.values(item.partialExpenses ?? {}).some(arr => (arr as PartialExpense[]).length > 0);
 
+      // REGRA FECHADA (pedido explícito do Eduardo, 2026-07-23): só existem
+      // TRÊS cards automáticos — mercado, transporte/gasolina e lazer — e só
+      // quando o cliente preencheu o valor no planejamento. Qualquer outro card
+      // é criado à mão pelo usuário. Cartão de crédito e renda NUNCA geram card
+      // (uma versão anterior checava a palavra-chave ANTES da categoria e criou
+      // cards para cartões chamados "Mercado Pago").
       const isTetoWorthy = (item: FinanceItem): boolean => {
-        if (item.category === CategoryType.PERSONAL_LEISURE) return true;
+        const isFixed = item.category === CategoryType.FIXED_EXPENSE;
+        const isVariable = item.category === CategoryType.VARIABLE_EXPENSE;
+        const isLeisure = item.category === CategoryType.PERSONAL_LEISURE;
+        if (!isFixed && !isVariable && !isLeisure) return false;
+        if (!isPlanned(item) && !hasEntries(item)) return false;
+        if (isLeisure) return true;
         const desc = item.description.toLowerCase();
-        // Balde de gastos pontuais (pix/débito à vista): por decisão do produto
-        // não vira card de teto — foi um gasto único, não algo a acompanhar.
         if (desc === 'gastos avulsos') return false;
-        if (TETO_KEYWORDS.some(k => desc.includes(k))) return isPlanned(item) || hasEntries(item);
-        // Demais variáveis só ganham card depois de ter lançamento.
-        if (item.category === CategoryType.VARIABLE_EXPENSE) return hasEntries(item);
-        return false;
+        return TETO_KEYWORDS.some(k => desc.includes(k));
       };
 
       const toAdd = items.filter(item =>
@@ -252,7 +261,10 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
       const updatedPrev = prev.map(col => {
         if (col.linkedItemId) return col;
-        const colTitle = col.title.toLowerCase();
+        const colTitle = col.title.toLowerCase().trim();
+        // Card recém-criado (ainda com o nome padrão) é do usuário: ele vai
+        // vincular à mão. Sequestrar aqui roubava o card antes de ele terminar.
+        if (!colTitle || colTitle === 'nova despesa') return col;
         const match = toAdd.find(item => {
           const desc = item.description.toLowerCase();
           return desc.includes(colTitle) || colTitle.split(' ').some(word => word.length > 3 && desc.includes(word));
