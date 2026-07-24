@@ -51,14 +51,38 @@ function describeSaveError(err: unknown): string {
 
 const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, currentYear, months, onAddPartial, onRemovePartial, db, householdId, resolveDbId, tetoAlert }) => {
   const currentMonthKey = `${currentYear}-${currentMonthIdx}`;
-  const [selectedMonthKey, setSelectedMonthKey] = useState(currentMonthKey);
+
+  // MÊS DE TRABALHO: normalmente o mês corrente do calendário — mas o plano do
+  // cliente pode começar no FUTURO (cliente cadastrado em julho com plano a
+  // partir de agosto). Nesse caso o mês corrente não tem slot no plano,
+  // `tetoSlotIdx` dava -1, o teto vinha zero e o card aparecia SEM limite; o
+  // seletor também não oferecia nenhum mês válido para escolher (bug real na
+  // conta da Miriam, 2026-07-24). Aqui caímos no primeiro mês do plano.
+  const planMonthKeys = useMemo(
+    () => months.map(m => `${m.year}-${m.index}`),
+    [months]
+  );
+  const workingMonthKey = useMemo(
+    () => (planMonthKeys.includes(currentMonthKey) ? currentMonthKey : (planMonthKeys[0] ?? currentMonthKey)),
+    [planMonthKeys, currentMonthKey]
+  );
+
+  // Ano/mês do mês de trabalho — é NELE que os lançamentos entram. Usar o mês do
+  // calendário aqui gravava o gasto num mês fora do plano, e ele simplesmente
+  // não aparecia no card (que exibe o mês de trabalho).
+  const [workingYear, workingMonthIdx] = useMemo(() => {
+    const [y, m] = workingMonthKey.split('-').map(Number);
+    return [y, m] as const;
+  }, [workingMonthKey]);
+
+  const [selectedMonthKey, setSelectedMonthKey] = useState(workingMonthKey);
   const [columnsLoaded, setColumnsLoaded] = useState(false);
 
-  useEffect(() => { setSelectedMonthKey(currentMonthKey); }, [currentMonthKey]);
+  useEffect(() => { setSelectedMonthKey(workingMonthKey); }, [workingMonthKey]);
 
   const availableMonths = useMemo(() => {
     const keys = new Set<string>();
-    keys.add(currentMonthKey);
+    keys.add(workingMonthKey);
     items.forEach(item => {
       if (!item.partialExpenses) return;
       Object.entries(item.partialExpenses).forEach(([k, entries]) => {
@@ -70,14 +94,16 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       const [by, bm] = b.split('-').map(Number);
       return ay !== by ? by - ay : bm - am;
     });
-  }, [items, currentMonthKey]);
+  }, [items, workingMonthKey]);
 
   function labelForKey(key: string): string {
     const [year, mIdx] = key.split('-').map(Number);
     return `${MONTHS_BR[mIdx]} ${year}`;
   }
 
-  const isHistoricalView = selectedMonthKey !== currentMonthKey;
+  // Compara com o mês de TRABALHO, não com o do calendário: senão, num plano
+  // que começa no futuro, a tela abriria permanentemente em modo somente-leitura.
+  const isHistoricalView = selectedMonthKey !== workingMonthKey;
   const monthKey = selectedMonthKey;
 
   // Slot do plano correspondente ao mês selecionado. O teto vem de
@@ -474,7 +500,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       }
     }
 
-    onAddPartial(itemId, expense, currentYear, currentMonthIdx);
+    onAddPartial(itemId, expense, workingYear, workingMonthIdx);
     if (valueInputRefs.current[colId]) valueInputRefs.current[colId]!.value = '';
     setEntryDescriptions(prev => ({ ...prev, [colId]: '' }));
     setEntryErrors(prev => ({ ...prev, [colId]: false }));
@@ -497,7 +523,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
     const card = selectedCard ?? (linkedItem?.linkedCardId ? items.find(i => i.id === linkedItem.linkedCardId) : null);
     const cardLabel = card?.description ? ` (${card.description})` : '';
 
-    const startAbsMonth = currentYear * 12 + currentMonthIdx;
+    const startAbsMonth = workingYear * 12 + workingMonthIdx;
     const baseValue = parseFloat((total / qty).toFixed(2));
 
     for (let i = 0; i < qty; i++) {
@@ -576,7 +602,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
           >
             {availableMonths.map(key => (
               <option key={key} value={key}>
-                {labelForKey(key)}{key === currentMonthKey ? ' ●' : ''}
+                {labelForKey(key)}{key === workingMonthKey ? ' ●' : ''}
               </option>
             ))}
           </select>
