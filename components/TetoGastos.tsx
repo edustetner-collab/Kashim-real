@@ -16,6 +16,10 @@ interface TetoGastosProps {
   onRemovePartial: (itemId: string, expenseId: string) => void;
   db?: SupabaseClient | null;
   householdId?: string | null;
+  // Traduz o id local do item para o id que ele tem no banco. Sem isto, o
+  // vínculo do card era gravado com um id que pode não existir em
+  // finance_items, e a foreign key rejeitava a gravação (erro 23503).
+  resolveDbId?: (localId: string) => string;
   // Alerta de teto: aviso na tela quando um gasto cruza X% do teto
   tetoAlert?: { enabled: boolean; pct: number };
 }
@@ -30,7 +34,22 @@ function isRecurringItem(item: FinanceItem): boolean {
   return item.category === CategoryType.PERSONAL_LEISURE || item.category === CategoryType.VARIABLE_EXPENSE;
 }
 
-const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, currentYear, months, onAddPartial, onRemovePartial, db, householdId, tetoAlert }) => {
+// Traduz o erro do Postgres para algo acionável na tela. Mensagem genérica não
+// ajuda ninguém: cada um destes códigos aponta para uma causa diferente.
+function describeSaveError(err: unknown): string {
+  const code = (err as { code?: string } | null)?.code;
+  if (code === '23503') {
+    // FK: o card aponta para um lançamento que não chegou ao banco — quase
+    // sempre porque o INSERT do próprio lançamento foi barrado antes (42501).
+    return 'O lançamento vinculado a este card não foi salvo, então o card não pode ser gravado. Confira se o lançamento aparece em Gastos Mensais.';
+  }
+  if (code === '42501' || code === 'PGRST301') {
+    return 'Sem permissão para gravar nesta conta. Se você está acessando como consultor, o acesso de escrita precisa ser liberado.';
+  }
+  return 'Verifique a conexão — o app segue tentando sozinho.';
+}
+
+const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, currentYear, months, onAddPartial, onRemovePartial, db, householdId, resolveDbId, tetoAlert }) => {
   const currentMonthKey = `${currentYear}-${currentMonthIdx}`;
   const [selectedMonthKey, setSelectedMonthKey] = useState(currentMonthKey);
   const [columnsLoaded, setColumnsLoaded] = useState(false);
@@ -88,7 +107,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   const failuresRef = useRef(0);                       // falhas seguidas do mesmo estado
   const lastAttemptRef = useRef<string>('');           // JSON da última tentativa
   const [saveTick, setSaveTick] = useState(0);         // reexecuta o save após cada tentativa
-  const [saveFailed, setSaveFailed] = useState(false); // gravação falhando → aviso na tela
+  const [saveFailed, setSaveFailed] = useState<string | null>(null); // motivo da falha → aviso na tela
 
   // Cards que o usuário apagou de propósito. O auto-link agora reage a QUALQUER
   // mudança nos itens, então sem este registro um card removido voltaria
@@ -193,7 +212,12 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
     }
 
     savingRef.current = true;
-    saveTetoColumns(db, householdId, columns)
+    // Grava sempre o id do banco no vínculo (ver resolveDbId nas props).
+    const forDb = columns.map(c => ({
+      ...c,
+      linkedItemId: c.linkedItemId ? (resolveDbId?.(c.linkedItemId) ?? c.linkedItemId) : '',
+    }));
+    saveTetoColumns(db, householdId, forDb)
       .then(() => {
         // Só aqui vira "persistido". Antes o estado era marcado como salvo
         // ANTES do await, e uma falha do insert (depois do delete) virava
@@ -201,7 +225,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
         lastSavedRef.current = json;
         failuresRef.current = 0;
         savingRef.current = false;
-        setSaveFailed(false);
+        setSaveFailed(null);
         setSaveTick(t => t + 1);
       })
       .catch((err) => {
@@ -210,7 +234,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
         console.error('[TetoGastos] falha ao salvar os cards:', err);
         failuresRef.current += 1;
         savingRef.current = false;
-        if (failuresRef.current >= 2) setSaveFailed(true);
+        if (failuresRef.current >= 2) setSaveFailed(describeSaveError(err));
         setTimeout(() => setSaveTick(t => t + 1), 1500 * failuresRef.current);
       });
   }, [columns, dbSynced, db, householdId, saveTick]);
@@ -513,7 +537,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
           <div className="flex-1">
             <p className="text-orange-900 text-xs font-black uppercase tracking-wide">Não foi possível salvar os cards</p>
             <p className="text-orange-800/80 text-[11px] leading-relaxed mt-0.5">
-              O que você criou agora pode não aparecer quando voltar. Verifique a conexão — o app segue tentando sozinho.
+              O que você criou agora pode não aparecer quando voltar. {saveFailed}
             </p>
           </div>
         </div>
