@@ -19,10 +19,34 @@ const FEATURES = [
   'Suporte prioritário',
 ];
 
+// Preços espelham api/create-checkout.ts (monthly 1499, annual 13188).
+// Mantê-los em sincronia — o valor cobrado é SEMPRE o do backend; aqui é só
+// exibição. R$131,88/ano = R$10,99/mês; economia de R$48 vs. o mensal.
+const PLANS = {
+  annual: {
+    label: 'Anual',
+    priceLabel: 'R$ 10,99',
+    priceSuffix: '/mês',
+    billedNote: 'Cobrado R$ 131,88 uma vez por ano',
+    badge: 'Melhor valor · economize R$ 48',
+  },
+  monthly: {
+    label: 'Mensal',
+    priceLabel: 'R$ 14,99',
+    priceSuffix: '/mês',
+    billedNote: 'Cobrado todo mês, cancele quando quiser',
+    badge: null as string | null,
+  },
+} as const;
+
+type PlanKey = keyof typeof PLANS;
+
 const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onClose, isNative = false, onSignOut }) => {
   const { getToken } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // Anual como padrão: melhor valor pro cliente e maior LTV pro negócio.
+  const [plan, setPlan] = useState<PlanKey>('annual');
 
   async function handleSubscribe() {
     setLoading(true);
@@ -35,7 +59,7 @@ const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onClose, isNative =
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ origin: window.location.origin }),
+        body: JSON.stringify({ origin: window.location.origin, plan }),
       });
 
       if (!res.ok) throw new Error('Erro ao criar sessão de pagamento');
@@ -94,7 +118,7 @@ const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onClose, isNative =
           Seu período gratuito de acompanhamento encerrou. Para continuar usando o Kashim e manter sua organização financeira, assine o plano completo.
         </p>
 
-        <ul className="space-y-2 mb-8">
+        <ul className="space-y-2 mb-6">
           {FEATURES.map((item) => (
             <li key={item} className="flex items-center gap-3 text-zinc-300 text-sm">
               <i className="fas fa-check text-green-400 text-xs w-4"></i>
@@ -103,13 +127,52 @@ const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onClose, isNative =
           ))}
         </ul>
 
+        {/* Seletor de planos */}
+        <div className="space-y-3 mb-6">
+          {(Object.keys(PLANS) as PlanKey[]).map((key) => {
+            const p = PLANS[key];
+            const selected = plan === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setPlan(key)}
+                className={`w-full text-left rounded-2xl border p-4 transition-all relative ${
+                  selected
+                    ? 'border-green-400 bg-green-500/10 ring-1 ring-green-400/40'
+                    : 'border-zinc-800 bg-zinc-950/40 hover:border-zinc-700'
+                }`}
+              >
+                {p.badge && (
+                  <span className="absolute -top-2 right-4 bg-green-400 text-black text-[9px] font-black uppercase tracking-wide px-2 py-0.5 rounded-full">
+                    {p.badge}
+                  </span>
+                )}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${selected ? 'border-green-400' : 'border-zinc-600'}`}>
+                      {selected && <span className="w-2 h-2 rounded-full bg-green-400" />}
+                    </span>
+                    <span className="text-white font-black text-sm uppercase tracking-wide">{p.label}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-white font-black text-lg">{p.priceLabel}</span>
+                    <span className="text-zinc-500 text-xs font-bold">{p.priceSuffix}</span>
+                  </div>
+                </div>
+                <p className="text-zinc-500 text-[11px] mt-1.5 ml-7">{p.billedNote}</p>
+              </button>
+            );
+          })}
+        </div>
+
         {error && <p className="text-red-400 text-xs mb-4 text-center">{error}</p>}
         <button
           onClick={handleSubscribe}
           disabled={loading}
           className="w-full bg-green-500 hover:bg-green-400 disabled:opacity-50 text-black font-black py-4 rounded-2xl transition-all shadow-lg uppercase text-sm tracking-widest mb-3"
         >
-          {loading ? <i className="fas fa-circle-notch animate-spin"></i> : 'Assinar agora'}
+          {loading ? <i className="fas fa-circle-notch animate-spin"></i> : `Assinar ${PLANS[plan].label.toLowerCase()}`}
         </button>
 
         <button
