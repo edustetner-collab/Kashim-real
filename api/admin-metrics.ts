@@ -41,18 +41,12 @@ const PRICE_MONTHLY = 14.99;
 const PRICE_ANNUAL = 131.88;
 
 // Espelho da regra de lib/access.ts (Vercel não empacota import local em api/)
+// Trial unificado: 5 meses grátis para todos (decisão Eduardo, 2026-07-27).
 const TRIAL_MONTHS_COACH_CLIENT = 5;
-const TRIAL_DAYS_SELF_SIGNUP = 30;
-const SELF_SIGNUP_CUTOFF = new Date('2026-07-16T23:59:59-03:00');
 
 function addMonths(date: Date, months: number): Date {
   const d = new Date(date);
   d.setMonth(d.getMonth() + months);
-  return d;
-}
-function addDays(date: Date, days: number): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
   return d;
 }
 
@@ -207,10 +201,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         } else if (hh.created_at) {
           const created = new Date(hh.created_at);
-          const keepsPromo = created <= SELF_SIGNUP_CUTOFF;
-          const trialEnd = (coach?.isCoachClient || keepsPromo)
-            ? addMonths(created, TRIAL_MONTHS_COACH_CLIENT)
-            : addDays(created, TRIAL_DAYS_SELF_SIGNUP);
+          const trialEnd = addMonths(created, TRIAL_MONTHS_COACH_CLIENT);
           if (trialEnd.getTime() > now) {
             status = 'trial';
             trialDaysLeft = Math.max(0, Math.ceil((trialEnd.getTime() - now) / (24 * 60 * 60 * 1000)));

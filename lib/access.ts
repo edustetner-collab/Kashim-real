@@ -7,25 +7,19 @@ export interface AccessInfo {
   daysLeft: number | null;
 }
 
-// Regra de trial (decisão Eduardo, 2026-07-16):
-// - Cliente da consultoria (tem coach_access): 5 meses grátis desde a criação
-//   da conta — cobre até o fim da consultoria.
-// - Cadastro espontâneo (entrou sozinho pelo site): 30 dias grátis.
-// - Contas espontâneas criadas ANTES do cutoff mantêm os 5 meses prometidos
-//   na promo de lançamento (ninguém perde acesso retroativamente).
-export const TRIAL_MONTHS_COACH_CLIENT = 5;
-export const TRIAL_DAYS_SELF_SIGNUP = 30;
-export const SELF_SIGNUP_CUTOFF = new Date('2026-07-16T23:59:59-03:00');
+// Regra de trial (decisão Eduardo, 2026-07-27):
+// TODO MUNDO tem 5 meses grátis desde a criação da conta — não importa se o
+// perfil foi criado pelo consultor ou se a pessoa entrou sozinha pelo site.
+// (Antes havia distinção: 5 meses p/ cliente de consultoria, 30 dias p/
+// cadastro espontâneo. Unificado em 5 meses para todos.)
+export const TRIAL_MONTHS = 5;
+
+// Compat: nomes antigos ainda importados por api/admin-metrics.ts.
+export const TRIAL_MONTHS_COACH_CLIENT = TRIAL_MONTHS;
 
 function addMonths(date: Date, months: number): Date {
   const d = new Date(date);
   d.setMonth(d.getMonth() + months);
-  return d;
-}
-
-function addDays(date: Date, days: number): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
   return d;
 }
 
@@ -62,10 +56,7 @@ export function computeAccess(params: {
 
   if (params.createdAt) {
     const created = new Date(params.createdAt);
-    const keepsLaunchPromo = created <= SELF_SIGNUP_CUTOFF;
-    const trialEnd = params.isCoachClient || keepsLaunchPromo
-      ? addMonths(created, TRIAL_MONTHS_COACH_CLIENT)
-      : addDays(created, TRIAL_DAYS_SELF_SIGNUP);
+    const trialEnd = addMonths(created, TRIAL_MONTHS);
     if (trialEnd.getTime() > now) {
       return { mode: 'trial', hasAccess: true, endsAt: trialEnd, daysLeft: daysUntil(trialEnd) };
     }

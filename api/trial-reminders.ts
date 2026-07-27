@@ -22,8 +22,6 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 // Espelho da regra de lib/access.ts (embutido: Vercel não empacota import
 // local em api/ — ver memória do projeto). Manter em sincronia!
 const TRIAL_MONTHS_COACH_CLIENT = 5;
-const TRIAL_DAYS_SELF_SIGNUP = 30;
-const SELF_SIGNUP_CUTOFF = new Date('2026-07-16T23:59:59-03:00');
 
 const MILESTONES = [30, 15, 7, 1, 0] as const;
 type Milestone = (typeof MILESTONES)[number];
@@ -33,21 +31,14 @@ function addMonths(date: Date, months: number): Date {
   d.setMonth(d.getMonth() + months);
   return d;
 }
-function addDays(date: Date, days: number): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
-}
 function daysUntil(target: Date): number {
   return Math.ceil((target.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
 }
 
-function trialEndFor(createdAt: string, isCoachClient: boolean): Date {
-  const created = new Date(createdAt);
-  const keepsLaunchPromo = created <= SELF_SIGNUP_CUTOFF;
-  return isCoachClient || keepsLaunchPromo
-    ? addMonths(created, TRIAL_MONTHS_COACH_CLIENT)
-    : addDays(created, TRIAL_DAYS_SELF_SIGNUP);
+// Trial unificado: 5 meses grátis para todos (decisão Eduardo, 2026-07-27),
+// independentemente de o perfil ter sido criado pelo consultor ou pela pessoa.
+function trialEndFor(createdAt: string, _isCoachClient: boolean): Date {
+  return addMonths(new Date(createdAt), TRIAL_MONTHS_COACH_CLIENT);
 }
 
 // ─── Conteúdo por marco ──────────────────────────────────────────────────────
@@ -67,13 +58,13 @@ function copyFor(milestone: Milestone, firstName: string): MilestoneCopy {
   switch (milestone) {
     case 30:
       return {
-        subject: '🎉 Seus 30 dias grátis no Kashim começaram!',
-        emoji: '🚀',
-        title: `Bem-vindo(a), ${name}!`,
-        tagline: 'Seu período gratuito começou',
-        body1: 'Você tem <strong style="color:#1d1d1f;">30 dias grátis</strong> para experimentar tudo que o Kashim oferece: planejamento dos 12 meses, diagnóstico em tempo real, teto de gastos, metas e o AICoach.',
-        body2: 'Dica de quem entende: quem lança os gastos na primeira semana tem 3x mais chance de fechar o mês no azul. Comece hoje!',
-        cta: 'Começar agora',
+        subject: `${name}, faltam 30 dias do seu acesso gratuito ao Kashim`,
+        emoji: '📅',
+        title: 'Faltam 30 dias',
+        tagline: '30 dias grátis restantes',
+        body1: `${name}, seu acesso gratuito ao Kashim termina em <strong style="color:#1d1d1f;">30 dias</strong>. Aproveite este mês para deixar seu plano financeiro completo — lançamentos, metas e teto de gastos.`,
+        body2: 'Para não perder o acesso quando o período gratuito terminar, você pode assinar a qualquer momento pelo site. Seus dados continuam intactos.',
+        cta: 'Ver meu plano',
       };
     case 15:
       return {
