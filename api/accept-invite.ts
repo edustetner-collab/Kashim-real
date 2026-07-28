@@ -24,30 +24,24 @@ function verifyAuthToken(authHeader?: string): { sub: string; [k: string]: unkno
   }
 }
 
-const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY!;
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!;
 
 const MAX_MEMBERS = 2;
 
-async function getClerkEmail(userId: string): Promise<string | null> {
-  try {
-    const r = await fetch(`https://api.clerk.com/v1/users/${userId}`, {
-      headers: { Authorization: `Bearer ${CLERK_SECRET_KEY}` },
-    });
-    if (!r.ok) return null;
-    const u = await r.json();
-    return u.email_addresses?.[0]?.email_address?.toLowerCase() ?? null;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Aceita um convite de "Modo Casal" com validação server-side.
  * Este é o ÚNICO caminho autorizado para virar membro de um household de
- * outra pessoa — a inserção acontece com a service key e só depois de
- * confirmar que o convite é válido E que o e-mail convidado é o do usuário.
+ * outra pessoa — tudo acontece com a service key.
+ *
+ * SEGURANÇA (decisão 2026-07-27): a autorização é por POSSE DO TOKEN. O token
+ * tem 256 bits (dois UUIDs), é imprevisível e o próprio dono do plano o envia
+ * em privado ao parceiro. A exigência anterior de e-mail idêntico ao do convite
+ * foi REMOVIDA porque quebrava o uso real (o parceiro quase sempre se cadastra
+ * com um e-mail diferente do que foi digitado) — era a causa nº 1 do "modo
+ * casal não funciona". O limite de 2 membros e o convite poder ser cancelado
+ * pelo dono continuam sendo as travas. Modelo idêntico ao "qualquer um com o
+ * link entra" de convites de produtos como Notion/Figma.
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -61,39 +55,90 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  // Se já é membro de algum household, retorna esse (idempotente)
-  const { data: existing } = await db
-    .from('household_members')
-    .select('household_id')
-    .eq('clerk_user_id', clerkUserId)
-    .maybeSingle();
-  if (existing) return res.status(200).json({ householdId: existing.household_id, alreadyMember: true });
-
-  // Busca o convite pendente
+  // Busca o convite pendente PRIMEIRO — precisamos do household de destino antes
+  // de decidir o que fazer com uma associação existente.
   const { data: invite } = await db
     .from('household_invites')
-    .select('id, household_id, email, status')
+    .select('id, household_id, status')
     .eq('token', token)
     .eq('status', 'pending')
     .maybeSingle();
   if (!invite) return res.status(404).json({ error: 'Convite inválido ou já usado' });
 
-  // Confirma que o e-mail convidado é o do usuário autenticado
-  const userEmail = await getClerkEmail(clerkUserId);
-  if (!userEmail || userEmail !== (invite.email ?? '').toLowerCase()) {
-    return res.status(403).json({ error: 'Este convite foi enviado para outro e-mail' });
+  const markAccepted = async () => {
+    await db
+      .from('household_invites')
+      .update({ status: 'accepted', accepted_at: new Date().toISOString() })
+      .eq('id', invite.id);
+  };
+
+  // Quantos membros o household de destino já tem?
+  const destCount = async (): Promise<number> => {
+    const { count } = await db
+      .from('household_members')
+      .select('*', { count: 'exact', head: true })
+      .eq('household_id', invite.household_id);
+    return count ?? 0;
+  };
+
+  // Já é membro de algum household?
+  const { data: existing } = await db
+    .from('household_members')
+    .select('id, household_id')
+    .eq('clerk_user_id', clerkUserId)
+    .maybeSingle();
+
+  if (existing) {
+    // Já está no household certo → idempotente.
+    if (existing.household_id === invite.household_id) {
+      await markAccepted();
+      return res.status(200).json({ householdId: invite.household_id, alreadyMember: true });
+    }
+
+    // Está em OUTRO household. Se compartilha com mais alguém, não mexemos —
+    // ele já faz parte de outra conta de casal.
+    const { count: ownCount } = await db
+      .from('household_members')
+      .select('*', { count: 'exact', head: true })
+      .eq('household_id', existing.household_id);
+    if ((ownCount ?? 0) > 1) {
+      return res.status(409).json({ error: 'Você já faz parte de outra conta compartilhada. Saia dela antes de entrar em outra.' });
+    }
+
+    // Household SOLO (só ele): candidato a mover para o household do convite.
+    // É o caso dos clientes que ficaram "presos" numa conta solo criada por
+    // engano. MAS só movemos se a conta solo estiver VAZIA — se tiver qualquer
+    // lançamento, mover orfanaria dados reais (lição dura de perda de dados do
+    // projeto). Nesse caso, barra e orienta a falar com o suporte.
+    const { data: soloItems } = await db
+      .from('finance_items')
+      .select('values')
+      .eq('household_id', existing.household_id);
+    const hasData = (soloItems ?? []).some(
+      (r: { values: number[] | null }) => Array.isArray(r.values) && r.values.some(v => (v ?? 0) > 0)
+    );
+    if (hasData) {
+      return res.status(409).json({
+        error: 'Você já tem lançamentos na sua conta. Para unir com a conta do seu parceiro sem perder dados, fale com o suporte.',
+      });
+    }
+
+    if ((await destCount()) >= MAX_MEMBERS) {
+      return res.status(409).json({ error: 'Limite de membros atingido' });
+    }
+    const { error: mvErr } = await db
+      .from('household_members')
+      .update({ household_id: invite.household_id, role: 'member' })
+      .eq('id', existing.id);
+    if (mvErr) return res.status(500).json({ error: 'Erro ao entrar na conta compartilhada' });
+    await markAccepted();
+    return res.status(200).json({ householdId: invite.household_id, moved: true });
   }
 
-  // Confirma limite de membros
-  const { count } = await db
-    .from('household_members')
-    .select('*', { count: 'exact', head: true })
-    .eq('household_id', invite.household_id);
-  if ((count ?? 0) >= MAX_MEMBERS) {
+  // Não é membro de nada ainda: entra direto.
+  if ((await destCount()) >= MAX_MEMBERS) {
     return res.status(409).json({ error: 'Limite de membros atingido' });
   }
-
-  // Insere a associação (service key → não depende do RLS do cliente)
   const { error: insErr } = await db.from('household_members').insert({
     household_id: invite.household_id,
     clerk_user_id: clerkUserId,
@@ -111,10 +156,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'Erro ao entrar no household' });
   }
 
-  await db
-    .from('household_invites')
-    .update({ status: 'accepted', accepted_at: new Date().toISOString() })
-    .eq('id', invite.id);
-
+  await markAccepted();
   return res.status(200).json({ householdId: invite.household_id });
 }

@@ -11,7 +11,12 @@ import AICoach from './components/AICoach';
 import OnboardingManager from './components/onboarding/OnboardingManager';
 import { useSupabase } from './lib/useSupabase';
 import { getOrCreateHousehold, getHousehold, loadFinanceItems, loadFinanceItemsForCoach, saveFinanceItem, deleteFinanceItem, addPartialExpense, deletePartialExpense, loadGoals, loadTetoColumns } from './lib/db';
-import { processInviteFromUrl } from './lib/invites';
+import { processInviteFromUrl, captureInviteFromUrl, hasPendingInvite } from './lib/invites';
+
+// Captura o token de convite (?invite=...) ANTES de qualquer render/redirect do
+// Clerk. Fica em localStorage e sobrevive ao cadastro do cônjuge — ver
+// lib/invites.ts. Roda no import do módulo (o mais cedo possível).
+captureInviteFromUrl();
 import InvitePartner from './components/InvitePartner';
 import CoachDashboard from './components/CoachDashboard';
 import ClientSettings from './components/ClientSettings';
@@ -119,7 +124,10 @@ const App: React.FC = () => {
   const { signIn, setActive: setSignInActive } = useSignIn();
   const { getToken } = useAuth();
   const db = useSupabase();
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  // Cônjuge que chega pelo link de convite quase sempre NÃO tem conta ainda —
+  // abre direto na tela de cadastro em vez da de login (antes ele caía no login
+  // e precisava "descobrir" que tinha que criar conta).
+  const [authMode, setAuthMode] = useState<'login' | 'register'>(hasPendingInvite() ? 'register' : 'login');
   const [clerkTimeout, setClerkTimeout] = useState(false);
   const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
