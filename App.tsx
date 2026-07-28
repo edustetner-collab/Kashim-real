@@ -117,6 +117,31 @@ function addTombstone(...ids: string[]): void {
   } catch {}
 }
 
+// Assinatura dos campos que a linha de finance_items realmente persiste (espelha
+// financeItemToRow + sort_order). Usada para gravar SÓ os itens que mudaram de
+// fato — crítico no Modo Casal: se o cliente reescrevesse a lista inteira a cada
+// alteração, a gravação de um membro sobrescreveria a edição simultânea do outro
+// em itens que ele nem tocou (partial_expenses NÃO entram aqui — são salvos por
+// caminho próprio, append-only).
+function itemPersistHash(item: FinanceItem, sortOrder: number): string {
+  return JSON.stringify({
+    d: item.description,
+    c: item.category,
+    v: item.values,
+    p: item.paidStatus,
+    lc: item.linkedCardId ?? null,
+    lt: item.linkType ?? null,
+    cd: item.closingDay ?? null,
+    dd: item.dueDay ?? null,
+    so: sortOrder,
+  });
+}
+function seedItemHashes(items: FinanceItem[]): Record<string, string> {
+  const h: Record<string, string> = {};
+  items.forEach((it, i) => { h[it.id] = itemPersistHash(it, i); });
+  return h;
+}
+
 const App: React.FC = () => {
   const { isSignedIn, user, isLoaded } = useUser();
   const { signOut } = useClerk();
@@ -158,6 +183,9 @@ const App: React.FC = () => {
   // null = ainda verificando ou indeterminado (falha de rede) → não bloqueia
   const [termsAccepted, setTermsAccepted] = useState<boolean | null>(null);
   const itemIdMapRef = useRef<Record<string, string>>({}); // localId -> dbId
+  // Hash dos campos já persistidos por item (id -> hash). Semeado ao carregar do
+  // banco; o loop de gravação pula itens cujo hash não mudou. Ver itemPersistHash.
+  const savedItemHashRef = useRef<Record<string, string>>({});
   const pendingDeletesRef = useRef<Set<string>>(new Set());
   const userDataLoadedRef = useRef<string | null>(null); // tracks userId to prevent token-refresh reloads
   const coachViewLoadedRef = useRef<string | null>(null);
@@ -315,6 +343,7 @@ const App: React.FC = () => {
             }
             return true;
           });
+          savedItemHashRef.current = seedItemHashes(liveItems);
           setItems(liveItems);
         }
 
@@ -464,8 +493,12 @@ const App: React.FC = () => {
         if (dbItems.length > 0) {
           const { deduped, toDelete } = dedupeItems(dbItems);
           toDelete.forEach(id => deleteFinanceItem(db!, id).catch(() => {}));
+          savedItemHashRef.current = seedItemHashes(deduped);
           setItems(deduped);
         } else {
+          // Cliente sem dados: itens padrão em branco NÃO estão no banco ainda —
+          // hash vazio p/ que sejam criados na 1ª gravação.
+          savedItemHashRef.current = {};
           setItems(makeDefaultItems());
         }
         // Libera o salvamento nesta sessão. O admin pula o loadData normal
@@ -493,6 +526,7 @@ const App: React.FC = () => {
     if (!snap) return;
     ownDataSnapshotRef.current = null;
     setHouseholdId(snap.householdId);
+    savedItemHashRef.current = seedItemHashes(snap.items);
     setItems(snap.items);
     setStartMonth(snap.startMonth);
     setStartYear(snap.startYear);
@@ -542,11 +576,17 @@ const App: React.FC = () => {
             const item = items[i];
             const dbId = itemIdMapRef.current[item.id] ?? item.id;
             if (pendingDeletesRef.current.has(item.id) || pendingDeletesRef.current.has(dbId)) continue;
+            // Só grava se ESTE item mudou de fato. Sem isto, o loop reescrevia a
+            // lista inteira e, numa conta de casal, a gravação de um membro
+            // sobrescrevia a edição simultânea do outro em itens intocados.
+            const hash = itemPersistHash(item, i);
+            if (savedItemHashRef.current[item.id] === hash) continue;
             try {
               const savedId = await saveFinanceItem(db!, householdId, item, i);
               if (savedId !== item.id) {
                 itemIdMapRef.current[item.id] = savedId;
               }
+              savedItemHashRef.current[item.id] = hash;
             } catch (e) {
               console.error('Erro ao salvar item', item.id, e);
             }
