@@ -1269,6 +1269,17 @@ const App: React.FC = () => {
             </p>
           </div>
 
+          {/* Chegou por um convite de casal: explica o que fazer, senão o
+              cônjuge cai na tela de cadastro sem entender por quê. */}
+          {hasPendingInvite() && (
+            <div className="w-full flex items-start gap-3 bg-green-500/10 border border-green-500/30 rounded-2xl px-4 py-3">
+              <i className="fas fa-user-friends text-green-400 mt-0.5 shrink-0"></i>
+              <p className="text-green-200 text-xs leading-relaxed text-left">
+                <span className="font-black">Você foi convidado para um plano compartilhado.</span> Crie sua conta abaixo (nome, e-mail e senha) para entrar no mesmo plano do seu parceiro(a). Depois é só usar esse login e senha para acessar.
+              </p>
+            </div>
+          )}
+
           {authMode === 'login' ? (
             <SignIn routing="hash" appearance={{
               elements: {
