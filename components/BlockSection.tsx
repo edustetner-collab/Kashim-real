@@ -433,7 +433,13 @@ const BlockSection: React.FC<BlockSectionProps> = ({
         </div>
       )}
 
-      <div className="bg-white px-4 py-3 flex items-center gap-3 border-b border-[#e8e8ed]">
+      {/* Cabeçalho do bloco: fundo verde-limão translúcido + barra lateral para
+          destacar o início de cada card (antes todos tinham a mesma fonte em
+          fundo branco e ficava difícil separar visualmente). Título segue preto. */}
+      <div
+        className="px-4 py-3 flex items-center gap-3 border-b border-[rgba(122,184,0,0.2)]"
+        style={{ backgroundColor: '#f4fce0', borderLeft: '3px solid #a2d800' }}
+      >
         <div className="flex flex-col min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="text-[#1d1d1f] font-black text-[11px] uppercase tracking-[1.3px] leading-tight">{title}</h3>
