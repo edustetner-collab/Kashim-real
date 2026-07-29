@@ -6,6 +6,7 @@
     { "path": "/api/trial-reminders", "schedule": "0 12 * * *" }
   ],
   "rewrites": [
+    { "source": "/e/:code", "destination": "/api/short-redirect?code=:code" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [

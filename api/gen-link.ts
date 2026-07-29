@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, timingSafeEqual, randomBytes } from 'node:crypto';
 
 const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET ?? '';
 function verifyAuthToken(authHeader?: string): { sub: string; [k: string]: unknown } | null {
@@ -50,15 +50,27 @@ async function getStaffId(authHeader: string, db: SupabaseClient): Promise<strin
   }
 }
 
-async function shortenUrl(longUrl: string): Promise<string> {
-  try {
-    const r = await fetch(`https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`);
-    if (!r.ok) return longUrl;
-    const data = await r.json();
-    return data.shorturl ?? longUrl;
-  } catch {
-    return longUrl;
+// Encurtador PRÓPRIO (tabela short_links). Substituiu o is.gd, que falhava com
+// URLs longas e devolvia o link gigante. Se por algum motivo a gravação falhar,
+// cai no link longo — o cliente ainda consegue entrar.
+function randomCode(len: number): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  let out = '';
+  const bytes = randomBytes(len);
+  for (let i = 0; i < len; i++) out += alphabet[bytes[i] % alphabet.length];
+  return out;
+}
+
+async function createShortLink(db: SupabaseClient, longUrl: string): Promise<string> {
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const code = randomCode(7);
+    const { error } = await db.from('short_links').insert({ code, target_url: longUrl, expires_at: expiresAt });
+    if (!error) return `${APP_URL}/e/${code}`;
+    // 23505 = colisão de PK; tenta outro código. Outro erro: desiste e usa longo.
+    if ((error as { code?: string }).code !== '23505') break;
   }
+  return longUrl;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -102,7 +114,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let signInUrl: string | null = null;
     if (token) {
       const longUrl = `${APP_URL}?sign_in_token=${token}`;
-      signInUrl = await shortenUrl(longUrl);
+      signInUrl = await createShortLink(db, longUrl);
     }
     return res.status(200).json({ signInUrl });
   } catch (err: any) {
