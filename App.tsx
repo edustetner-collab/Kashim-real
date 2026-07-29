@@ -1049,16 +1049,26 @@ const App: React.FC = () => {
       months.findIndex(m => m.year === year && m.index === calMonth);
 
     if (installments <= 1) {
-      const dateStr = `${String(refDay).padStart(2, '0')}/${String(refMonth + 1).padStart(2, '0')}`;
-      handleAddPartial(data.itemId, {
-        id: crypto.randomUUID(),
-        date: dateStr,
-        description: fallbackDesc,
-        value: data.value,
-      }, refYear, refMonth);
-      if (!matchedItem) {
-        const arrIdx = toArrIdx(refYear, refMonth);
+      const arrIdx = toArrIdx(refYear, refMonth);
+      // Gasto pontual no DÉBITO numa conta recém-criada (ex.: "consultório"):
+      // grava só o VALOR na linha com o nome dela. SEM lançamento (partial) —
+      // assim não aparece o badge de "realizado" nem um card em Gastos
+      // Frequentes (gasto único não precisa de acompanhamento mensal).
+      const isSimpleOneTimeDebit = !data.isCredit && !matchedItem;
+      if (isSimpleOneTimeDebit) {
         if (arrIdx >= 0) handleUpdateValue(data.itemId, arrIdx, String(data.value));
+      } else {
+        // Crédito à vista (compensa fatura) ou lançamento numa conta já
+        // existente (ex.: mercado, que acumula vários gastos): registra o
+        // lançamento normalmente.
+        const dateStr = `${String(refDay).padStart(2, '0')}/${String(refMonth + 1).padStart(2, '0')}`;
+        handleAddPartial(data.itemId, {
+          id: crypto.randomUUID(),
+          date: dateStr,
+          description: fallbackDesc,
+          value: data.value,
+        }, refYear, refMonth);
+        if (!matchedItem && arrIdx >= 0) handleUpdateValue(data.itemId, arrIdx, String(data.value));
       }
     } else {
       // Installments start from the purchase month so budget tracking aligns with the card billing cycle.
@@ -1101,15 +1111,10 @@ const App: React.FC = () => {
     setPendingExpense(null);
   };
 
-  const handleCreateItem = (description: string, category: CategoryType, isOneTime?: boolean): string => {
-    if (isOneTime && category === CategoryType.VARIABLE_EXPENSE) {
-      const BUCKET = 'Gastos Avulsos';
-      const existing = items.find(i => i.category === CategoryType.VARIABLE_EXPENSE && i.description === BUCKET);
-      if (existing) return existing.id;
-      const newId = crypto.randomUUID();
-      setItems(prev => [...prev, { id: newId, description: BUCKET, category: CategoryType.VARIABLE_EXPENSE, values: new Array(12).fill(0), paidStatus: new Array(12).fill(false) }]);
-      return newId;
-    }
+  // Cada despesa variável vira sua PRÓPRIA linha, com o nome que a pessoa
+  // digitou. (Havia aqui um balde único "Gastos Avulsos" que juntava todas as
+  // despesas pontuais numa linha só e apagava o nome — bug real 2026-07-XX.)
+  const handleCreateItem = (description: string, category: CategoryType, _isOneTime?: boolean): string => {
     const newId = crypto.randomUUID();
     setItems(prev => [...prev, {
       id: newId,
