@@ -529,12 +529,21 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
                 <div className="bg-zinc-800 rounded-2xl p-4 max-h-48 overflow-y-auto">
                   <p className="text-[10px] font-black uppercase text-zinc-500 tracking-widest mb-3">{parsedFields.length} campos interpretados</p>
                   <div className="space-y-1">
-                    {parsedFields.map((f, i) => (
-                      <div key={i} className="flex justify-between text-xs">
-                        <span className={f.isIncome ? 'text-green-400' : 'text-zinc-400'}>{f.description}</span>
-                        <span className="text-green-300 font-bold">{formatCurrency(f.value)}</span>
-                      </div>
-                    ))}
+                    {parsedFields.map((f, i) => {
+                      const tag = f.category === 'credit' ? 'Cartão' : f.category === 'variable' ? 'Variável' : f.isIncome ? 'Renda' : 'Fixa';
+                      const months = f.monthlyValues?.filter(v => v > 0).length ?? 0;
+                      return (
+                        <div key={i} className="flex justify-between items-center text-xs gap-2">
+                          <span className="flex items-center gap-1.5 min-w-0">
+                            <span className={`shrink-0 text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${f.category === 'credit' ? 'bg-orange-500/20 text-orange-300' : f.category === 'variable' ? 'bg-blue-500/20 text-blue-300' : f.isIncome ? 'bg-green-500/20 text-green-300' : 'bg-zinc-700 text-zinc-300'}`}>{tag}</span>
+                            <span className={`truncate ${f.isIncome ? 'text-green-400' : 'text-zinc-400'}`}>{f.description}</span>
+                          </span>
+                          <span className="text-green-300 font-bold shrink-0">
+                            {formatCurrency(f.value)}{months > 1 ? ` ×${months}m` : ''}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

@@ -1071,25 +1071,28 @@ const App: React.FC = () => {
         if (!matchedItem && arrIdx >= 0) handleUpdateValue(data.itemId, arrIdx, String(data.value));
       }
     } else {
-      // Installments start from the purchase month so budget tracking aligns with the card billing cycle.
-      // E.g. buying on May 20 → installment 1 tracked in May → offsets June's card bill.
+      // Parcelado: data.value é o valor de CADA parcela (ex.: 3x de R$200).
+      // Cada mês, a partir do mês da compra, recebe exatamente esse valor.
       const startAbsMonth = refYear * 12 + refMonth;
-      const baseValue = parseFloat((data.value / installments).toFixed(2));
-
+      // Débito numa conta recém-criada: espalha só o VALOR pelos meses, sem
+      // lançamento → sem badge e sem card em Gastos Frequentes (igual ao débito
+      // à vista). Crédito ou conta existente: registra lançamento por parcela.
+      const isSimpleDebit = !data.isCredit && !matchedItem;
       for (let i = 0; i < installments; i++) {
         const absMonth = startAbsMonth + i;
         const targetCalMonth = absMonth % 12;
         const targetYear = Math.floor(absMonth / 12);
-        const value = i === installments - 1 ? parseFloat((data.value - baseValue * (installments - 1)).toFixed(2)) : baseValue;
-        handleAddPartial(data.itemId, {
-          id: crypto.randomUUID(),
-          date: `${String(i === 0 ? refDay : 1).padStart(2, '0')}/${String(targetCalMonth + 1).padStart(2, '0')}`,
-          description: `${fallbackDesc} ${i + 1}/${installments}`,
-          value,
-        }, targetYear, targetCalMonth);
-        if (!matchedItem) {
-          const arrIdx = toArrIdx(targetYear, targetCalMonth);
-          if (arrIdx >= 0) handleUpdateValue(data.itemId, arrIdx, String(value));
+        const arrIdx = toArrIdx(targetYear, targetCalMonth);
+        if (isSimpleDebit) {
+          if (arrIdx >= 0) handleUpdateValue(data.itemId, arrIdx, String(data.value));
+        } else {
+          handleAddPartial(data.itemId, {
+            id: crypto.randomUUID(),
+            date: `${String(i === 0 ? refDay : 1).padStart(2, '0')}/${String(targetCalMonth + 1).padStart(2, '0')}`,
+            description: `${fallbackDesc} ${i + 1}/${installments}`,
+            value: data.value,
+          }, targetYear, targetCalMonth);
+          if (!matchedItem && arrIdx >= 0) handleUpdateValue(data.itemId, arrIdx, String(data.value));
         }
       }
     }

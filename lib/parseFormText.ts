@@ -75,10 +75,40 @@ const NOT_APPLICABLE_PATTERNS = [
   'n/a',
 ];
 
+export type ParsedCategory = 'income' | 'fixed' | 'credit' | 'variable';
+
 export interface ParsedField {
   description: string;
-  value: number;
+  value: number;               // valor mensal (fixa/renda) — 1º mês em cartão/variável
   isIncome: boolean;
+  category?: ParsedCategory;   // ausente = fixa/renda (decidido pelo isIncome)
+  monthlyValues?: number[];    // cartão/variável: um valor por mês, a partir do INÍCIO do plano
+}
+
+// Cabeçalho de seção colado do Excel muda como as linhas seguintes são lidas.
+function sectionOf(lineLower: string): ParsedCategory | null {
+  if (/cart[õo]es?\s+de\s+cr[eé]dito/.test(lineLower)) return 'credit';
+  if (/(contas?|gastos?)\s+vari[aá]ve/.test(lineLower)) return 'variable';
+  if (/contas?\s+fixas?/.test(lineLower)) return 'fixed';
+  return null;
+}
+
+// Linha tabular "Nome  R$ x  R$ y ..." → nome + valores por mês (Excel usa TAB).
+function parseTabularRow(line: string): { name: string; values: number[] } | null {
+  const cells = line.split('\t').map(c => c.trim()).filter(Boolean);
+  if (cells.length >= 2) {
+    const values = cells.slice(1).map(parseBRNumber).filter(v => !isNaN(v) && v > 0);
+    if (values.length > 0) return { name: cells[0], values };
+  }
+  // Sem tabs (colado com espaços): acha os R$ e separa o nome do resto.
+  const money = line.match(/R\$\s*[\d.]+(?:,\d+)?/gi);
+  if (money && money.length > 0) {
+    const firstIdx = line.search(/R\$/i);
+    const name = line.slice(0, firstIdx >= 0 ? firstIdx : 0).replace(/\t/g, ' ').trim();
+    const values = money.map(parseBRNumber).filter(v => !isNaN(v) && v > 0);
+    if (name && values.length > 0) return { name, values };
+  }
+  return null;
 }
 
 // Converte string de valor BR para número
@@ -124,11 +154,34 @@ export function parseFormText(text: string): ParsedField[] {
   const results: ParsedField[] = [];
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
 
+  // Seção atual. null = questionário de conta fixa/renda (formato "label: valor",
+  // comportamento original). Um cabeçalho "CARTÕES DE CRÉDITO" ou "CONTAS
+  // VARIÁVEIS" liga o modo tabular multi-mês para as linhas seguintes.
+  let section: ParsedCategory | null = null;
+
   for (const line of lines) {
-    // Remove marcadores (* , - , •)
     const clean = line.replace(/^[\*\-•]\s*/, '').trim();
 
-    // Encontra o separador :
+    // Troca de seção?
+    const sec = sectionOf(clean.toLowerCase());
+    if (sec) { section = sec; continue; }
+
+    // Modo tabular (cartão/variável): "Nome  R$ x  R$ y ..."
+    if (section === 'credit' || section === 'variable') {
+      if (/^(sub\s*)?total/i.test(clean)) continue; // ignora linhas de SUBTOTAL/TOTAL
+      const row = parseTabularRow(clean);
+      if (!row) continue; // linha de cabeçalho de meses (sem valores) etc.
+      results.push({
+        description: row.name,
+        value: row.values[0],
+        isIncome: false,
+        category: section,
+        monthlyValues: row.values,
+      });
+      continue;
+    }
+
+    // Modo conta fixa/renda (original): separador ":"
     const colonIdx = clean.indexOf(':');
     if (colonIdx === -1) continue;
 

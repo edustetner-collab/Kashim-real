@@ -144,7 +144,9 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
   const numericValue = parseFloat(value.replace(',', '.')) || 0;
   const installments = Math.max(2, parseInt(installCount) || 2);
   const isCredit = payMethod === 'credit';
-  const isParcelado = isCredit && creditType === 'parcelado';
+  // Parcelamento agora vale para DÉBITO também (ex.: semijoias 3x no débito),
+  // não só crédito — pedido do Eduardo 2026-07-XX.
+  const isParcelado = creditType === 'parcelado';
 
   const hasItem = !!itemId || (category === CategoryType.VARIABLE_EXPENSE && variableDesc.trim().length > 0);
   const needsCard = isCredit && items.filter(i => i.category === CategoryType.CREDIT_CARD).length > 0;
@@ -245,8 +247,11 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
         </div>
         {isParcelado && numericValue > 0 && installments > 1 && (
           <p className="text-zinc-500 text-[10px] mt-1 font-mono">
-            {installments}x de {formatCurrency(numericValue / installments)}
+            {installments}x de {formatCurrency(numericValue)} · total {formatCurrency(numericValue * installments)}
           </p>
+        )}
+        {isParcelado && (
+          <p className="text-zinc-600 text-[9px] mt-0.5">Digite o valor de UMA parcela</p>
         )}
       </div>
 
@@ -299,7 +304,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
         <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-2">Como foi pago?</p>
         <div className="grid grid-cols-2 gap-2">
           <button
-            onClick={() => { setPayMethod('debit'); setCreditType(''); setInstallCount(''); }}
+            onClick={() => { setPayMethod('debit'); if (!creditType) setCreditType('avista'); }}
             className={`py-3 rounded-2xl text-sm font-black transition-all active:scale-95 border ${payMethod === 'debit' ? 'bg-zinc-100 text-black border-zinc-100' : 'bg-zinc-800 text-zinc-400 border-zinc-700'}`}
           >
             <i className="fas fa-money-bill-wave mr-2 text-xs" />
@@ -344,10 +349,10 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
         </div>
       )}
 
-      {/* Credit sub-options */}
-      {isCredit && (
+      {/* À vista ou parcelado — vale p/ débito E crédito */}
+      {payMethod !== '' && (
         <div data-tour="sheet-credit-type">
-          <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-2">Tipo de crédito</p>
+          <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-2">À vista ou parcelado?</p>
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => { setCreditType('avista'); setInstallCount(''); }}
@@ -386,7 +391,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
           </div>
           {numericValue > 0 && parseInt(installCount) >= 2 && (
             <p className="text-zinc-500 text-[10px] mt-1.5 font-mono">
-              {parseInt(installCount)}x de {formatCurrency(numericValue / parseInt(installCount))}
+              {parseInt(installCount)}x de {formatCurrency(numericValue)} · total {formatCurrency(numericValue * parseInt(installCount))}
             </p>
           )}
         </div>

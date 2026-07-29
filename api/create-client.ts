@@ -117,11 +117,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (parsedItems && parsedItems.length > 0) {
       const now = new Date().toISOString();
+      const categoryOf = (item: any): string => {
+        if (item.category === 'credit') return 'Cartão de Crédito';
+        if (item.category === 'variable') return 'Contas Variáveis';
+        return item.isIncome ? 'Renda' : 'Contas Fixas';
+      };
+      // Cartão/variável têm valor por mês (monthlyValues), a partir do 1º mês do
+      // plano. Fixa/renda repetem o mesmo valor nos 12 meses.
+      const valuesOf = (item: any): number[] => {
+        if (Array.isArray(item.monthlyValues) && item.monthlyValues.length > 0) {
+          return Array.from({ length: 12 }, (_, m) => Number(item.monthlyValues[m] ?? 0));
+        }
+        return new Array(12).fill(item.value);
+      };
       const rows = parsedItems.map((item: any, i: number) => ({
         household_id: householdId,
         description: item.description,
-        category: item.isIncome ? 'Renda' : 'Contas Fixas',
-        values: new Array(12).fill(item.value),
+        category: categoryOf(item),
+        values: valuesOf(item),
         paid_status: new Array(12).fill(false),
         sort_order: i,
         updated_at: now,
