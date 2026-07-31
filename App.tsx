@@ -1348,12 +1348,15 @@ const App: React.FC = () => {
               elements: {
                 headerTitle: 'hidden',
                 headerSubtitle: 'hidden',
-                ...(isNativeApp ? {
-                  socialButtons: { display: 'none' },
-                  socialButtonsBlockButton: { display: 'none' },
-                  socialButtonsIconButton: { display: 'none' },
-                  dividerRow: { display: 'none' },
-                } : {}),
+                // CADASTRO sempre sem Google (web E app). Quem cria com Google
+                // fica preso ao tentar usar o app (Google bloqueia OAuth em
+                // WebView), então todo cadastro novo usa e-mail+senha, que
+                // funciona nos dois. O LOGIN (SignIn) mantém o Google na web
+                // para quem já criou a conta assim não ficar trancado.
+                socialButtons: { display: 'none' },
+                socialButtonsBlockButton: { display: 'none' },
+                socialButtonsIconButton: { display: 'none' },
+                dividerRow: { display: 'none' },
               }
             }} />
           )}
