@@ -96,7 +96,7 @@ function buildQuoteNotifications(householdId: string): ScheduledNotification[] {
     const body = quote.frase.length > BODY_MAX ? `${quote.frase.slice(0, BODY_MAX - 1)}…` : quote.frase;
     out.push({
       id: QUOTE_ID_BASE + i,
-      title: 'Comece a semana no controle 💰',
+      title: 'Kashim 💰 Comece a semana no controle',
       body,
       channelId: ANDROID_CHANNEL,
       schedule: { at, allowWhileIdle: true },
@@ -243,7 +243,7 @@ export async function scheduleTestQuoteNotification(householdId: string): Promis
     await LocalNotifications.schedule({
       notifications: [{
         id: 799998,
-        title: 'Comece a semana no controle 💰',
+        title: 'Kashim 💰 Comece a semana no controle',
         body,
         channelId: ANDROID_CHANNEL,
         schedule: { at: new Date(Date.now() + 12000), allowWhileIdle: true },
