@@ -231,6 +231,30 @@ export async function scheduleTestNotification(): Promise<{ ok: boolean; reason:
   }
 }
 
+// Diagnóstico: dispara a FRASE DA SEMANA real em ~12s, para o coach ver como
+// ela chega (sem esperar até segunda 8h). Usa a frase da semana atual.
+export async function scheduleTestQuoteNotification(householdId: string): Promise<{ ok: boolean; reason: string }> {
+  if (!isNativeApp) return { ok: false, reason: 'Você está na WEB — a frase só chega no app instalado.' };
+  try {
+    if (!(await ensurePermission())) return { ok: false, reason: 'Permissão de notificação NEGADA neste aparelho.' };
+    await ensureChannel();
+    const quote = getQuoteForDate(householdId || 'kashim', new Date());
+    const body = quote.frase.length > BODY_MAX ? `${quote.frase.slice(0, BODY_MAX - 1)}…` : quote.frase;
+    await LocalNotifications.schedule({
+      notifications: [{
+        id: 799998,
+        title: 'Kashim · sua frase da semana',
+        body,
+        channelId: ANDROID_CHANNEL,
+        schedule: { at: new Date(Date.now() + 12000), allowWhileIdle: true },
+      }],
+    });
+    return { ok: true, reason: 'Agendada! Aguarde ~12s (pode minimizar o app) — é a frase desta semana.' };
+  } catch {
+    return { ok: false, reason: 'Plugin de notificação ausente neste build (app desatualizado).' };
+  }
+}
+
 // Ponto de entrada único: pede permissão uma vez e reprograma tudo, respeitando
 // as preferências do cliente. Idempotente e silencioso na web, sem permissão, ou
 // se o plugin não existir (build antigo).
