@@ -42,6 +42,23 @@ export interface MonthSlot {
   year: number;
 }
 
+// Títulos da frase da semana — giram por semana para não ficar repetitivo e dar
+// cara de conteúdo (instagramável). Sempre com a marca + 💰 para atribuição no
+// print. A escolha é determinística pela semana (não aleatória) → todo cliente
+// vê o mesmo título na mesma semana.
+const QUOTE_TITLES = [
+  'Kashim 💰 Comece a semana no controle',
+  'Kashim 💰 Segunda é dia de virar o jogo',
+  'Kashim 💰 Sua semana no azul começa agora',
+  'Kashim 💰 Rico é quem controla, não quem ganha mais',
+  'Kashim 💰 Bora fazer sobrar esse mês',
+  'Kashim 💰 Foco no dinheiro essa semana',
+];
+function weeklyTitle(when: Date): string {
+  const weekNumber = Math.floor(when.getTime() / (7 * 24 * 60 * 60 * 1000));
+  return QUOTE_TITLES[weekNumber % QUOTE_TITLES.length];
+}
+
 async function ensurePermission(): Promise<boolean> {
   let granted = (await LocalNotifications.checkPermissions()).display === 'granted';
   if (!granted) {
@@ -96,7 +113,7 @@ function buildQuoteNotifications(householdId: string): ScheduledNotification[] {
     const body = quote.frase.length > BODY_MAX ? `${quote.frase.slice(0, BODY_MAX - 1)}…` : quote.frase;
     out.push({
       id: QUOTE_ID_BASE + i,
-      title: 'Kashim 💰 Comece a semana no controle',
+      title: weeklyTitle(at),
       body,
       channelId: ANDROID_CHANNEL,
       schedule: { at, allowWhileIdle: true },
@@ -243,7 +260,7 @@ export async function scheduleTestQuoteNotification(householdId: string): Promis
     await LocalNotifications.schedule({
       notifications: [{
         id: 799998,
-        title: 'Kashim 💰 Comece a semana no controle',
+        title: weeklyTitle(new Date()),
         body,
         channelId: ANDROID_CHANNEL,
         schedule: { at: new Date(Date.now() + 12000), allowWhileIdle: true },
