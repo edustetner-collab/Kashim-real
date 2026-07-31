@@ -28,11 +28,14 @@ const BILL_ID_RANGE = 1000;
 const UPDATE_ID_BASE = 740000;
 const UPDATE_ID_RANGE = 1000;
 const UPDATE_OCCURRENCES = 8;   // quantos lembretes de atualização pré-agendar
+const MONTHLY_ID_BASE = 750000;
+const MONTHLY_ID_RANGE = 1000;
+const MONTHLY_MAX = 6;          // lembrete mensal de contas a pagar (próximos meses)
 
 // iOS descarta silenciosamente notificações pendentes acima de 64 por app.
 // Reservamos folga: até 10 frases + até 48 contas = 58.
 const QUOTE_WEEKS_AHEAD = 10;
-const BILL_MAX = 48;
+const BILL_MAX = 24;
 
 export interface MonthSlot {
   index: number; // mês do calendário (0-11)
@@ -143,6 +146,44 @@ function buildBillNotifications(items: FinanceItem[], months: MonthSlot[]): Sche
   }));
 }
 
+// Lembrete MENSAL de contas a pagar — dispara no dia 1 de cada mês futuro às 9h,
+// listando o total de contas em aberto (fixas + faturas) daquele mês. NÃO depende
+// do "Pagar dia" de cada conta estar preenchido — por isso funciona pra todo
+// mundo (o lembrete por-dia-de-vencimento acima continua como bônus pra quem
+// definiu o dia exato). Este é o que faz o recurso realmente acontecer.
+function buildMonthlyBillReminders(items: FinanceItem[], months: MonthSlot[]): ScheduledNotification[] {
+  const now = new Date();
+  const out: ScheduledNotification[] = [];
+
+  for (let m = 0; m < months.length; m++) {
+    const slot = months[m];
+    const at = new Date(slot.year, slot.index, 1, NOTIF_HOUR_BILL, 0, 0, 0);
+    if (at.getTime() <= now.getTime()) continue; // dia 1 desse mês já passou
+
+    let total = 0;
+    for (const item of items) {
+      const isBill =
+        item.category === CategoryType.FIXED_EXPENSE || item.category === CategoryType.CREDIT_CARD;
+      if (!isBill) continue;
+      const value = item.values[m] ?? 0;
+      if (value <= 0) continue;
+      if (item.paidStatus?.[m]) continue;
+      total += value;
+    }
+    if (total <= 0) continue;
+
+    out.push({
+      id: MONTHLY_ID_BASE + out.length,
+      title: 'Kashim · contas do mês',
+      body: `Novo mês! Você tem ${formatCurrency(total)} em contas a pagar. Abra o Kashim, confira o que está em aberto e vá marcando as pagas.`,
+      channelId: ANDROID_CHANNEL,
+      schedule: { at, allowWhileIdle: true },
+    });
+    if (out.length >= MONTHLY_MAX) break;
+  }
+  return out;
+}
+
 // Lembrete "atualize seus dados" a cada N dias, às 10h.
 function buildUpdateReminders(everyDays: number): ScheduledNotification[] {
   if (everyDays <= 0) return [];
@@ -212,11 +253,13 @@ export async function refreshNotifications(params: {
     // preferência realmente remove os agendamentos daquele tipo.
     await cancelRange(QUOTE_ID_BASE, QUOTE_ID_RANGE);
     await cancelRange(BILL_ID_BASE, BILL_ID_RANGE);
+    await cancelRange(MONTHLY_ID_BASE, MONTHLY_ID_RANGE);
     await cancelRange(UPDATE_ID_BASE, UPDATE_ID_RANGE);
 
     const notifications = [
       ...(prefs.weeklyQuote ? buildQuoteNotifications(householdId) : []),
       ...(prefs.bills ? buildBillNotifications(items, months) : []),
+      ...(prefs.bills ? buildMonthlyBillReminders(items, months) : []),
       ...buildUpdateReminders(prefs.updateDays),
     ];
     if (notifications.length > 0) {
