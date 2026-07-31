@@ -6,6 +6,7 @@ import { NotificationPrefs, SummaryData } from '../types';
 import { saveNotificationPrefs, loadNotificationPrefs } from '../lib/db';
 import { MONTHS_BR } from '../constants';
 import { NotifPrefs, getNotifPrefs, saveNotifPrefs } from '../lib/notifPrefs';
+import { scheduleTestNotification } from '../lib/notifications';
 import InvitePartner from './InvitePartner';
 
 interface ClientSettingsProps {
@@ -603,6 +604,22 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
                 aplicativo instalado. O alerta de teto aparece aqui na tela.
               </p>
             )}
+
+            {/* Teste de entrega: dispara um aviso em ~12s e mostra o motivo.
+                Confirma se as notificações chegam NESTE aparelho. */}
+            <button
+              onClick={async () => {
+                const r = await scheduleTestNotification();
+                alert(`Teste de notificação:\n\n${r.reason}`);
+              }}
+              className="w-full mt-5 flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-black py-3 rounded-2xl text-xs uppercase tracking-wide transition-all"
+            >
+              <i className="fas fa-vial text-green-400"></i>
+              Testar notificação agora
+            </button>
+            <p className="text-zinc-600 text-[10px] mt-2 text-center leading-relaxed">
+              Dispara um aviso de teste em ~12s. Se não chegar, confira a permissão de notificação do Kashim nas configurações do celular.
+            </p>
           </div>
         )}
 
