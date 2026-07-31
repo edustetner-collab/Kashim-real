@@ -33,7 +33,7 @@ import { useTilt } from './lib/useTilt';
 import { computeAccess, AccessInfo } from './lib/access';
 import { buildRaioXHtml, openRaioXWindow, RaioXSnapshot } from './lib/raioX';
 import { Quote, getQuoteForUser, getMondayKey } from './lib/quotes';
-import { refreshNotifications } from './lib/notifications';
+import { refreshNotifications, scheduleTestNotification } from './lib/notifications';
 import { getNotifPrefs } from './lib/notifPrefs';
 import TermsGate from './components/TermsGate';
 import { hasAcceptedTerms, recordTermsAcceptance } from './lib/terms';
@@ -416,6 +416,15 @@ const App: React.FC = () => {
   // sentido martelar o bridge nativo a cada tecla. Espera o aceite dos termos:
   // o prompt de permissão do sistema não pode aparecer por cima do consentimento.
   const [notifPrefsVersion, setNotifPrefsVersion] = useState(0);
+  // Gatilho de diagnóstico: abrir o app com ?testenotif=1 dispara uma
+  // notificação de teste em ~12s e mostra o motivo na tela. Roda mesmo p/ admin
+  // (que normalmente não agenda), para o coach testar no próprio aparelho.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('testenotif') !== '1') return;
+    scheduleTestNotification().then(r => {
+      alert(`Teste de notificação:\n\n${r.reason}`);
+    });
+  }, []);
   useEffect(() => {
     if (!householdId || coachViewHouseholdId || needsTermsAcceptance || !user) return;
     const t = setTimeout(() => {

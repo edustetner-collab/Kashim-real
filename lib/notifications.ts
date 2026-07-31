@@ -164,6 +164,32 @@ function buildUpdateReminders(everyDays: number): ScheduledNotification[] {
   return out;
 }
 
+// Diagnóstico: dispara uma notificação de teste em ~12s, independente de
+// household/admin/preferências. Serve para o coach confirmar no próprio
+// aparelho se o CANAL de entrega funciona (permissão + plugin + SO). Retorna o
+// motivo para mostrar na tela — assim sabemos se o problema é o aparelho ou a
+// falta de "Pagar dia" nas contas.
+export async function scheduleTestNotification(): Promise<{ ok: boolean; reason: string }> {
+  if (!isNativeApp) return { ok: false, reason: 'Você está na WEB — notificação só funciona no app instalado.' };
+  try {
+    if (!(await ensurePermission())) return { ok: false, reason: 'Permissão de notificação NEGADA neste aparelho. Ative nas configurações do celular.' };
+    await ensureChannel();
+    const at = new Date(Date.now() + 12000);
+    await LocalNotifications.schedule({
+      notifications: [{
+        id: 799999,
+        title: 'Kashim · teste de lembrete',
+        body: 'Funciona! Os lembretes de conta chegam neste aparelho. 🎉',
+        channelId: ANDROID_CHANNEL,
+        schedule: { at, allowWhileIdle: true },
+      }],
+    });
+    return { ok: true, reason: 'Agendado! Aguarde ~12s (pode minimizar o app). Se chegar, o canal funciona.' };
+  } catch {
+    return { ok: false, reason: 'Plugin de notificação ausente neste build (app desatualizado na loja).' };
+  }
+}
+
 // Ponto de entrada único: pede permissão uma vez e reprograma tudo, respeitando
 // as preferências do cliente. Idempotente e silencioso na web, sem permissão, ou
 // se o plugin não existir (build antigo).
