@@ -517,9 +517,9 @@ const BlockSection: React.FC<BlockSectionProps> = ({
           <div className="space-y-1.5">
             <div className="flex items-center gap-1 mb-0.5">
               <span className="text-[9px] font-black uppercase tracking-[1px] text-[#6e6e73]">{label}</span>
-              {missing && (
-                <span className="ml-auto text-[9px] font-black text-[#ff9500] bg-[#fff8f0] border border-[rgba(255,149,0,0.25)] rounded-full px-2 py-0.5 leading-none">sem lançamento</span>
-              )}
+              {/* Sem o recado "sem lançamento": em Educação zerada confundia o
+                  cliente (parecia que ELE tinha que lançar algo). Fica só o
+                  Ideal 10% e o realizado em 0. */}
             </div>
             {/* Ideal */}
             <div className="flex items-center justify-between">
