@@ -159,6 +159,24 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
     dismissExpense(idx);
   };
 
+  // Pega o 1º valor em reais do texto do Stets, para pré-preencher o lançamento
+  // manual quando a IA leu a despesa mas não devolveu ela estruturada.
+  const extractFirstBRL = (text: string): number => {
+    const m = text.match(/R\$\s*([\d.]+(?:,\d{2})?)/);
+    if (!m) return 0;
+    const v = parseFloat(m[1].replace(/\./g, '').replace(',', '.'));
+    return isNaN(v) ? 0 : v;
+  };
+
+  // Fallback: abre o fluxo manual (escolher categoria + confirmar valor) mesmo
+  // quando a extração automática falhou. Garante que "leu → registra" sempre
+  // funcione.
+  const launchManualFromResponse = () => {
+    const value = response ? extractFirstBRL(response) : 0;
+    onExpenseDetected({ itemId: '', value, description: '', installments: 1, isCredit: false });
+    setResponse(null);
+  };
+
   const analyzeText = async (text?: string) => {
     const finalPrompt = text ?? prompt;
     if (!finalPrompt.trim()) return;
@@ -351,7 +369,9 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
             <i className="fas fa-camera text-sm"></i>
             <span className="hidden sm:inline">Foto</span>
           </button>
-          <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoCapture} />
+          {/* Sem 'capture' → o celular oferece Câmera OU Galeria/Fotos, permitindo
+              subir um print (ex.: tela de compra do Mercado Livre). */}
+          <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoCapture} />
 
           {/* Mic */}
           <button
@@ -382,12 +402,30 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
 
         {/* Response text */}
         {response && (
-          <div className="mt-1 bg-[#fafafa] border border-[#e8e8ed] p-4 rounded-2xl text-[#1d1d1f] text-sm leading-relaxed animate-in zoom-in-95 duration-300">
+          <div className="mt-1 relative bg-[#fafafa] border border-[#e8e8ed] p-4 pr-10 rounded-2xl text-[#1d1d1f] text-sm leading-relaxed animate-in zoom-in-95 duration-300">
+            {/* Fechar o comentário (antes só saía trocando de tela) */}
+            <button
+              onClick={() => setResponse(null)}
+              className="absolute top-2.5 right-2.5 w-7 h-7 rounded-lg bg-white border border-[#e8e8ed] flex items-center justify-center active:scale-95"
+              aria-label="Fechar"
+            >
+              <i className="fas fa-times text-[#aeaeb2] text-xs"></i>
+            </button>
             {response.split('\n').map((line, i) => (
               <p key={i} className={line.startsWith('⚠️') ? 'text-[#ff3b30]' : ''}>
                 {line.replace(/\*\*(.*?)\*\*/g, '$1')}
               </p>
             ))}
+            {/* A IA leu mas não gerou o card de despesa → oferece registrar mesmo
+                assim (abre a escolha de categoria + valor já sugerido do texto). */}
+            {!loading && pendingExpenses.length === 0 && !response.startsWith('⚠️') && (
+              <button
+                onClick={launchManualFromResponse}
+                className="mt-3 w-full k-btn-lime py-2.5 rounded-xl text-xs font-black uppercase tracking-wide active:scale-95"
+              >
+                Lançar esta despesa
+              </button>
+            )}
           </div>
         )}
 
