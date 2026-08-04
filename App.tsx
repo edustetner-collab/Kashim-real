@@ -2013,7 +2013,10 @@ const App: React.FC = () => {
                 <BlockSection
                   title={block.title} subtitle={block.subtitle} category={block.type}
                   items={items.filter(i => i.category === block.type)} allCards={allCards} months={months}
-                  totalIncome={monthlySummaries[0].totalIncome}
+                  // Ideal (55/10/15%) SEMPRE sobre a renda do mês vigente, não do
+                  // 1º mês do plano. mobileMonthIdx já salta para o mês atual no
+                  // load, então ideal e realizado ficam no mesmo mês.
+                  totalIncome={(monthlySummaries[mobileMonthIdx] ?? monthlySummaries[0]).totalIncome}
                   mobileMonthIdx={mobileMonthIdx}
                   onAddItem={handleAddItem} onUpdateValue={handleUpdateValue} onTogglePaid={handleTogglePaid}
                   onRemoveItem={handleRemoveItem} onUpdateDescription={handleUpdateDescription}
