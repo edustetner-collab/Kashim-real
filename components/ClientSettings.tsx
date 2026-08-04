@@ -186,9 +186,35 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
     if (newPassword !== confirmPassword) { setPasswordError('As senhas não coincidem.'); return; }
     if (hasPassword && !currentPassword) { setPasswordError('Informe sua senha atual.'); return; }
     setPasswordLoading(true);
+
+    // PRIMEIRA senha (conta passwordless): define pelo backend do Clerk.
+    // Evita o passo de "reverificação" que trava o cliente no app nativo.
+    if (!hasPassword) {
+      try {
+        const token = await getToken({ template: 'supabase' });
+        const res = await fetch('/api/set-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ password: newPassword }),
+        });
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        if (!res.ok) throw new Error(body.error ?? 'Não foi possível salvar a senha.');
+        await user?.reload();
+        setPasswordSuccess('Senha cadastrada com sucesso!');
+        setPasswordView('idle');
+        setCurrentPassword(''); setNewPassword(''); setConfirmPassword('');
+      } catch (err: unknown) {
+        setPasswordError(err instanceof Error ? err.message : 'Não foi possível salvar a senha.');
+      } finally {
+        setPasswordLoading(false);
+      }
+      return;
+    }
+
+    // TROCA de senha (já possui senha): valida a senha atual no client.
     try {
-      await user?.updatePassword({ newPassword, ...(hasPassword ? { currentPassword } : {}), signOutOfOtherSessions: false });
-      setPasswordSuccess(hasPassword ? 'Senha alterada com sucesso!' : 'Senha cadastrada com sucesso!');
+      await user?.updatePassword({ newPassword, currentPassword, signOutOfOtherSessions: false });
+      setPasswordSuccess('Senha alterada com sucesso!');
       setPasswordView('idle');
       setCurrentPassword(''); setNewPassword(''); setConfirmPassword('');
     } catch (err: any) {
