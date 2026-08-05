@@ -17,7 +17,13 @@ import { getNotifPrefs } from './notifPrefs';
 const NOTIF_HOUR_QUOTE = 8;
 const NOTIF_HOUR_BILL = 9;      // separado da frase para não empilhar às segundas
 const NOTIF_HOUR_UPDATE = 10;   // lembrete de atualização
-const ANDROID_CHANNEL = 'kashim-avisos';
+// Som próprio do Kashim ("Kashim!"). Arquivo em android/.../res/raw/kashim.wav
+// e no bundle iOS (ios/App/App/kashim.wav). No Android o som fica preso ao
+// CANAL: uma vez criado, não dá pra trocar o som do canal existente. Por isso,
+// ao introduzir o som, usamos uma ID de canal NOVA — o canal antigo
+// ('kashim-avisos', criado sem som) fica órfão e o novo nasce já com o áudio.
+const ANDROID_CHANNEL = 'kashim-avisos-som';
+const NOTIF_SOUND = 'kashim.wav';
 const BODY_MAX = 240;
 
 // Faixas de ID reservadas — cancelamos por faixa antes de reprogramar
@@ -74,6 +80,7 @@ async function ensureChannel(): Promise<void> {
       name: 'Avisos do Kashim',
       description: 'Frase da semana e lembretes de contas a vencer',
       importance: 4,
+      sound: NOTIF_SOUND, // toca o "Kashim!" (res/raw/kashim.wav)
     });
   } catch {
     // iOS não tem canais — ok
@@ -95,6 +102,7 @@ interface ScheduledNotification {
   title: string;
   body: string;
   channelId: string;
+  sound?: string;
   schedule: { at: Date; allowWhileIdle: boolean };
 }
 
@@ -239,6 +247,7 @@ export async function scheduleTestNotification(): Promise<{ ok: boolean; reason:
         title: 'Kashim · teste de lembrete',
         body: 'Funciona! Os lembretes de conta chegam neste aparelho. 🎉',
         channelId: ANDROID_CHANNEL,
+        sound: NOTIF_SOUND,
         schedule: { at, allowWhileIdle: true },
       }],
     });
@@ -263,6 +272,7 @@ export async function scheduleTestQuoteNotification(householdId: string): Promis
         title: weeklyTitle(new Date()),
         body,
         channelId: ANDROID_CHANNEL,
+        sound: NOTIF_SOUND,
         schedule: { at: new Date(Date.now() + 12000), allowWhileIdle: true },
       }],
     });
@@ -304,7 +314,10 @@ export async function refreshNotifications(params: {
       ...buildUpdateReminders(prefs.updateDays),
     ];
     if (notifications.length > 0) {
-      await LocalNotifications.schedule({ notifications });
+      // Som próprio em todas (iOS lê daqui; no Android quem manda é o canal).
+      await LocalNotifications.schedule({
+        notifications: notifications.map(n => ({ ...n, sound: NOTIF_SOUND })),
+      });
     }
   } catch {
     // Plugin ausente / permissão negada / erro de agendamento — não quebra o app
