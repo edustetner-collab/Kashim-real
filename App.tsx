@@ -151,8 +151,17 @@ const App: React.FC = () => {
   const db = useSupabase();
   // Cônjuge que chega pelo link de convite quase sempre NÃO tem conta ainda —
   // abre direto na tela de cadastro em vez da de login (antes ele caía no login
-  // e precisava "descobrir" que tinha que criar conta).
-  const [authMode, setAuthMode] = useState<'login' | 'register'>(hasPendingInvite() ? 'register' : 'login');
+  // e precisava "descobrir" que tinha que criar conta). Mesma lógica para quem
+  // chega da landing page de vendas (/vendas) via ?signup=1 ou ?cadastro=1.
+  const wantsSignup = (() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      return p.get('signup') === '1' || p.get('cadastro') === '1';
+    } catch { return false; }
+  })();
+  const [authMode, setAuthMode] = useState<'login' | 'register'>(
+    hasPendingInvite() || wantsSignup ? 'register' : 'login'
+  );
   const [clerkTimeout, setClerkTimeout] = useState(false);
   const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
