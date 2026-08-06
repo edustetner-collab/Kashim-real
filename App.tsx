@@ -10,7 +10,7 @@ import TetoGastos from './components/TetoGastos';
 import AICoach from './components/AICoach';
 import OnboardingManager from './components/onboarding/OnboardingManager';
 import { useSupabase } from './lib/useSupabase';
-import { getOrCreateHousehold, getHousehold, loadFinanceItems, loadFinanceItemsForCoach, saveFinanceItem, deleteFinanceItem, addPartialExpense, deletePartialExpense, loadGoals, loadTetoColumns } from './lib/db';
+import { getOrCreateHousehold, getHousehold, loadFinanceItems, loadFinanceItemsForCoach, saveFinanceItem, deleteFinanceItem, addPartialExpense, deletePartialExpense, loadGoals, loadTetoColumns, saveSnapshot } from './lib/db';
 import { processInviteFromUrl, captureInviteFromUrl, hasPendingInvite } from './lib/invites';
 
 // Captura o token de convite (?invite=...) ANTES de qualquer render/redirect do
@@ -1232,6 +1232,37 @@ const App: React.FC = () => {
     }
     return summaries;
   }, [items, months]);
+
+  // Backup automático: snapshot do PLANO INTEIRO (todos os itens) marcado no mês
+  // vigente. Rede de segurança contra perda de dados — o saveSnapshot existia mas
+  // nunca era chamado (ver lesson_data_loss_incidents). Debounce 6s após mudanças.
+  // Silencioso: se a tabela financial_snapshots ainda não existir no Supabase
+  // (docs/sql/financial-snapshots.sql), o erro é engolido e nada quebra.
+  const snapshotTimeoutRef = useRef<any>(null);
+  useEffect(() => {
+    if (!db || !householdId || dbLoading || !dbItemsLoadedRef.current) return;
+    if (items.length === 0) return;
+    clearTimeout(snapshotTimeoutRef.current);
+    const hhAtSchedule = householdId;
+    snapshotTimeoutRef.current = setTimeout(() => {
+      // Não grava snapshot do perfil anterior se o usuário trocou de conta
+      if (currentHouseholdIdRef.current !== hhAtSchedule) return;
+      const calIdx = months.findIndex(m => m.index === currentActualMonth && m.year === currentActualYear);
+      const idx = calIdx >= 0 ? calIdx : mobileMonthIdx;
+      const s = monthlySummaries[idx];
+      if (!s || !months[idx]) return;
+      saveSnapshot(db!, hhAtSchedule, months[idx].index, months[idx].year, {
+        totalIncome: s.totalIncome,
+        totalFixed: s.totalFixed,
+        totalVariable: s.totalVariable,
+        totalLeisure: s.totalLeisure,
+        totalCreditCard: s.totalCreditCard,
+        balance: s.balance,
+        accumulated: s.accumulated,
+      }, items).catch(() => {});
+    }, 6000);
+    return () => clearTimeout(snapshotTimeoutRef.current);
+  }, [items, db, householdId, dbLoading, monthlySummaries, months, mobileMonthIdx, currentActualMonth, currentActualYear]);
 
   const allCards = useMemo(() => items.filter(i => i.category === CategoryType.CREDIT_CARD), [items]);
 

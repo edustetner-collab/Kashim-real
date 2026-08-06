@@ -233,6 +233,7 @@ export async function saveSnapshot(
     balance: summary.balance,
     accumulated: summary.accumulated,
     snapshot_data: snapshotData,
+    updated_at: new Date().toISOString(),
   });
 }
 
