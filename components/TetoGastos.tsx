@@ -83,6 +83,14 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   const availableMonths = useMemo(() => {
     const keys = new Set<string>();
     keys.add(workingMonthKey);
+    // Meses do plano ATÉ o mês de trabalho (passados + atual), mesmo vazios —
+    // assim dá pra abrir um mês passado e lançar retroativo.
+    const [wy, wm] = workingMonthKey.split('-').map(Number);
+    const wAbs = wy * 12 + wm;
+    planMonthKeys.forEach(k => {
+      const [y, m] = k.split('-').map(Number);
+      if (y * 12 + m <= wAbs) keys.add(k);
+    });
     items.forEach(item => {
       if (!item.partialExpenses) return;
       Object.entries(item.partialExpenses).forEach(([k, entries]) => {
@@ -94,7 +102,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       const [by, bm] = b.split('-').map(Number);
       return ay !== by ? by - ay : bm - am;
     });
-  }, [items, workingMonthKey]);
+  }, [items, workingMonthKey, planMonthKeys]);
 
   function labelForKey(key: string): string {
     const [year, mIdx] = key.split('-').map(Number);
@@ -103,8 +111,17 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
   // Compara com o mês de TRABALHO, não com o do calendário: senão, num plano
   // que começa no futuro, a tela abriria permanentemente em modo somente-leitura.
-  const isHistoricalView = selectedMonthKey !== workingMonthKey;
   const monthKey = selectedMonthKey;
+  // Mês SELECIONADO em índice absoluto. Passados do plano são EDITÁVEIS (permite
+  // lançamento retroativo); só o FUTURO fica somente-leitura (é planejamento).
+  const [selYear, selMonthIdx] = useMemo(() => {
+    const [y, m] = selectedMonthKey.split('-').map(Number);
+    return [y, m] as const;
+  }, [selectedMonthKey]);
+  const selAbs = selYear * 12 + selMonthIdx;
+  const workingAbs = workingYear * 12 + workingMonthIdx;
+  const isFutureView = selAbs > workingAbs;
+  const isPastView = selAbs < workingAbs;
 
   // Slot do plano correspondente ao mês selecionado. O teto vem de
   // item.values[slot] — usar o mês do calendário aqui puxava o teto do mês
@@ -410,7 +427,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   const longPressStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const handleColTouchStart = (colId: string) => (e: React.TouchEvent) => {
-    if (isHistoricalView) return;
+    if (isFutureView) return;
     if (longPressRef.current) clearTimeout(longPressRef.current);
     longPressStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     longPressRef.current = setTimeout(() => {
@@ -450,7 +467,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const handleDeletePress = (col: ColumnData) => {
-    if (isHistoricalView || columns.length <= 1) return;
+    if (isFutureView || columns.length <= 1) return;
     if (col.linkedItemId) {
       setDeleteConfirmId(col.id === deleteConfirmId ? null : col.id);
     } else {
@@ -479,9 +496,12 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
     const parsed = parseFloat(value.replace(',', '.'));
     if (!value || isNaN(parsed) || parsed <= 0) return;
     const linkedItem = items.find(i => i.id === itemId);
+    // Data do lançamento reflete o mês SELECIONADO (retroativo usa dia 1 do mês
+    // passado; no mês de trabalho usa o dia de hoje).
+    const entryDay = isPastView ? 1 : new Date().getDate();
     const expense: PartialExpense = {
       id: crypto.randomUUID(),
-      date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+      date: `${String(entryDay).padStart(2, '0')}/${String(selMonthIdx + 1).padStart(2, '0')}`,
       description: desc || linkedItem?.description || 'Gasto',
       value: parsed,
     };
@@ -500,7 +520,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       }
     }
 
-    onAddPartial(itemId, expense, workingYear, workingMonthIdx);
+    onAddPartial(itemId, expense, selYear, selMonthIdx);
     if (valueInputRefs.current[colId]) valueInputRefs.current[colId]!.value = '';
     setEntryDescriptions(prev => ({ ...prev, [colId]: '' }));
     setEntryErrors(prev => ({ ...prev, [colId]: false }));
@@ -523,7 +543,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
     const card = selectedCard ?? (linkedItem?.linkedCardId ? items.find(i => i.id === linkedItem.linkedCardId) : null);
     const cardLabel = card?.description ? ` (${card.description})` : '';
 
-    const startAbsMonth = workingYear * 12 + workingMonthIdx;
+    const startAbsMonth = selYear * 12 + selMonthIdx;
     const baseValue = parseFloat((total / qty).toFixed(2));
 
     for (let i = 0; i < qty; i++) {
@@ -608,7 +628,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
           </select>
           <i className="fas fa-chevron-down text-[#aeaeb2] text-[9px] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
         </div>
-        {!isHistoricalView && (
+        {!isFutureView && (
           <button
             onClick={addColumn}
             className="k-btn-lime px-5 py-2.5 flex items-center gap-2 shrink-0"
@@ -618,11 +638,19 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
         )}
       </div>
 
-      {isHistoricalView && (
+      {isFutureView && (
         <div className="mb-3 flex items-center gap-2 bg-[#f5f5f7] border border-[#e8e8ed] rounded-xl px-4 py-2">
-          <i className="fas fa-history text-[#7ab800] text-xs"></i>
+          <i className="fas fa-clock text-[#7ab800] text-xs"></i>
           <span className="text-[#aeaeb2] text-xs font-bold uppercase tracking-widest">
-            Histórico: {labelForKey(selectedMonthKey)} — somente leitura
+            {labelForKey(selectedMonthKey)} — planejamento futuro (somente leitura)
+          </span>
+        </div>
+      )}
+      {isPastView && (
+        <div className="mb-3 flex items-center gap-2 bg-[#fff8f0] border border-[rgba(255,149,0,0.25)] rounded-xl px-4 py-2">
+          <i className="fas fa-history text-[#ff9500] text-xs"></i>
+          <span className="text-[#ff9500] text-xs font-bold uppercase tracking-widest">
+            Lançamento retroativo em {labelForKey(selectedMonthKey)}
           </span>
         </div>
       )}
@@ -740,7 +768,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                   <button
                     onClick={() => handleDeletePress(col)}
                     className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-all ${
-                      isHistoricalView || columns.length <= 1 ? 'opacity-0 pointer-events-none' :
+                      isFutureView || columns.length <= 1 ? 'opacity-0 pointer-events-none' :
                       deleteConfirmId === col.id ? 'bg-[#ff3b30] text-white scale-110' :
                       'bg-[#ff3b30]/15 text-[#ff3b30] active:bg-[#ff3b30] active:text-white'
                     }`}
@@ -813,7 +841,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
               )}
 
               {/* Entry form */}
-              {!isHistoricalView && (
+              {!isFutureView && (
                 <div className="bg-white border-t border-[#e8e8ed]">
                   {!inInstallMode ? (
                     <>
@@ -943,7 +971,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                       <button
                         className="flex-1 flex items-center gap-2 min-w-0 text-left active:opacity-60"
                         onClick={() => {
-                          if (isHistoricalView) return;
+                          if (isFutureView) return;
                           setEditPartialConfirm({ itemId: col.linkedItemId, expId: p.id, description: p.description, value: p.value, date: p.date, monthKey });
                           setEditDesc(p.description);
                           setEditValue(String(p.value));
