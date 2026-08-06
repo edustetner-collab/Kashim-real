@@ -664,13 +664,36 @@ const App: React.FC = () => {
     }
   };
 
+  // Backup do plano em CSV (Excel abre nativo — antes era .json cru, ilegível
+  // pro coach). Uma linha por item, uma coluna por mês do plano + total.
+  // Separador ';' e decimal com vírgula = padrão do Excel pt-BR; BOM p/ acentos.
   const exportBackup = () => {
-    const dataStr = JSON.stringify(items, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', `backup_financeiro_rico_${startMonth}_${startYear}.json`);
-    linkElement.click();
+    const catLabel = (c: CategoryType): string => {
+      if (c === CategoryType.INCOME) return 'Renda';
+      if (c === CategoryType.FIXED_EXPENSE) return 'Contas Fixas';
+      if (c === CategoryType.VARIABLE_EXPENSE) return 'Contas Variáveis';
+      if (c === CategoryType.CREDIT_CARD) return 'Cartão de Crédito';
+      if (c === CategoryType.PERSONAL_LEISURE) return 'Lazer e Gastos Pessoais';
+      return String(c);
+    };
+    const br = (n: number) => (n || 0).toFixed(2).replace('.', ',');
+    const q = (s: string) => `"${(s || '').replace(/"/g, "'")}"`;
+    const monthCols = months.map(m => `${m.monthName}/${m.year}`);
+    const header = [q('Categoria'), q('Descrição'), ...monthCols.map(q), q('Total (12m)')].join(';');
+    const rows = items.map(it => {
+      const vals = Array.from({ length: 12 }, (_, i) => it.values[i] || 0);
+      const total = vals.reduce((a, b) => a + b, 0);
+      // Texto entre aspas; números sem aspas p/ o Excel somar.
+      return [q(catLabel(it.category)), q(it.description || ''), ...vals.map(br), br(total)].join(';');
+    });
+    const csv = '﻿' + [header, ...rows].join('\r\n'); // BOM p/ acentos no Excel
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `backup_kashim_${startMonth + 1}_${startYear}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const handleReproject = async (newStartMonth: number, newStartYear: number) => {
