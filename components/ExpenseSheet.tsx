@@ -84,7 +84,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
   const [payMethod, setPayMethod] = useState<PayMethod>('');
   const [creditType, setCreditType] = useState<CreditType>('');
   const [installCount, setInstallCount] = useState('');
-  const [leisureDesc, setLeisureDesc] = useState('');
+  const [expenseDesc, setExpenseDesc] = useState('');
   const [showItemPicker, setShowItemPicker] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState('');
   const [purchaseDay, setPurchaseDay] = useState(() => defaultPurchaseDate?.day ?? new Date().getDate());
@@ -106,6 +106,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
       setCategory(null);
       setItemId(initialItemId ?? '');
       setVariableDesc(initialDescription ?? '');
+      setExpenseDesc(initialDescription ?? '');
       setValue(initialValue ? String(initialValue) : '');
       const init = Math.max(1, initialInstallments ?? 1);
       if (init > 1) { setPayMethod('credit'); setCreditType('parcelado'); setInstallCount(String(init)); }
@@ -128,7 +129,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
       setPayMethod('');
       setCreditType('');
       setSelectedCardId('');
-      setLeisureDesc('');
+      setExpenseDesc(initialDescription ?? '');
       const initManual = Math.max(1, initialInstallments ?? 1);
       setInstallCount(initManual > 1 ? String(initManual) : '');
     }
@@ -148,6 +149,10 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
   // não só crédito — pedido do Eduardo 2026-07-XX.
   const isParcelado = creditType === 'parcelado';
 
+  // Campo "Descrição da despesa": aparece quando veio da IA (voz/foto) OU é
+  // Lazer. Serve para o usuário nomear o lançamento (ex.: "camisetas") mantendo
+  // a categoria — esse texto vira o rótulo do gasto em Gastos Frequentes.
+  const showDescField = source === 'ai' || category === CategoryType.PERSONAL_LEISURE;
   const hasItem = !!itemId || (category === CategoryType.VARIABLE_EXPENSE && variableDesc.trim().length > 0);
   const needsCard = isCredit && items.filter(i => i.category === CategoryType.CREDIT_CARD).length > 0;
   const canConfirm = hasItem && numericValue > 0 && payMethod !== '' && (!needsCard || !!selectedCardId);
@@ -170,8 +175,8 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
     if (!canConfirm) return;
 
     let finalItemId = itemId;
-    let finalDesc = (category === CategoryType.PERSONAL_LEISURE && leisureDesc.trim())
-      ? leisureDesc.trim()
+    let finalDesc = (showDescField && expenseDesc.trim())
+      ? expenseDesc.trim()
       : (selectedItem?.description ?? variableDesc.trim());
 
     if (!itemId && category === CategoryType.VARIABLE_EXPENSE && variableDesc.trim() && onCreateItem) {
@@ -213,17 +218,19 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
         <i className="fas fa-pen text-zinc-600 text-[9px] shrink-0" />
       </button>
 
-      {/* Optional description for Lazer & Pessoal */}
-      {category === CategoryType.PERSONAL_LEISURE && (
+      {/* Descrição da despesa — editável (ex.: "camisetas"). Vira o rótulo do
+          lançamento em Gastos Frequentes, mantendo a categoria (ex.: Lazer).
+          Aparece pra despesas da IA (voz/foto) e pra Lazer. */}
+      {showDescField && (
         <div className="px-4 py-3 bg-zinc-800 rounded-2xl border border-zinc-700 focus-within:border-green-400/40 transition-colors">
           <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-1">
-            O que foi? <span className="text-zinc-600 normal-case font-medium">(opcional)</span>
+            Descrição da despesa
           </p>
           <input
             type="text"
-            value={leisureDesc}
-            onChange={e => setLeisureDesc(e.target.value)}
-            placeholder="Ex: restaurante, futebol, presente..."
+            value={expenseDesc}
+            onChange={e => setExpenseDesc(e.target.value)}
+            placeholder="Ex: camisetas, tênis, presente..."
             className="w-full bg-transparent text-white text-sm font-medium outline-none placeholder:text-zinc-600"
           />
         </div>
