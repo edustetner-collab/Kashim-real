@@ -711,7 +711,8 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                         </button>
                         {category === CategoryType.VARIABLE_EXPENSE && (() => {
                           const linkedCard = item.linkedCardId ? allCards.find(c => c.id === item.linkedCardId) : null;
-                          if (!linkedCard || item.linkType === LinkType.DEBIT) return null;
+                          // Só sinaliza em meses com valor lançado — evita poluir os meses vazios
+                          if (!linkedCard || item.linkType === LinkType.DEBIT || !item.values[mobileMonthIdx]) return null;
                           let faturaLabel = '→ próxima fatura';
                           if (linkedCard.closingDay) {
                             const faturaMonthIdx = new Date().getDate() >= linkedCard.closingDay ? mobileMonthIdx + 1 : mobileMonthIdx;
@@ -1073,7 +1074,8 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                         })()}
                         {category === CategoryType.VARIABLE_EXPENSE && (() => {
                           const linkedCard = item.linkedCardId ? allCards.find(c => c.id === item.linkedCardId) : null;
-                          if (!linkedCard || item.linkType === LinkType.DEBIT) return null;
+                          // Só sinaliza em meses com valor lançado — evita poluir os meses vazios
+                          if (!linkedCard || item.linkType === LinkType.DEBIT || !val) return null;
                           let faturaLabel = '→ próxima fatura';
                           if (linkedCard.closingDay) {
                             const faturaMonthIdx = new Date().getDate() >= linkedCard.closingDay ? mIdx + 1 : mIdx;
