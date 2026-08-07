@@ -353,10 +353,13 @@ const App: React.FC = () => {
           coachingEndsAt,
         });
         setAccessInfo(access);
-        // Nunca bloqueia: admin (env OU banco), coach visualizando cliente,
-        // ou qualquer coach client com acesso ainda válido.
+        // Nunca bloqueia: admin (env OU banco OU confirmado pelo servidor neste
+        // mesmo request), coach visualizando cliente, ou coach client com acesso válido.
         // Para demais usuários, bloqueia ao expirar (decisão Eduardo 16/07).
-        if (!access.hasAccess && !isAdmin && !coachViewHouseholdId) {
+        // ATENÇÃO: usa serverConfirmedAdmin (variável local) e NÃO isAdmin (state),
+        // pois setIsAdminByDb é async — isAdmin ainda é false neste ponto do loop.
+        const effectiveAdmin = isAdmin || serverConfirmedAdmin;
+        if (!access.hasAccess && !effectiveAdmin && !coachViewHouseholdId) {
           setShowSubscriptionGate(true);
         }
 
