@@ -380,6 +380,18 @@ const App: React.FC = () => {
           coachingEndsAt,
         });
         setAccessInfo(access);
+        // Diagnóstico de acesso — abrir o console (F12) e mandar print se o gate
+        // aparecer indevidamente. Mostra exatamente o que o servidor respondeu.
+        console.log('[kashim:acesso]', {
+          householdId: hId,
+          apiRespondeu: !!coachAccessRes,
+          hasCoach,
+          isCoachClient,
+          coachingEndsAt,
+          createdAt: (household as any)?.created_at,
+          debug: (coachAccessRes as any)?.debug,
+          resultado: access,
+        });
         // Nunca bloqueia: admin (env OU banco OU confirmado pelo servidor neste
         // mesmo request), coach visualizando cliente, ou coach client com acesso válido.
         // Para demais usuários, bloqueia ao expirar (decisão Eduardo 16/07).

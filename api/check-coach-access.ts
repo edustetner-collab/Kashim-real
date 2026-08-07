@@ -67,13 +67,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!member) return res.status(403).json({ error: 'Forbidden' });
   }
 
-  // ── 1. Tenta coach_access (select * para não explodir se alguma coluna não existe) ──
+  // ── 1. coach_access: query MÍNIMA, idêntica à do ClientSettings ──
+  // Sem .order() e sem .limit(): `.order('created_at')` derruba a query INTEIRA
+  // se a coluna não existir no schema, devolvendo data=null. O resultado era
+  // hasCoach=false / isCoachClient=false para quem TEM consultoria ativa — e o
+  // cliente ia para o gate de pagamento. O ClientSettings sempre funcionou
+  // justamente porque a query dele não tem .order() (bug real 2026-08-07).
   const { data: coachRows, error: caError } = await supabase
     .from('coach_access')
     .select('*')
-    .eq('household_id', householdId)
-    .order('created_at', { ascending: false })
-    .limit(10);
+    .eq('household_id', householdId);
 
   if (caError) {
     console.error('[check-coach-access] coach_access query error:', caError.message);
@@ -105,10 +108,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // isCoachClient primário: tem qualquer registro em coach_access
   let isCoachClient = records.length > 0;
+  let reason = isCoachClient ? 'coach_access' : 'none';
 
   // ── 2. Fallback: se coach_access vazio, checar se household foi criado pelo coach ──
   // Households criados via create-client têm status='draft'. Espontâneos têm
   // status='active' (set pelo ensure-household) ou null.
+  let householdStatus: string | null = null;
   if (!isCoachClient) {
     const { data: hh } = await supabase
       .from('households')
@@ -116,12 +121,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .eq('id', householdId)
       .maybeSingle();
 
+    householdStatus = hh?.status ?? null;
     // 'draft' ou presença de prospect_name/email = criado pelo coach
     if (hh && (hh.status === 'draft' || hh.prospect_name || hh.prospect_email)) {
       isCoachClient = true;
+      reason = 'household_draft_or_prospect';
     }
   }
 
-  // isAdminVerified: o servidor confirma — não depende do VITE_ do frontend
-  return res.status(200).json({ hasCoach, expired, coachingEndsAt, isCoachClient, isAdminVerified: isAdmin });
+  // ── 3. FAIL-SAFE: se a query de coach_access ERROU, não sabemos nada. ──
+  // "Erro na query" é diferente de "não tem coach". Tratar erro como ausência de
+  // coach mandava cliente pagante para o gate de pagamento. Na dúvida, libera.
+  if (caError && !isCoachClient) {
+    isCoachClient = true;
+    reason = 'failsafe_query_error';
+  }
+
+  // isAdminVerified: o servidor confirma — não depende do VITE_ do frontend.
+  // debug: visível na aba Network do navegador para diagnóstico em produção.
+  return res.status(200).json({
+    hasCoach,
+    expired,
+    coachingEndsAt,
+    isCoachClient,
+    isAdminVerified: isAdmin,
+    debug: {
+      reason,
+      recordCount: records.length,
+      statuses: records.map((r: any) => r.status),
+      queryError: caError?.message ?? null,
+      householdStatus,
+    },
+  });
 }
