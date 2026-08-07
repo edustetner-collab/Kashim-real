@@ -477,6 +477,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
   const [entryDescriptions, setEntryDescriptions] = useState<Record<string, string>>({});
   const [entryErrors, setEntryErrors] = useState<Record<string, boolean>>({});
+  const [linkRequired, setLinkRequired] = useState<Record<string, boolean>>({});
   const [installMode, setInstallMode] = useState<Record<string, boolean>>({});
   const [installData, setInstallData] = useState<Record<string, { desc: string; total: string; qty: string }>>({});
   const [installCardIds, setInstallCardIds] = useState<Record<string, string>>({});
@@ -487,7 +488,11 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   const valueInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const handleSubmitEntry = (colId: string, itemId: string, value: string) => {
-    if (!itemId) return;
+    if (!itemId) {
+      setLinkRequired(prev => ({ ...prev, [colId]: true }));
+      return;
+    }
+    setLinkRequired(prev => ({ ...prev, [colId]: false }));
     const desc = entryDescriptions[colId]?.trim();
     if (!desc) {
       setEntryErrors(prev => ({ ...prev, [colId]: true }));
@@ -776,9 +781,9 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                     <i className="fas fa-times text-[9px]"></i>
                   </button>
                   <select
-                    className={`flex-1 bg-transparent border-none text-[10px] font-black uppercase text-center outline-none cursor-pointer ${isUnlinked ? 'text-orange-400' : 'text-[#1d1d1f]'}`}
+                    className={`flex-1 bg-transparent border-none text-[10px] font-black uppercase text-center outline-none cursor-pointer ${isUnlinked ? (linkRequired[col.id] ? 'text-[#ff3b30]' : 'text-orange-400') : 'text-[#1d1d1f]'}`}
                     value={col.linkedItemId}
-                    onChange={(e) => updateColumn(col.id, 'linkedItemId', e.target.value)}
+                    onChange={(e) => { updateColumn(col.id, 'linkedItemId', e.target.value); setLinkRequired(prev => ({ ...prev, [col.id]: false })); }}
                   >
                     <option value="" className="bg-white text-orange-400">⚠ VINCULAR ITEM</option>
                     {items.filter(i =>
@@ -800,6 +805,16 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                   placeholder="NOME DA COLUNA"
                 />
               </div>
+
+              {/* Link required banner — aparece ao clicar OK sem vincular categoria */}
+              {linkRequired[col.id] && isUnlinked && (
+                <div className="bg-[#fff8f0] border-b border-[rgba(255,149,0,0.3)] px-3 py-2 flex items-start gap-2">
+                  <i className="fas fa-arrow-up text-[#ff9500] text-[9px] mt-0.5 shrink-0"></i>
+                  <p className="text-[9px] text-[#ff9500] font-bold leading-tight">
+                    Selecione a categoria acima para que este gasto contabilize no orçamento correto.
+                  </p>
+                </div>
+              )}
 
               {/* Delete confirmation banner */}
               {deleteConfirmId === col.id && (

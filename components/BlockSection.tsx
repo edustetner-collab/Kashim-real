@@ -709,7 +709,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           {hasPayment ? paymentLabel : 'Forma de pagamento pendente'}
                           <i className="fas fa-chevron-down text-[8px] opacity-50 ml-0.5"></i>
                         </button>
-                        {(() => {
+                        {category !== CategoryType.VARIABLE_EXPENSE && (() => {
                           const linkedCard = item.linkedCardId ? allCards.find(c => c.id === item.linkedCardId) : null;
                           const isCardLinked = !!(linkedCard && item.linkType !== LinkType.DEBIT);
                           const isCommitted = item.linkType === LinkType.INSTALLMENT;
@@ -1036,7 +1036,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                             <i className="fas fa-copy"></i>
                           </button>
                         </div>
-                        {(() => {
+                        {category !== CategoryType.VARIABLE_EXPENSE && (() => {
                           const linkedCard = item.linkedCardId ? allCards.find(c => c.id === item.linkedCardId) : null;
                           const isCardLinked = !!(linkedCard && item.linkType !== LinkType.DEBIT);
                           const isCommitted = item.linkType === LinkType.INSTALLMENT;

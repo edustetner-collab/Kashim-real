@@ -569,6 +569,15 @@ const App: React.FC = () => {
         ]);
         if (household?.start_month != null) setStartMonth(household.start_month);
         if (household?.start_year != null) setStartYear(household.start_year);
+        // Salta mobileMonthIdx para o mês atual do calendário (igual ao loadData do usuário regular)
+        const clientStartMonth = household?.start_month ?? new Date().getMonth();
+        const clientStartYear = household?.start_year ?? new Date().getFullYear();
+        const clientTempMonths = Array.from({ length: 12 }, (_, i) => {
+          const d = new Date(clientStartYear, clientStartMonth + i, 1);
+          return { index: d.getMonth(), year: d.getFullYear() };
+        });
+        const clientCalIdx = clientTempMonths.findIndex(m => m.index === new Date().getMonth() && m.year === new Date().getFullYear());
+        if (clientCalIdx >= 0) setMobileMonthIdx(clientCalIdx);
         // SEMPRE substitui os itens — se o cliente não tem dados, volta ao
         // conjunto em branco em vez de manter os do cliente anterior na tela
         // (que aí seriam salvos na conta errada). E colapsa duplicatas já
@@ -597,6 +606,9 @@ const App: React.FC = () => {
 
     loadClientData();
   }, [db, coachViewHouseholdId]);
+
+  // Fecha overlay do Extrato ao navegar para qualquer outra aba
+  useEffect(() => { setShowExtrato(false); }, [activeTab]);
 
   // Quando coach sai da visão de cliente, restaura os próprios dados
   useEffect(() => {
@@ -1286,28 +1298,46 @@ const App: React.FC = () => {
       const totalVariable = items.filter(i => i.category === CategoryType.VARIABLE_EXPENSE).reduce((sum, i) => sum + (i.values[m] || 0), 0);
       const totalLeisure = items.filter(i => i.category === CategoryType.PERSONAL_LEISURE).reduce((sum, i) => sum + (i.values[m] || 0), 0);
 
-      // Desconta da fatura os gastos rastreados via TetoGastos no mês anterior
-      // Evita dupla contagem: gasto rastreado em Maio + fatura de Junho com o mesmo valor
       const prevMonthKey = m > 0 ? `${months[m - 1].year}-${months[m - 1].index}` : null;
+
+      // Contas fixas/variáveis/lazer no cartão sempre são removidas do mês corrente
+      // e projetadas na fatura do mês seguinte (nunca entram no custo do mesmo mês).
+      const totalFixedDuplicado = items.filter(i => i.category === CategoryType.FIXED_EXPENSE && i.linkedCardId && i.linkType !== LinkType.DEBIT).reduce((sum, i) => sum + (i.values[m] || 0), 0);
+      const totalVariableDuplicado = items.filter(i => i.category === CategoryType.VARIABLE_EXPENSE && i.linkedCardId && i.linkType !== LinkType.DEBIT).reduce((sum, i) => sum + (i.values[m] || 0), 0);
+      const totalLeisureDuplicado = items.filter(i => i.category === CategoryType.PERSONAL_LEISURE && i.linkedCardId && i.linkType !== LinkType.DEBIT).reduce((sum, i) => sum + (i.values[m] || 0), 0);
+
+      // Calcula fatura: se não informada, projeta automaticamente a partir das
+      // despesas fixas/variáveis/lazer no cartão do mês anterior (eliminando a
+      // necessidade do cliente preencher manualmente ao virar o mês).
       const totalCreditCard = items
         .filter(i => i.category === CategoryType.CREDIT_CARD)
         .reduce((sum, card) => {
-          const fatura = card.values[m] || 0;
-          if (!fatura || !prevMonthKey) return sum + fatura;
+          const enteredFatura = card.values[m] || 0;
+          if (!enteredFatura && prevMonthKey) {
+            // Auto-projeção: soma as despesas do mês anterior vinculadas a este cartão
+            // que foram removidas do custo fixo/variável/lazer daquele mês.
+            const projFixed = items
+              .filter(i => i.linkedCardId === card.id && i.linkType !== LinkType.DEBIT && i.category === CategoryType.FIXED_EXPENSE)
+              .reduce((s, i) => s + (i.values[m - 1] || 0), 0);
+            const projVariable = items
+              .filter(i => i.linkedCardId === card.id && i.linkType !== LinkType.DEBIT && i.category === CategoryType.VARIABLE_EXPENSE)
+              .reduce((s, i) => s + (i.values[m - 1] || 0), 0);
+            const projLeisure = items
+              .filter(i => i.linkedCardId === card.id && i.linkType !== LinkType.DEBIT && i.category === CategoryType.PERSONAL_LEISURE)
+              .reduce((s, i) => s + (i.values[m - 1] || 0), 0);
+            return sum + projFixed + projVariable + projLeisure;
+          }
+          if (!enteredFatura || !prevMonthKey) return sum + enteredFatura;
+          // Fatura informada: desconta gastos rastreados via TetoGastos no mês anterior
+          // para evitar dupla contagem (rastreado em Maio + fatura de Junho com mesmo valor).
           const trackedPrev = items
             .filter(i => i.linkedCardId === card.id)
             .reduce((s, i) => {
               const partials = i.partialExpenses?.[prevMonthKey] || [];
               return s + partials.reduce((ps, p) => ps + p.value, 0);
             }, 0);
-          return sum + Math.max(0, fatura - trackedPrev);
+          return sum + Math.max(0, enteredFatura - trackedPrev);
         }, 0);
-
-      // Deduplica itens de orçamento fixo/variável/lazer que já estão embutidos na fatura
-      // (ex: parcelas ou itens do mês 0 vinculados ao cartão)
-      const totalFixedDuplicado = items.filter(i => i.category === CategoryType.FIXED_EXPENSE && i.linkedCardId && (m === 0 || i.linkType === LinkType.INSTALLMENT)).reduce((sum, i) => sum + (i.values[m] || 0), 0);
-      const totalVariableDuplicado = items.filter(i => i.category === CategoryType.VARIABLE_EXPENSE && i.linkedCardId && (m === 0 || i.linkType === LinkType.INSTALLMENT)).reduce((sum, i) => sum + (i.values[m] || 0), 0);
-      const totalLeisureDuplicado = items.filter(i => i.category === CategoryType.PERSONAL_LEISURE && i.linkedCardId && (m === 0 || i.linkType === LinkType.INSTALLMENT)).reduce((sum, i) => sum + (i.values[m] || 0), 0);
 
       const totalFixedNet = totalFixed - totalFixedDuplicado;
       const totalVariableNet = totalVariable - totalVariableDuplicado;
