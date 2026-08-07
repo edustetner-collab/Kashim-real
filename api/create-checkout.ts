@@ -53,9 +53,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!membership) return res.status(404).json({ error: 'Household not found' });
 
   const householdId = membership.household_id;
-  const { origin, plan } = req.body as { origin?: string; plan?: 'monthly' | 'annual' };
+  const { origin, plan, tier } = req.body as { origin?: string; plan?: 'monthly' | 'annual'; tier?: 'base' | 'of' };
   const baseUrl = (origin ?? 'https://kashim.com.br').replace(/\/$/, '');
-  const isAnnual = plan === 'annual';
+  const cycle: 'monthly' | 'annual' = plan === 'annual' ? 'annual' : 'monthly';
+  const isAnnual = cycle === 'annual';
+  // 'of' = plano com Open Finance (conexão bancária). 'base' = plano padrão.
+  const t: 'base' | 'of' = tier === 'of' ? 'of' : 'base';
 
   const pagarmeKey = (process.env.PAGARME_SECRET_KEY ?? '').trim();
   if (!pagarmeKey) {
@@ -63,9 +66,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   const authHeader = `Basic ${Buffer.from(`${pagarmeKey}:`).toString('base64')}`;
 
-  const amount = isAnnual ? 13188 : 1499;
-  const description = isAnnual ? 'Kashim Premium — Anual (12 meses)' : 'Kashim Premium — Mensal';
-  const itemCode = isAnnual ? 'kashim_annual' : 'kashim_monthly';
+  // Valores em centavos. base mensal R$14,99 / anual R$131,88 (10,99/mês).
+  // OF mensal R$29,90 / anual R$298,80 (24,90/mês).
+  const AMOUNTS = {
+    base: { monthly: 1499, annual: 13188 },
+    of: { monthly: 2990, annual: 29880 },
+  } as const;
+  const amount = AMOUNTS[t][cycle];
+  const description = t === 'of'
+    ? (isAnnual ? 'Kashim + Open Finance — Anual (12 meses)' : 'Kashim + Open Finance — Mensal')
+    : (isAnnual ? 'Kashim Premium — Anual (12 meses)' : 'Kashim Premium — Mensal');
+  const itemCode = `kashim_${t}_${cycle}`;
 
   const orderBody = {
     items: [{ amount, description, quantity: 1, code: itemCode }],
@@ -93,7 +104,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         },
       },
     ],
-    metadata: { householdId, clerkUserId, plan: isAnnual ? 'annual' : 'monthly' },
+    metadata: { householdId, clerkUserId, plan: cycle, tier: t },
   };
 
   try {
