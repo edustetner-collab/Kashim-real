@@ -1,0 +1,27 @@
+{
+  "statement": {
+    "uniqueId": "a-lvOjj6oC0NXU-2026",
+    "bankCode": "208",
+    "totalTransactions": "10",
+    "origin": "OPENFINANCE",
+    "accountHash": "gDyriq_q39"
+  },
+  "transaction": {
+    "credit": [
+      { "transactionId": "c001-...-pix-01", "transactionType": "credit", "code": "PIX", "amount": "500.00", "date": "2025-11-01", "description": "PIX RECEBIDO - JOAO DA SILVA", "fitid": "202511010001", "name": "Joao da Silva", "category": "Transferência", "paymentMethod": "PIX" },
+      { "transactionId": "c002-...-ted-02", "transactionType": "credit", "code": "TED", "amount": "3200.00", "date": "2025-11-05", "description": "TED SALARIO - EMPRESA XYZ LTDA", "fitid": "202511050099", "name": "Empresa XYZ LTDA", "category": "Salário", "paymentMethod": "TED" },
+      { "transactionId": "c004-...-tev-04", "transactionType": "credit", "code": "TEV", "amount": "1000.00", "date": "2025-11-12", "description": "TRANSFERENCIA ENTRE CONTAS - MESMA TITULARIDADE", "name": "Proprio Cliente", "category": "Transferência", "paymentMethod": "TEV" }
+    ],
+    "debit": [
+      { "transactionId": "d001-...-boleto-01", "transactionType": "debit", "code": "BOLETO", "amount": "265.00", "date": "2025-11-03", "description": "PAGAMENTO CONTA DE LUZ - ENERGISA", "name": "ENERGISA S.A.", "category": "Utilidades", "paymentMethod": "BOLETO", "paymentBarcode": "83620000...", "paymentBaseAmount": "250.00", "paymentInterestAmount": "10.00", "paymentPenaltyAmount": "5.00" },
+      { "transactionId": "d002-...-pix-02", "transactionType": "debit", "code": "PIX", "amount": "1200.00", "date": "2025-11-06", "description": "PIX ENVIADO - ALUGUEL", "name": "Imobiliaria Norte", "category": "Moradia", "paymentMethod": "PIX" },
+      { "transactionId": "d004-...-ted-04", "transactionType": "debit", "code": "TED", "amount": "2000.00", "date": "2025-11-20", "description": "TED ENVIADA - CORRETORA DE INVESTIMENTOS", "name": "XP INVESTIMENTOS", "category": "Investimentos", "paymentMethod": "TED" }
+    ]
+  },
+  "transactionDuplicated": { "credit": [], "debit": [] },
+  "balance": {
+    "inicial": { "date": "2025-11-01", "balance": "1500.00" },
+    "final": { "date": "2025-11-20", "balance": "3040.50" }
+  },
+  "_nota": "Amostra representativa (Technospeed, 2026-08-07). credit=entradas, debit=saidas. TEV/mesma-titularidade e TED->investimento NAO sao 'gasto'. Ver schema-notes.md."
+}

@@ -1,0 +1,27 @@
+{
+  "_nota": "Amostra REPRESENTATIVA da fatura de cartao (Technospeed, 2026-08-07). O original tinha 196 transacoes. type=credit_card. debit[]=COMPRAS/GASTOS; credit[]=pagamentos+estornos (CREDITCARDPAYMENT=ignorar). Parcela = transacao propria com 'NN/NN' na descricao e sua creditCardBill.dueDate. Ver schema-notes.md.",
+  "statement": {
+    "uniqueId": "JxyakI-_94XfDw",
+    "dateStart": "2025-07-02",
+    "dateEnd": "2027-01-03",
+    "bankCode": "999",
+    "totalTransactions": "196",
+    "origin": "OPENFINANCE",
+    "type": "credit_card",
+    "creditCardCurrentAvaliableCreditLimit": "422.19",
+    "creditCardCurrentCreditLimit": "4816.39"
+  },
+  "transaction": {
+    "credit": [
+      { "transactionId": "1f652ed2-...", "transactionType": "credit", "code": "CREDITCARDPAYMENT", "amount": "6260.34", "date": "2025-10-03", "description": "Pagamento recebido", "name": "ITAU EMPRESAS VISA", "category": "Credit card payment", "creditCardNumber": "5818", "creditCardBill": { "dueDate": "2025-10-03", "totalAmount": 6260.34, "minimumPaymentAmount": 626.03, "allowsInstallments": true } }
+    ],
+    "debit": [
+      { "transactionId": "4d1779e7-...", "transactionType": "debit", "code": "WELLNESSANDFITNESS", "amount": "798.00", "date": "2026-02-20", "description": "ACADEMIAS GR-CT IF09/12", "name": "ITAU EMPRESAS VISA", "category": "Wellness and fitness", "creditCardNumber": "3113", "creditCardBill": { "dueDate": "2026-04-03", "totalAmount": 5438.66, "minimumPaymentAmount": 543.87, "allowsInstallments": true } },
+      { "transactionId": "ab3ff2f1-...", "transactionType": "debit", "code": "VEHICLEMAINTENANCE", "amount": "729.57", "date": "2026-02-20", "description": "MP*CIMGLOBALPARTS 01/05", "name": "ITAU EMPRESAS VISA", "category": "Vehicle maintenance", "creditCardNumber": "4717", "creditCardBill": { "dueDate": "2026-04-03", "totalAmount": 5438.66 } },
+      { "transactionId": "91325437-...", "transactionType": "debit", "code": "DIGITALSERVICES", "amount": "280.08", "date": "2026-02-08", "description": "FACEBK* P6E6QEMVQ2", "name": "ITAU EMPRESAS VISA", "category": "Digital services", "creditCardNumber": "1106", "creditCardBill": { "dueDate": "2026-03-03", "totalAmount": 2900.58 } },
+      { "transactionId": "cd6ddf13-...", "transactionType": "debit", "code": "SCHOOL", "amount": "2475.00", "date": "2025-10-14", "description": "LURE DIGITAL      01/04", "name": "ITAU EMPRESAS VISA", "category": "School", "creditCardNumber": "2468", "creditCardBill": { "dueDate": "2025-11-03", "totalAmount": 21251.21 } },
+      { "transactionId": "5d5007ab-...", "transactionType": "debit", "code": "DIGITALSERVICES", "amount": "1300.00", "date": "2027-01-03", "description": "FASTPAY*MARKETPLAC10/10", "name": "ITAU EMPRESAS VISA", "category": "Digital services", "creditCardNumber": "1058", "creditCardBill": { "dueDate": null, "totalAmount": null } }
+    ]
+  },
+  "transactionDuplicated": { "credit": [], "debit": [] }
+}
