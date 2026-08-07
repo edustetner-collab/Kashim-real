@@ -97,5 +97,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  return res.status(200).json({ hasCoach, expired, coachingEndsAt, isCoachClient });
+  // isAdminVerified: o servidor confirma — não depende do VITE_ do frontend
+  return res.status(200).json({ hasCoach, expired, coachingEndsAt, isCoachClient, isAdminVerified: isAdmin });
 }

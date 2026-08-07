@@ -329,12 +329,16 @@ const App: React.FC = () => {
           expired: boolean;
           coachingEndsAt?: string | null;
           isCoachClient?: boolean;
+          isAdminVerified?: boolean;
         } | null;
         const coachExpired = coachAccessRes?.expired ?? false;
         const hasCoach = coachAccessRes?.hasCoach ?? false;
         const coachingEndsAt = coachAccessRes?.coachingEndsAt ?? null;
         // isCoachClient: teve ou tem coach (qualquer status) → grace period estendido
         const isCoachClient = coachAccessRes?.isCoachClient ?? hasCoach;
+        // Admin confirmado pelo servidor (não depende de VITE_ do frontend)
+        const serverConfirmedAdmin = coachAccessRes?.isAdminVerified ?? false;
+        if (serverConfirmedAdmin && !isAdminByEnv) setIsAdminByDb(true);
 
         // Regra de acesso:
         // - Coach ativo → ilimitado
