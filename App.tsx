@@ -37,6 +37,7 @@ import { refreshNotifications, scheduleTestNotification } from './lib/notificati
 import { getNotifPrefs } from './lib/notifPrefs';
 import TermsGate from './components/TermsGate';
 import { hasAcceptedTerms, recordTermsAcceptance } from './lib/terms';
+import ExtratoBancario from './components/ExtratoBancario';
 
 const ADMIN_IDS = (import.meta.env.VITE_ADMIN_USER_IDS ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
 const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
@@ -235,6 +236,8 @@ const App: React.FC = () => {
   const [pendingStartMonth, setPendingStartMonth] = useState<{month: number, year: number} | null>(null);
   const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '' });
   const [activeTab, setActiveTab] = useState<'plan' | 'teto' | 'metas' | 'desempenho' | 'dividas'>('plan');
+  const [showExtrato, setShowExtrato] = useState(false);
+  const [ofAuthToken, setOfAuthToken] = useState<string | null>(null);
   const [goals, setGoals] = useState<Goal[]>(() => {
     try { return JSON.parse(localStorage.getItem('kashim_goals') || '[]'); } catch { return []; }
   });
@@ -315,9 +318,11 @@ const App: React.FC = () => {
         const token = await getToken({ template: 'supabase' });
         const coachAccessRes = await fetch(`/api/check-coach-access?householdId=${hId}`, {
           headers: { Authorization: `Bearer ${token}` },
-        }).then(r => r.ok ? r.json() : null).catch(() => null) as { hasCoach: boolean; expired: boolean } | null;
+        }).then(r => r.ok ? r.json() : null).catch(() => null) as { hasCoach: boolean; expired: boolean; isCoachClient?: boolean } | null;
         const coachExpired = coachAccessRes?.expired ?? false;
         const hasCoach = coachAccessRes?.hasCoach ?? false;
+        // isCoachClient: teve ou tem coach (qualquer status) → 5 meses de trial
+        const isCoachClient = coachAccessRes?.isCoachClient ?? hasCoach;
 
         // Trial: 5 meses p/ cliente da consultoria (coach_access), 30 dias p/
         // cadastro espontâneo + assinatura paga + consultor ativo
@@ -326,14 +331,12 @@ const App: React.FC = () => {
           subscriptionStatus: status,
           subscriptionExpiresAt: (household as any)?.subscription_expires_at,
           hasActiveCoach: hasCoach && !coachExpired,
-          isCoachClient: hasCoach,
+          isCoachClient,
         });
         setAccessInfo(access);
-        // Ao expirar, bloqueia em TODAS as plataformas (decisão Eduardo 16/07).
-        // No nativo a tela é NEUTRA: sem preço, sem botão de compra, sem link
-        // (Apple 3.1.1 — modelo Netflix). Quem direciona ao pagamento é o
-        // e-mail da régua de trial, fora do app.
-        if (!access.hasAccess) {
+        // Admin nunca vê o gate. Para demais usuários, bloqueia em TODAS as
+        // plataformas ao expirar (decisão Eduardo 16/07).
+        if (!access.hasAccess && !isAdminByEnv) {
           setShowSubscriptionGate(true);
         }
 
@@ -1730,6 +1733,7 @@ const App: React.FC = () => {
             <button onClick={() => setActiveTab('metas')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'metas' ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#6e6e73] hover:text-[#1d1d1f]'}`}>Metas</button>
             <button onClick={() => setActiveTab('dividas')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'dividas' ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#6e6e73] hover:text-[#1d1d1f]'}`}>Dívidas</button>
             <button onClick={() => setActiveTab('desempenho')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'desempenho' ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#6e6e73] hover:text-[#1d1d1f]'}`}>Desempenho</button>
+            <button onClick={async () => { const t = await getToken({ template: 'supabase' }); if (t) { setOfAuthToken(t); setShowExtrato(true); } }} className="px-6 py-2 rounded-lg text-xs font-black uppercase transition-all text-[#6e6e73] hover:text-[#1d1d1f] flex items-center gap-1.5"><i className="fas fa-university text-sm" />Extrato</button>
             {coachViewHouseholdId && (
               <div className="flex items-center gap-2 bg-[#f0fad0] border border-[rgba(122,184,0,0.3)] px-3 py-1.5 rounded-xl">
                 <i className="fas fa-eye text-[#7ab800] text-xs"></i>
@@ -2292,6 +2296,16 @@ const App: React.FC = () => {
             </button>
 
             <button
+              onClick={async () => { const t = await getToken({ template: 'supabase' }); if (t) { setOfAuthToken(t); setShowExtrato(true); } }}
+              className="min-w-[72px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 text-[#aeaeb2] transition-colors active:scale-95"
+            >
+              <div className="w-7 h-7 flex items-center justify-center rounded-[9px]">
+                <i className="fas fa-university text-lg"></i>
+              </div>
+              <span className="text-[9px] font-black uppercase tracking-wide">Extrato</span>
+            </button>
+
+            <button
               onClick={() => setShowSettings(true)}
               className="min-w-[72px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 text-[#aeaeb2] transition-colors active:scale-95"
             >
@@ -2307,6 +2321,19 @@ const App: React.FC = () => {
 
       {/* Spacer so bottom tab bar doesn't cover content on mobile */}
       <div className="lg:hidden h-20"></div>
+
+      {/* Open Finance — Extrato Bancário overlay */}
+      {showExtrato && ofAuthToken && householdId && (
+        <ExtratoBancario
+          householdId={householdId}
+          authToken={ofAuthToken}
+          items={items}
+          currentYear={currentActualYear}
+          currentMonth={currentActualMonth}
+          onAddPartial={handleAddPartial}
+          onClose={() => setShowExtrato(false)}
+        />
+      )}
 
       {/* Expense confirmation / entry sheet */}
       <ExpenseSheet

@@ -63,7 +63,10 @@ const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onClose, isNative =
         body: JSON.stringify({ origin: window.location.origin, plan: cycle, tier }),
       });
 
-      if (!res.ok) throw new Error('Erro ao criar sessão de pagamento');
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Erro ao criar sessão de pagamento');
+      }
       const { url } = await res.json();
       window.location.href = url;
     } catch (e: any) {

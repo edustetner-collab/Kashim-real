@@ -52,19 +52,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (!member) return res.status(403).json({ error: 'Forbidden' });
 
-  // Query coach_access — handle both column naming conventions
-  const { data: access } = await supabase
+  // Query coach_access — sem filtro de status para capturar todo histórico
+  const { data: allAccess } = await supabase
     .from('coach_access')
     .select('expires_at, coaching_ends_at, status')
     .eq('household_id', householdId)
-    .eq('status', 'approved')
     .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(5);
 
-  const expiresAt = access?.expires_at ?? access?.coaching_ends_at ?? null;
-  const hasCoach = !!access;
+  // isCoachClient: teve alguma vez um coach (qualquer status) → garante 5 meses de trial
+  const isCoachClient = (allAccess ?? []).length > 0;
+
+  // hasCoach + expired: baseado no registro 'approved' mais recente (acesso ativo)
+  const approvedRecord = (allAccess ?? []).find(r => r.status === 'approved') ?? null;
+  const expiresAt = approvedRecord?.expires_at ?? approvedRecord?.coaching_ends_at ?? null;
+  const hasCoach = !!approvedRecord;
   const expired = expiresAt ? new Date(expiresAt) < new Date() : false;
 
-  return res.status(200).json({ hasCoach, expired, expiresAt });
+  return res.status(200).json({ hasCoach, expired, expiresAt, isCoachClient });
 }
