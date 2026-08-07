@@ -232,6 +232,12 @@ const App: React.FC = () => {
       .catch(() => {});
   }, [db, user, isAdminByEnv]);
 
+  // Se o check de admin no banco confirmar depois do gate já ter sido ativado,
+  // fecha o gate imediatamente (race condition entre load e admin check).
+  useEffect(() => {
+    if (isAdmin && showSubscriptionGate) setShowSubscriptionGate(false);
+  }, [isAdmin, showSubscriptionGate]);
+
   const [showProjectionModal, setShowProjectionModal] = useState(false);
   const [pendingStartMonth, setPendingStartMonth] = useState<{month: number, year: number} | null>(null);
   const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '' });
@@ -343,9 +349,10 @@ const App: React.FC = () => {
           coachingEndsAt,
         });
         setAccessInfo(access);
-        // Nunca bloqueia: admin, nem coach visualizando cliente.
+        // Nunca bloqueia: admin (env OU banco), coach visualizando cliente,
+        // ou qualquer coach client com acesso ainda válido.
         // Para demais usuários, bloqueia ao expirar (decisão Eduardo 16/07).
-        if (!access.hasAccess && !isAdminByEnv && !coachViewHouseholdId) {
+        if (!access.hasAccess && !isAdmin && !coachViewHouseholdId) {
           setShowSubscriptionGate(true);
         }
 

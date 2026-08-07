@@ -43,8 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const isAdmin = ADMIN_IDS.includes(userId);
 
-  // Admins podem checar qualquer household (usam quando visualizam clientes).
-  // Não-admins precisam ser membros do household.
+  // Admins/coaches podem checar qualquer household sem ser membros.
   if (!isAdmin) {
     const { data: member } = await supabase
       .from('household_members')
@@ -55,26 +54,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!member) return res.status(403).json({ error: 'Forbidden' });
   }
 
-  // Busca TODOS os registros de coach_access para este household (qualquer status)
-  // → isCoachClient: household já esteve sob algum coach = merece trial estendido
-  const { data: allAccess } = await supabase
+  // ── 1. Tenta coach_access (select * para não explodir se alguma coluna não existe) ──
+  const { data: coachRows, error: caError } = await supabase
     .from('coach_access')
-    .select('expires_at, coaching_ends_at, status')
+    .select('*')
     .eq('household_id', householdId)
     .order('created_at', { ascending: false })
     .limit(10);
 
-  const records = allAccess ?? [];
+  if (caError) {
+    console.error('[check-coach-access] coach_access query error:', caError.message);
+  }
 
-  // isCoachClient: teve relação de coaching em qualquer status (inclusive antigos)
-  const isCoachClient = records.length > 0;
+  const records = coachRows ?? [];
+  const approvedRecord = records.find((r: any) => r.status === 'approved') ?? null;
 
-  // hasCoach / expired: baseado no registro 'approved' mais recente
-  const approvedRecord = records.find(r => r.status === 'approved') ?? null;
-  const coachingEndsAt = approvedRecord?.coaching_ends_at ?? approvedRecord?.expires_at ?? null;
+  // Tenta extrair a data de fim do coaching (nome da coluna pode variar)
+  const coachingEndsAt: string | null =
+    approvedRecord?.coaching_ends_at ??
+    approvedRecord?.expires_at ??
+    null;
+
   const hasCoach = !!approvedRecord;
-  // expired = data de fim passou. Se coaching_ends_at é null, nunca expira (legacy).
   const expired = coachingEndsAt ? new Date(coachingEndsAt) < new Date() : false;
+
+  // isCoachClient primário: tem qualquer registro em coach_access
+  let isCoachClient = records.length > 0;
+
+  // ── 2. Fallback: se coach_access vazio, checar se household foi criado pelo coach ──
+  // Households criados via create-client têm status='draft'. Espontâneos têm
+  // status='active' (set pelo ensure-household) ou null.
+  if (!isCoachClient) {
+    const { data: hh } = await supabase
+      .from('households')
+      .select('status, prospect_name, prospect_email')
+      .eq('id', householdId)
+      .maybeSingle();
+
+    // 'draft' ou presença de prospect_name/email = criado pelo coach
+    if (hh && (hh.status === 'draft' || hh.prospect_name || hh.prospect_email)) {
+      isCoachClient = true;
+    }
+  }
 
   return res.status(200).json({ hasCoach, expired, coachingEndsAt, isCoachClient });
 }
