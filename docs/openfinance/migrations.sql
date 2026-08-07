@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS bank_connections (
 ALTER TABLE bank_connections ENABLE ROW LEVEL SECURITY;
 
 -- Membro da casa gerencia suas próprias conexões
+DROP POLICY IF EXISTS "members_manage_bank_connections" ON bank_connections;
 CREATE POLICY "members_manage_bank_connections"
   ON bank_connections FOR ALL
   USING (
@@ -83,6 +84,7 @@ CREATE TABLE IF NOT EXISTS bank_transactions (
 
 ALTER TABLE bank_transactions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "members_manage_bank_transactions" ON bank_transactions;
 CREATE POLICY "members_manage_bank_transactions"
   ON bank_transactions FOR ALL
   USING (
@@ -118,6 +120,7 @@ CREATE TABLE IF NOT EXISTS merchant_memories (
 
 ALTER TABLE merchant_memories ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "members_manage_merchant_memories" ON merchant_memories;
 CREATE POLICY "members_manage_merchant_memories"
   ON merchant_memories FOR ALL
   USING (
