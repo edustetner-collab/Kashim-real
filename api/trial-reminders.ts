@@ -22,6 +22,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 // Espelho da regra de lib/access.ts (embutido: Vercel não empacota import
 // local em api/ — ver memória do projeto). Manter em sincronia!
 const TRIAL_MONTHS_COACH_CLIENT = 5;
+const TRIAL_DAYS_SELF = 30;
 
 const MILESTONES = [30, 15, 7, 1, 0] as const;
 type Milestone = (typeof MILESTONES)[number];
@@ -31,14 +32,21 @@ function addMonths(date: Date, months: number): Date {
   d.setMonth(d.getMonth() + months);
   return d;
 }
+function addDays(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
 function daysUntil(target: Date): number {
   return Math.ceil((target.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
 }
 
-// Trial unificado: 5 meses grátis para todos (decisão Eduardo, 2026-07-27),
-// independentemente de o perfil ter sido criado pelo consultor ou pela pessoa.
-function trialEndFor(createdAt: string, _isCoachClient: boolean): Date {
-  return addMonths(new Date(createdAt), TRIAL_MONTHS_COACH_CLIENT);
+// Trial (decisão Eduardo, 2026-08-07): cliente da consultoria (coach_access) =
+// 5 meses; cadastro espontâneo = 30 dias. Espelha lib/access.ts.
+function trialEndFor(createdAt: string, isCoachClient: boolean): Date {
+  return isCoachClient
+    ? addMonths(new Date(createdAt), TRIAL_MONTHS_COACH_CLIENT)
+    : addDays(new Date(createdAt), TRIAL_DAYS_SELF);
 }
 
 // ─── Conteúdo por marco ──────────────────────────────────────────────────────

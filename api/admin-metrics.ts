@@ -49,6 +49,18 @@ function addMonths(date: Date, months: number): Date {
   d.setMonth(d.getMonth() + months);
   return d;
 }
+function addDays(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+const TRIAL_DAYS_SELF = 30;
+// Fim do trial: 5 meses p/ cliente da consultoria, 30 dias p/ self-signup.
+function trialEndOf(createdAt: string, isCoachClient: boolean): Date {
+  return isCoachClient
+    ? addMonths(new Date(createdAt), TRIAL_MONTHS_COACH_CLIENT)
+    : addDays(new Date(createdAt), TRIAL_DAYS_SELF);
+}
 
 interface ClerkUser {
   id: string;
@@ -200,8 +212,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             if (isAnnual && !isHidden) payingAnnual++;
           }
         } else if (hh.created_at) {
-          const created = new Date(hh.created_at);
-          const trialEnd = addMonths(created, TRIAL_MONTHS_COACH_CLIENT);
+          const trialEnd = trialEndOf(hh.created_at, coach?.isCoachClient ?? false);
           if (trialEnd.getTime() > now) {
             status = 'trial';
             trialDaysLeft = Math.max(0, Math.ceil((trialEnd.getTime() - now) / (24 * 60 * 60 * 1000)));
