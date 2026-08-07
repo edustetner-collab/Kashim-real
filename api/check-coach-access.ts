@@ -41,7 +41,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { householdId } = req.query as { householdId?: string };
   if (!householdId) return res.status(400).json({ error: 'householdId required' });
 
-  const isAdmin = ADMIN_IDS.includes(userId);
+  let isAdmin = ADMIN_IDS.includes(userId);
+
+  // Fallback: se não está na lista de env vars, verifica se este usuário é coach
+  // de qualquer household (coach_clerk_user_id = userId). Isso detecta coaches
+  // mesmo que ADMIN_USER_IDS esteja com valor errado ou vazio no Vercel.
+  if (!isAdmin) {
+    const { data: coachRow } = await supabase
+      .from('coach_access')
+      .select('id')
+      .eq('coach_clerk_user_id', userId)
+      .limit(1)
+      .maybeSingle();
+    if (coachRow) isAdmin = true;
+  }
 
   // Admins/coaches podem checar qualquer household sem ser membros.
   if (!isAdmin) {
