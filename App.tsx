@@ -318,25 +318,34 @@ const App: React.FC = () => {
         const token = await getToken({ template: 'supabase' });
         const coachAccessRes = await fetch(`/api/check-coach-access?householdId=${hId}`, {
           headers: { Authorization: `Bearer ${token}` },
-        }).then(r => r.ok ? r.json() : null).catch(() => null) as { hasCoach: boolean; expired: boolean; isCoachClient?: boolean } | null;
+        }).then(r => r.ok ? r.json() : null).catch(() => null) as {
+          hasCoach: boolean;
+          expired: boolean;
+          coachingEndsAt?: string | null;
+          isCoachClient?: boolean;
+        } | null;
         const coachExpired = coachAccessRes?.expired ?? false;
         const hasCoach = coachAccessRes?.hasCoach ?? false;
-        // isCoachClient: teve ou tem coach (qualquer status) → 5 meses de trial
+        const coachingEndsAt = coachAccessRes?.coachingEndsAt ?? null;
+        // isCoachClient: teve ou tem coach (qualquer status) → grace period estendido
         const isCoachClient = coachAccessRes?.isCoachClient ?? hasCoach;
 
-        // Trial: 5 meses p/ cliente da consultoria (coach_access), 30 dias p/
-        // cadastro espontâneo + assinatura paga + consultor ativo
+        // Regra de acesso:
+        // - Coach ativo → ilimitado
+        // - Coach encerrado → 5 meses de grace a partir do fim do coaching
+        // - Espontâneo → 30 dias
         const access = computeAccess({
           createdAt: (household as any)?.created_at,
           subscriptionStatus: status,
           subscriptionExpiresAt: (household as any)?.subscription_expires_at,
           hasActiveCoach: hasCoach && !coachExpired,
           isCoachClient,
+          coachingEndsAt,
         });
         setAccessInfo(access);
-        // Admin nunca vê o gate. Para demais usuários, bloqueia em TODAS as
-        // plataformas ao expirar (decisão Eduardo 16/07).
-        if (!access.hasAccess && !isAdminByEnv) {
+        // Nunca bloqueia: admin, nem coach visualizando cliente.
+        // Para demais usuários, bloqueia ao expirar (decisão Eduardo 16/07).
+        if (!access.hasAccess && !isAdminByEnv && !coachViewHouseholdId) {
           setShowSubscriptionGate(true);
         }
 

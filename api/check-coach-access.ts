@@ -29,45 +29,52 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!
 );
 
-function getUserId(authHeader?: string): string | null {
-  return verifyAuthToken(authHeader)?.sub ?? null;
-}
+const ADMIN_IDS = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
-  const userId = getUserId(req.headers.authorization as string);
-  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const claims = verifyAuthToken(req.headers.authorization as string);
+  if (!claims) return res.status(401).json({ error: 'Unauthorized' });
+  const userId = claims.sub;
 
   const { householdId } = req.query as { householdId?: string };
   if (!householdId) return res.status(400).json({ error: 'householdId required' });
 
-  // Confirm user belongs to this household
-  const { data: member } = await supabase
-    .from('household_members')
-    .select('id')
-    .eq('household_id', householdId)
-    .eq('clerk_user_id', userId)
-    .maybeSingle();
+  const isAdmin = ADMIN_IDS.includes(userId);
 
-  if (!member) return res.status(403).json({ error: 'Forbidden' });
+  // Admins podem checar qualquer household (usam quando visualizam clientes).
+  // Não-admins precisam ser membros do household.
+  if (!isAdmin) {
+    const { data: member } = await supabase
+      .from('household_members')
+      .select('id')
+      .eq('household_id', householdId)
+      .eq('clerk_user_id', userId)
+      .maybeSingle();
+    if (!member) return res.status(403).json({ error: 'Forbidden' });
+  }
 
-  // Query coach_access — sem filtro de status para capturar todo histórico
+  // Busca TODOS os registros de coach_access para este household (qualquer status)
+  // → isCoachClient: household já esteve sob algum coach = merece trial estendido
   const { data: allAccess } = await supabase
     .from('coach_access')
     .select('expires_at, coaching_ends_at, status')
     .eq('household_id', householdId)
     .order('created_at', { ascending: false })
-    .limit(5);
+    .limit(10);
 
-  // isCoachClient: teve alguma vez um coach (qualquer status) → garante 5 meses de trial
-  const isCoachClient = (allAccess ?? []).length > 0;
+  const records = allAccess ?? [];
 
-  // hasCoach + expired: baseado no registro 'approved' mais recente (acesso ativo)
-  const approvedRecord = (allAccess ?? []).find(r => r.status === 'approved') ?? null;
-  const expiresAt = approvedRecord?.expires_at ?? approvedRecord?.coaching_ends_at ?? null;
+  // isCoachClient: teve relação de coaching em qualquer status (inclusive antigos)
+  const isCoachClient = records.length > 0;
+
+  // hasCoach / expired: baseado no registro 'approved' mais recente
+  const approvedRecord = records.find(r => r.status === 'approved') ?? null;
+  const coachingEndsAt = approvedRecord?.coaching_ends_at ?? approvedRecord?.expires_at ?? null;
   const hasCoach = !!approvedRecord;
-  const expired = expiresAt ? new Date(expiresAt) < new Date() : false;
+  // expired = data de fim passou. Se coaching_ends_at é null, nunca expira (legacy).
+  const expired = coachingEndsAt ? new Date(coachingEndsAt) < new Date() : false;
 
-  return res.status(200).json({ hasCoach, expired, expiresAt, isCoachClient });
+  return res.status(200).json({ hasCoach, expired, coachingEndsAt, isCoachClient });
 }

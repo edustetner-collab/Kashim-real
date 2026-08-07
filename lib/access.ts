@@ -7,14 +7,12 @@ export interface AccessInfo {
   daysLeft: number | null;
 }
 
-// Regra de trial (decisão Eduardo, 2026-08-07):
-// - Cliente da CONSULTORIA (perfil criado pelo Eduardo/assistente — tem
-//   coach_access): 5 meses grátis.
-// - Cadastro ESPONTÂNEO (pessoa entrou sozinha pelo site/app): 30 dias grátis.
-// (Reverte a unificação de 27/07; volta a diferenciar, agora que o produto vai
-// ser vendido ao público — só os clientes do Eduardo ganham os 5 meses.)
-export const TRIAL_MONTHS = 5;      // cliente da consultoria (coach_access)
-export const TRIAL_DAYS_SELF = 30;  // cadastro espontâneo
+// Regra de trial:
+// - Coach ativo → acesso ilimitado (mode: 'coach')
+// - Coaching encerrado → 5 meses de grace period a partir do fim do coaching
+// - Cadastro espontâneo (sem coach) → 30 dias de trial a partir do created_at
+export const TRIAL_MONTHS = 5;
+export const TRIAL_DAYS_SELF = 30;
 
 // Compat: nome antigo ainda importado por api/admin-metrics.ts.
 export const TRIAL_MONTHS_COACH_CLIENT = TRIAL_MONTHS;
@@ -37,24 +35,36 @@ function daysUntil(target: Date): number {
 }
 
 /**
- * Determina o acesso do usuário sem gravar nada no banco — o trial é derivado
- * do created_at da conta. Ordem: consultor ativo → assinatura paga → trial
- * (5 meses se isCoachClient; 30 dias se cadastro espontâneo) → expirado.
+ * Determina acesso do usuário sem gravar nada no banco.
+ *
+ * Ordem de verificação:
+ * 1. Coach ativo (hasActiveCoach) → acesso ilimitado
+ * 2. Assinatura paga vigente → acesso pago
+ * 3. Cliente da consultoria (isCoachClient):
+ *    - Trial = 5 meses a partir de quando o coaching TERMINOU (coachingEndsAt)
+ *    - Se coaching nunca teve data de fim (legacy) → 5 meses a partir do created_at
+ *    - Fallback: se não tiver nem coachingEndsAt nem created_at → acesso liberado
+ * 4. Cadastro espontâneo → 30 dias a partir do created_at
+ * 5. Expirado
  */
 export function computeAccess(params: {
   createdAt?: string | null;
   subscriptionStatus?: string | null;
   subscriptionExpiresAt?: string | null;
   hasActiveCoach?: boolean;
-  /** true se o household tem (ou já teve) coach_access aprovado — cliente da consultoria */
+  /** true se o household tem (ou já teve) coach_access — cliente da consultoria */
   isCoachClient?: boolean;
+  /** Data em que o coaching encerrou (coaching_ends_at da API). null = ainda ativo ou sem data. */
+  coachingEndsAt?: string | null;
 }): AccessInfo {
   const now = Date.now();
 
+  // 1. Coach ativo: acesso ilimitado
   if (params.hasActiveCoach) {
     return { mode: 'coach', hasAccess: true, endsAt: null, daysLeft: null };
   }
 
+  // 2. Assinatura paga vigente
   if (params.subscriptionStatus === 'active' && params.subscriptionExpiresAt) {
     const exp = new Date(params.subscriptionExpiresAt);
     if (exp.getTime() > now) {
@@ -62,11 +72,35 @@ export function computeAccess(params: {
     }
   }
 
+  // 3. Cliente da consultoria: 5 meses a partir do FIM do coaching
+  if (params.isCoachClient) {
+    if (params.coachingEndsAt) {
+      // Coaching já terminou → grace period de 5 meses a partir de quando terminou
+      const trialEnd = addMonths(new Date(params.coachingEndsAt), TRIAL_MONTHS);
+      if (trialEnd.getTime() > now) {
+        return { mode: 'trial', hasAccess: true, endsAt: trialEnd, daysLeft: daysUntil(trialEnd) };
+      }
+      // Grace period também encerrou → expirado
+      return { mode: 'expired', hasAccess: false, endsAt: null, daysLeft: 0 };
+    }
+
+    // Legacy: coaching sem data de fim definida (criado antes da feature)
+    // → 5 meses a partir do created_at como fallback
+    if (params.createdAt) {
+      const trialEnd = addMonths(new Date(params.createdAt), TRIAL_MONTHS);
+      if (trialEnd.getTime() > now) {
+        return { mode: 'trial', hasAccess: true, endsAt: trialEnd, daysLeft: daysUntil(trialEnd) };
+      }
+      return { mode: 'expired', hasAccess: false, endsAt: null, daysLeft: 0 };
+    }
+
+    // Sem nenhuma data → libera (melhor errar pelo acesso do que bloquear indevidamente)
+    return { mode: 'trial', hasAccess: true, endsAt: null, daysLeft: null };
+  }
+
+  // 4. Cadastro espontâneo: 30 dias a partir do created_at
   if (params.createdAt) {
-    const created = new Date(params.createdAt);
-    const trialEnd = params.isCoachClient
-      ? addMonths(created, TRIAL_MONTHS)
-      : addDays(created, TRIAL_DAYS_SELF);
+    const trialEnd = addDays(new Date(params.createdAt), TRIAL_DAYS_SELF);
     if (trialEnd.getTime() > now) {
       return { mode: 'trial', hasAccess: true, endsAt: trialEnd, daysLeft: daysUntil(trialEnd) };
     }
