@@ -709,6 +709,17 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           {hasPayment ? paymentLabel : 'Forma de pagamento pendente'}
                           <i className="fas fa-chevron-down text-[8px] opacity-50 ml-0.5"></i>
                         </button>
+                        {category === CategoryType.VARIABLE_EXPENSE && (() => {
+                          const linkedCard = item.linkedCardId ? allCards.find(c => c.id === item.linkedCardId) : null;
+                          if (!linkedCard || item.linkType === LinkType.DEBIT) return null;
+                          let faturaLabel = '→ próxima fatura';
+                          if (linkedCard.closingDay) {
+                            const faturaMonthIdx = new Date().getDate() >= linkedCard.closingDay ? mobileMonthIdx + 1 : mobileMonthIdx;
+                            const faturaMonthData = months[Math.min(faturaMonthIdx, months.length - 1)];
+                            if (faturaMonthData) faturaLabel = `→ fatura ${faturaMonthData.monthName}`;
+                          }
+                          return <span className="text-[9px] text-[#aeaeb2] italic">{faturaLabel}</span>;
+                        })()}
                         {category !== CategoryType.VARIABLE_EXPENSE && (() => {
                           const linkedCard = item.linkedCardId ? allCards.find(c => c.id === item.linkedCardId) : null;
                           const isCardLinked = !!(linkedCard && item.linkType !== LinkType.DEBIT);
@@ -1059,6 +1070,17 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                               {formatCurrency(displayValue)}
                             </div>
                           );
+                        })()}
+                        {category === CategoryType.VARIABLE_EXPENSE && (() => {
+                          const linkedCard = item.linkedCardId ? allCards.find(c => c.id === item.linkedCardId) : null;
+                          if (!linkedCard || item.linkType === LinkType.DEBIT) return null;
+                          let faturaLabel = '→ próxima fatura';
+                          if (linkedCard.closingDay) {
+                            const faturaMonthIdx = new Date().getDate() >= linkedCard.closingDay ? mIdx + 1 : mIdx;
+                            const faturaMonthData = months[Math.min(faturaMonthIdx, months.length - 1)];
+                            if (faturaMonthData) faturaLabel = `→ fatura ${faturaMonthData.monthName}`;
+                          }
+                          return <div className="text-[8px] text-zinc-400 italic mt-0.5">{faturaLabel}</div>;
                         })()}
                         {category === CategoryType.CREDIT_CARD && mIdx > 0 && (() => {
                           const tracked = trackedByCardAllMonths?.[item.id]?.[mIdx] ?? 0;
