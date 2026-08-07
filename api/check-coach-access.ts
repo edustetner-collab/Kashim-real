@@ -89,7 +89,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     null;
 
   const hasCoach = !!approvedRecord;
-  const expired = coachingEndsAt ? new Date(coachingEndsAt) < new Date() : false;
+
+  // CRÍTICO: `expired` NÃO pode vir de coaching_ends_at. Essa coluna é gravada
+  // uma única vez na criação do perfil (created_at + 5 meses) e NUNCA é
+  // atualizada — para todo cliente com mais de 5 meses de casa ela está no
+  // passado, o que derrubava hasActiveCoach e mandava o cliente para o gate de
+  // pagamento mesmo com a consultoria ativa (bug real 2026-08-07, atingia todos
+  // os ~50 clientes antigos).
+  //
+  // Quem encerra a consultoria é o COACH, revogando o acesso (status='revoked'
+  // via ClientSettings). Enquanto existe registro 'approved', o cliente está sob
+  // o guarda-chuva do coach e tem acesso total. `coaching_ends_at` fica apenas
+  // como informação de agenda.
+  const expired = false;
 
   // isCoachClient primário: tem qualquer registro em coach_access
   let isCoachClient = records.length > 0;

@@ -331,24 +331,51 @@ const App: React.FC = () => {
           isCoachClient?: boolean;
           isAdminVerified?: boolean;
         } | null;
-        const coachExpired = coachAccessRes?.expired ?? false;
-        const hasCoach = coachAccessRes?.hasCoach ?? false;
+        let hasCoach = coachAccessRes?.hasCoach ?? false;
         const coachingEndsAt = coachAccessRes?.coachingEndsAt ?? null;
         // isCoachClient: teve ou tem coach (qualquer status) → grace period estendido
-        const isCoachClient = coachAccessRes?.isCoachClient ?? hasCoach;
+        let isCoachClient = coachAccessRes?.isCoachClient ?? hasCoach;
         // Admin confirmado pelo servidor (não depende de VITE_ do frontend)
         const serverConfirmedAdmin = coachAccessRes?.isAdminVerified ?? false;
         if (serverConfirmedAdmin && !isAdminByEnv) setIsAdminByDb(true);
 
+        // Rede/API caiu (coachAccessRes === null): NUNCA assume que a pessoa não
+        // tem coach — isso mandava cliente da consultoria direto para o gate de
+        // pagamento. Consulta coach_access pelo cliente Supabase (o RLS libera o
+        // próprio household — é a mesma query que o ClientSettings usa para
+        // mostrar "Consultor com acesso ativo").
+        if (!coachAccessRes) {
+          try {
+            const { data: ownCoachRows } = await db!
+              .from('coach_access')
+              .select('status')
+              .eq('household_id', hId);
+            if (ownCoachRows && ownCoachRows.length > 0) {
+              isCoachClient = true;
+              if (ownCoachRows.some((r: any) => r.status === 'approved')) hasCoach = true;
+            } else {
+              // Nem a API nem o fallback responderam de forma conclusiva.
+              // Não temos prova de que é cadastro espontâneo → não bloqueia.
+              isCoachClient = true;
+            }
+          } catch {
+            isCoachClient = true; // erro de rede nunca bloqueia
+          }
+        }
+
         // Regra de acesso:
-        // - Coach ativo → ilimitado
-        // - Coach encerrado → 5 meses de grace a partir do fim do coaching
+        // - Registro 'approved' em coach_access → acesso ilimitado (o coach
+        //   encerra revogando o acesso, não por data — ver check-coach-access)
+        // - Já foi cliente do coach (revogado) → 5 meses de grace
         // - Espontâneo → 30 dias
+        // NÃO usar `&& !coachExpired` aqui: coaching_ends_at é gravado uma vez na
+        // criação e nunca atualizado, então ficava no passado para todo cliente
+        // antigo e derrubava o acesso de quem está com a consultoria ativa.
         const access = computeAccess({
           createdAt: (household as any)?.created_at,
           subscriptionStatus: status,
           subscriptionExpiresAt: (household as any)?.subscription_expires_at,
-          hasActiveCoach: hasCoach && !coachExpired,
+          hasActiveCoach: hasCoach,
           isCoachClient,
           coachingEndsAt,
         });
@@ -1787,7 +1814,10 @@ const App: React.FC = () => {
       {/* Oculto no app nativo: no iOS o acesso é gratuito e ilimitado, então
           falar em "acesso grátis terminando" implicaria uma assinatura que não
           existe ali (Apple 3.1.1). */}
-      {accessInfo && !isNativeApp && !coachViewHouseholdId && (accessInfo.mode === 'trial' || accessInfo.mode === 'expired') && (
+      {/* daysLeft === null = cliente da consultoria sem contagem regressiva
+          (acesso vale enquanto o coach não revogar) → nada de banner. */}
+      {accessInfo && !isNativeApp && !coachViewHouseholdId && !isAdmin
+        && (accessInfo.mode === 'expired' || (accessInfo.mode === 'trial' && accessInfo.daysLeft !== null)) && (
         <div className={`flex items-center justify-center gap-2 text-[11px] font-black uppercase tracking-wide py-2 px-4 ${
           accessInfo.mode === 'expired'
             ? 'bg-[#fff0f0] text-[#ff3b30]'

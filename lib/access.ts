@@ -72,29 +72,26 @@ export function computeAccess(params: {
     }
   }
 
-  // 3. Cliente da consultoria: 5 meses a partir do FIM do coaching
+  // 3. Cliente da consultoria (tem ou já teve coach_access).
+  //
+  // NUNCA bloqueia automaticamente. Quem encerra o vínculo é o coach, revogando
+  // o acesso no painel — e mesmo depois de revogado o cliente ganha 5 meses de
+  // grace period. Bloquear por data aqui derrubava clientes ativos da
+  // consultoria (bug real 2026-08-07): coaching_ends_at é gravado uma única vez
+  // na criação do perfil e fica no passado para qualquer cliente com mais de 5
+  // meses de casa.
   if (params.isCoachClient) {
-    if (params.coachingEndsAt) {
-      // Coaching já terminou → grace period de 5 meses a partir de quando terminou
-      const trialEnd = addMonths(new Date(params.coachingEndsAt), TRIAL_MONTHS);
+    const graceFrom = params.coachingEndsAt ?? params.createdAt ?? null;
+    if (graceFrom) {
+      const trialEnd = addMonths(new Date(graceFrom), TRIAL_MONTHS);
       if (trialEnd.getTime() > now) {
         return { mode: 'trial', hasAccess: true, endsAt: trialEnd, daysLeft: daysUntil(trialEnd) };
       }
-      // Grace period também encerrou → expirado
-      return { mode: 'expired', hasAccess: false, endsAt: null, daysLeft: 0 };
     }
-
-    // Legacy: coaching sem data de fim definida (criado antes da feature)
-    // → 5 meses a partir do created_at como fallback
-    if (params.createdAt) {
-      const trialEnd = addMonths(new Date(params.createdAt), TRIAL_MONTHS);
-      if (trialEnd.getTime() > now) {
-        return { mode: 'trial', hasAccess: true, endsAt: trialEnd, daysLeft: daysUntil(trialEnd) };
-      }
-      return { mode: 'expired', hasAccess: false, endsAt: null, daysLeft: 0 };
-    }
-
-    // Sem nenhuma data → libera (melhor errar pelo acesso do que bloquear indevidamente)
+    // Datas vencidas ou ausentes: mantém o acesso liberado, sem contagem
+    // regressiva na tela. Cliente da consultoria só perde acesso quando o coach
+    // revoga (aí hasCoach=false e isCoachClient continua true → 5 meses de grace
+    // contados da revogação).
     return { mode: 'trial', hasAccess: true, endsAt: null, daysLeft: null };
   }
 
