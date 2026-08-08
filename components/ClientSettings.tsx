@@ -8,6 +8,7 @@ import { MONTHS_BR } from '../constants';
 import { NotifPrefs, getNotifPrefs, saveNotifPrefs } from '../lib/notifPrefs';
 import { scheduleTestNotification, scheduleTestQuoteNotification } from '../lib/notifications';
 import InvitePartner from './InvitePartner';
+import ConectarBanco from './ConectarBanco';
 
 interface ClientSettingsProps {
   db: SupabaseClient;
@@ -39,6 +40,7 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
   const { signIn, setActive } = useSignIn();
   const { getToken } = useAuth();
   const [tab, setTab] = useState<SettingsTab>('conta');
+  const [showConectarBanco, setShowConectarBanco] = useState(false);
 
   // Subscription
   const [subLoading, setSubLoading] = useState(false);
@@ -352,6 +354,7 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
   );
 
   return (
+    <>
     <div className="fixed inset-0 z-[200] overflow-y-auto bg-black/80 backdrop-blur-sm flex items-start justify-center p-4 pt-10">
       <div className="max-w-2xl w-full pb-16">
 
@@ -414,6 +417,22 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
                 <i className="fas fa-file-pdf text-red-400"></i> Exportar relatório (PDF)
               </button>
             </div>
+
+            {/* Open Finance — visível só para o Eduardo durante os testes. Remover o wrapper quando abrir para todos. */}
+            {user?.emailAddresses.some(e => e.emailAddress === 'eduardo_cda@hotmail.com') && (
+            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 mb-4">
+              <h3 className="text-white font-black uppercase italic tracking-tight mb-1 flex items-center gap-2">
+                <i className="fas fa-university text-green-400"></i>Bancos conectados
+              </h3>
+              <p className="text-zinc-500 text-xs mb-5">Conecte seu banco para importar seus gastos automaticamente.</p>
+              <button
+                onClick={() => setShowConectarBanco(true)}
+                className="w-full bg-green-500 hover:bg-green-400 text-black font-black py-3 rounded-2xl transition-all text-sm uppercase tracking-widest flex items-center justify-center gap-2"
+              >
+                <i className="fas fa-link"></i> Gerenciar bancos
+              </button>
+            </div>
+            )}
 
             {/* Password */}
             <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 mb-4">
@@ -888,6 +907,14 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
 
       </div>
     </div>
+
+    {showConectarBanco && (
+      <ConectarBanco
+        householdId={householdId}
+        onClose={() => setShowConectarBanco(false)}
+      />
+    )}
+    </>
   );
 };
 

@@ -33,3 +33,12 @@ dist-ssr
 # Android signing keys (NEVER commit)
 *.keystore
 *.jks
+.env*.local
+
+# Anotações com segredos guardadas soltas na pasta (tokens, webhooks, senhas).
+# Não confiar em lembrar de não commitar — bloquear pelo nome.
+*webhook*.txt
+*segredo*.txt
+*secret*.txt
+*token*.txt
+*credenciais*.txt
