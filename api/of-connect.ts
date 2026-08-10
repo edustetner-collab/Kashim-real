@@ -50,6 +50,12 @@ const TS_BASE_URL = (process.env.TECHNOSPEED_BASE_URL ?? 'https://api.pagamentob
 const TS_CNPJ_SH = process.env.TECHNOSPEED_CNPJ_SH ?? '';
 const TS_TOKEN_SH = process.env.TECHNOSPEED_TOKEN_SH ?? '';
 
+// Proxy de IP fixo (Droplet DigitalOcean). A Technospeed libera por IP e o
+// Vercel não tem IP de saída estável, então toda chamada passa por aqui.
+// Sem PROXY_URL configurado, cai no caminho direto (útil em dev).
+const PROXY_URL = (process.env.PROXY_URL ?? '').replace(/\/$/, '');
+const PROXY_SECRET = process.env.PROXY_SECRET ?? '';
+
 class TSError extends Error {
   constructor(
     public readonly status: number,
@@ -67,7 +73,37 @@ interface TSAccountInfo {
   openfinanceLink?: string | null;
 }
 
+/** Chama a Technospeed através do proxy de IP fixo. */
+async function tsViaProxy<T>(method: string, path: string, payerCpf: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${PROXY_URL}/proxy`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${PROXY_SECRET}`,
+    },
+    body: JSON.stringify({ method, path, payerCpf, body }),
+  });
+
+  const text = await res.text();
+  let parsed: unknown;
+  try { parsed = JSON.parse(text); } catch { parsed = text; }
+
+  // O proxy devolve { status, body } repetindo o status original da Technospeed.
+  // Qualquer outro formato é falha do próprio proxy (401, 502, fora do ar).
+  const envelope = parsed && typeof parsed === 'object' && 'status' in parsed
+    ? parsed as { status: number; body: unknown }
+    : null;
+  if (!envelope) throw new TSError(res.status, path, parsed);
+
+  if (envelope.status < 200 || envelope.status >= 300) {
+    throw new TSError(envelope.status, path, envelope.body);
+  }
+  return envelope.body as T;
+}
+
 async function tsReq<T>(method: string, path: string, payerCpf: string, body?: unknown): Promise<T> {
+  if (PROXY_URL) return tsViaProxy<T>(method, path, payerCpf, body);
+
   const res = await fetch(`${TS_BASE_URL}${path}`, {
     method,
     headers: {

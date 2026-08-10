@@ -1,6 +1,6 @@
 # Open Finance — estado atual
 
-> Última atualização: **2026-08-08**
+> Última atualização: **2026-08-10**
 > Leia isto primeiro ao retomar. Para o **comportamento** desejado do produto,
 > ver [design-produto.md](design-produto.md). Este documento é sobre **onde
 > paramos**.
@@ -11,7 +11,9 @@
 
 Todo o código está escrito, deployado e verificado — mas **nenhuma chamada real
 à API da Technospeed jamais funcionou**, porque o acesso está bloqueado por
-firewall no lado deles. Chamado **#884774** aberto, aguardando resposta.
+firewall no lado deles. Eles confirmaram que liberam **por IP**; o proxy de IP
+fixo já está no ar (`137.184.195.94`) e o IP foi enviado no formulário deles em
+**2026-08-10**. Aguardando a liberação para o primeiro teste real.
 
 ---
 
@@ -37,6 +39,9 @@ ainda não ativadas). Só a Technospeed resolve.
 
 ### Reproduzir o diagnóstico
 
+Rodar **de dentro do Droplet** (`ssh root@137.184.195.94`) — é o único IP que a
+Technospeed vai liberar. Rodar do PC ou do Vercel dá 403 para sempre.
+
 ```bash
 curl -i https://api.pagamentobancario.com.br/
 # 403 + HTML + "server: awselb/2.0"  → segue bloqueado
@@ -49,17 +54,75 @@ curl -i https://api.pagamentobancario.com.br/
 
 Ambas estão nos chamados. **Não construir mais nada até serem respondidas.**
 
-### 1. Exigem IP fixo?
+### 1. Exigem IP fixo? — **RESPONDIDA: sim**
 
-Se sim, **Vercel serverless não serve** — o IP de saída é dinâmico e muda a cada
-execução. Seria preciso um proxy com IP fixo (VPS pequena) ou liberação sem
-restrição de IP.
+Confirmado em 2026-08-10: eles liberam por IP, via formulário. Como o Vercel não
+tem IP de saída estável, foi montado um proxy dedicado — ver
+[a seção do proxy](#proxy-de-ip-fixo) abaixo.
 
 ### 2. O limite de 1 protocolo a cada 6h é por conta ou por Software House?
 
 Se for **por Software House**, o modelo não fecha para finanças pessoais: seriam
 4 sincronizações por dia divididas entre *todos* os clientes. Nesse caso vale
 reavaliar ir direto na Pluggy (que a Technospeed usa por baixo), Belvo ou Klavi.
+
+---
+
+## Proxy de IP fixo
+
+A Technospeed libera acesso **por IP**. Vercel serverless muda de IP a cada
+execução, então nenhuma rota `api/of-*.ts` fala com a Technospeed diretamente:
+todas passam por um proxy próprio com IP fixo.
+
+| item | valor |
+|---|---|
+| Servidor | Droplet DigitalOcean, Ubuntu 24.04, US$4/mês, região NYC1 |
+| **IP liberado na Technospeed** | **`137.184.195.94`** |
+| Porta | 3000 |
+| Código | repo privado `edustetner-collab/Kashim-proxy`, clonado em `/app` |
+| Processo | PM2, app `kashim-proxy` |
+| Credenciais Technospeed | vivem **só** em `/app/.env` no Droplet, nunca no Vercel |
+
+### Como funciona
+
+O Vercel chama `POST http://137.184.195.94:3000/proxy` com
+`Authorization: Bearer $PROXY_SECRET` e corpo
+`{ method, path, payerCpf, body }`. O proxy anexa `cnpjsh`/`tokensh`, repassa
+para a Technospeed e devolve `{ status, body }` com o status original.
+
+Nas rotas, `tsReq()` desvia para `tsViaProxy()` quando `PROXY_URL` está
+definida. Sem `PROXY_URL`, o caminho direto antigo continua valendo — útil em
+dev, inútil em produção (o IP do Vercel não está liberado).
+
+Variáveis no Vercel (produção): `PROXY_URL`, `PROXY_SECRET`.
+As `TECHNOSPEED_*` ficaram no Vercel mas **não são mais usadas** enquanto
+`PROXY_URL` existir.
+
+### Operação no Droplet
+
+```bash
+ssh root@137.184.195.94
+pm2 status                 # estado
+pm2 logs kashim-proxy      # logs
+cd /app && git pull        # atualizar código
+set -a; . .env; set +a; pm2 restart kashim-proxy --update-env
+```
+
+Teste de vida (de qualquer lugar):
+
+```bash
+curl -H "Authorization: Bearer $PROXY_SECRET" http://137.184.195.94:3000/health
+# {"ok":true}
+```
+
+### Pendência: o tráfego Vercel→proxy é HTTP puro
+
+O CPF do usuário e as transações bancárias trafegam **sem TLS** entre o Vercel e
+o Droplet. As credenciais da Technospeed não passam por aí (ficam no Droplet),
+mas dado pessoal em claro na internet é problema de LGPD. **Resolver antes do
+primeiro usuário real**: apontar `proxy.kashim.com.br` (registro A) para
+`137.184.195.94`, instalar Caddy no Droplet (certificado Let's Encrypt
+automático) e trocar `PROXY_URL` para `https://proxy.kashim.com.br`.
 
 ---
 
@@ -186,10 +249,14 @@ bancos sai inteiro. **Por isso não vale mexer na tela antes da resposta.**
 
 ## Próximos passos, na ordem
 
-1. ⏳ Resposta do chamado **#884774** (bloqueio) e do segundo chamado (PF/bankCode)
-2. Se destravar: testar o fluxo real ponta a ponta em **staging**
-3. Cadastrar o webhook na API deles:
+1. ⏳ Technospeed liberar o IP `137.184.195.94` (formulário enviado em 2026-08-10)
+2. Assim que liberar: rodar o curl de diagnóstico **de dentro do Droplet** —
+   é o único lugar com o IP liberado
+3. Testar o fluxo real ponta a ponta em **staging**
+4. Cadastrar o webhook na API deles:
    `https://kashim.com.br/api/of-webhook?secret=<OF_WEBHOOK_SECRET>`
-4. Simplificar a tela conforme a resposta sobre `bankCode`
-5. Retomar a [ordem de implementação](design-produto.md#7-ordem-sugerida-de-implementação)
+5. Colocar TLS no proxy antes de qualquer usuário real
+   (ver [Pendência: HTTP puro](#pendência-o-tráfego-vercelproxy-é-http-puro))
+6. Simplificar a tela conforme a resposta sobre `bankCode`
+7. Retomar a [ordem de implementação](design-produto.md#7-ordem-sugerida-de-implementação)
    a partir da etapa 5 — alimentar categorias e tetos com transação real
