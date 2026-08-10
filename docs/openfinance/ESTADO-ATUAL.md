@@ -111,9 +111,13 @@ cd /app && git pull        # atualizar código
 set -a; . .env; set +a; pm2 restart kashim-proxy --update-env
 ```
 
-Sem chave SSH configurada — o acesso é por senha de root. Se ela se perder, o
-caminho é o painel da DigitalOcean: **Droplets → ⋯ → Access console** (entra sem
-senha) ou **Access → Reset Root Password**.
+O acesso é por chave SSH (`~/.ssh/id_ed25519` do PC do Eduardo, a mesma do
+GitHub) — não pede senha. Se a chave se perder, o caminho de recuperação é o
+painel da DigitalOcean: **Droplets → ⋯ → Access console** entra sem senha
+nenhuma; **Access → Reset Root Password** gera uma senha nova por e-mail.
+
+`caddy`, `pm2-root` e `ufw` estão todos `enabled` no boot — o servidor pode
+reiniciar sozinho que tudo volta.
 
 Teste de vida (de qualquer lugar):
 
