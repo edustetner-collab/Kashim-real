@@ -78,14 +78,16 @@ todas passam por um proxy próprio com IP fixo.
 |---|---|
 | Servidor | Droplet DigitalOcean, Ubuntu 24.04, US$4/mês, região NYC1 |
 | **IP liberado na Technospeed** | **`137.184.195.94`** |
-| Porta | 3000 |
+| Endereço público | `https://proxy.kashim.com.br` (registro A na GoDaddy) |
+| TLS | Caddy 2.6.2, certificado Let's Encrypt renovado sozinho |
+| Firewall | `ufw` ativo — só 22, 80 e 443. A porta 3000 do Node só responde de dentro |
 | Código | repo privado `edustetner-collab/Kashim-proxy`, clonado em `/app` |
 | Processo | PM2, app `kashim-proxy` |
 | Credenciais Technospeed | vivem **só** em `/app/.env` no Droplet, nunca no Vercel |
 
 ### Como funciona
 
-O Vercel chama `POST http://137.184.195.94:3000/proxy` com
+O Vercel chama `POST https://proxy.kashim.com.br/proxy` com
 `Authorization: Bearer $PROXY_SECRET` e corpo
 `{ method, path, payerCpf, body }`. O proxy anexa `cnpjsh`/`tokensh`, repassa
 para a Technospeed e devolve `{ status, body }` com o status original.
@@ -102,27 +104,34 @@ As `TECHNOSPEED_*` ficaram no Vercel mas **não são mais usadas** enquanto
 
 ```bash
 ssh root@137.184.195.94
-pm2 status                 # estado
-pm2 logs kashim-proxy      # logs
+pm2 status                 # estado do proxy
+pm2 logs kashim-proxy      # logs do proxy
+systemctl status caddy     # estado do TLS
 cd /app && git pull        # atualizar código
 set -a; . .env; set +a; pm2 restart kashim-proxy --update-env
 ```
 
+Sem chave SSH configurada — o acesso é por senha de root. Se ela se perder, o
+caminho é o painel da DigitalOcean: **Droplets → ⋯ → Access console** (entra sem
+senha) ou **Access → Reset Root Password**.
+
 Teste de vida (de qualquer lugar):
 
 ```bash
-curl -H "Authorization: Bearer $PROXY_SECRET" http://137.184.195.94:3000/health
+curl -H "Authorization: Bearer $PROXY_SECRET" https://proxy.kashim.com.br/health
 # {"ok":true}
 ```
 
-### Pendência: o tráfego Vercel→proxy é HTTP puro
+### TLS — resolvido em 2026-08-10
 
-O CPF do usuário e as transações bancárias trafegam **sem TLS** entre o Vercel e
-o Droplet. As credenciais da Technospeed não passam por aí (ficam no Droplet),
-mas dado pessoal em claro na internet é problema de LGPD. **Resolver antes do
-primeiro usuário real**: apontar `proxy.kashim.com.br` (registro A) para
-`137.184.195.94`, instalar Caddy no Droplet (certificado Let's Encrypt
-automático) e trocar `PROXY_URL` para `https://proxy.kashim.com.br`.
+O CPF do usuário e as transações bancárias trafegam entre Vercel e Droplet, então
+o canal precisa de TLS por LGPD. Montado assim:
+
+- registro A `proxy` → `137.184.195.94` no DNS da GoDaddy (o domínio fica lá,
+  nameservers `ns11/ns12.domaincontrol.com` — **não** no Vercel)
+- Caddy no Droplet, `/etc/caddy/Caddyfile` fazendo `reverse_proxy localhost:3000`
+- certificado Let's Encrypt emitido e renovado pelo Caddy, sem intervenção
+- `ufw` fechou a 3000 para fora; o Node só é alcançável pelo Caddy
 
 ---
 
@@ -255,8 +264,6 @@ bancos sai inteiro. **Por isso não vale mexer na tela antes da resposta.**
 3. Testar o fluxo real ponta a ponta em **staging**
 4. Cadastrar o webhook na API deles:
    `https://kashim.com.br/api/of-webhook?secret=<OF_WEBHOOK_SECRET>`
-5. Colocar TLS no proxy antes de qualquer usuário real
-   (ver [Pendência: HTTP puro](#pendência-o-tráfego-vercelproxy-é-http-puro))
-6. Simplificar a tela conforme a resposta sobre `bankCode`
-7. Retomar a [ordem de implementação](design-produto.md#7-ordem-sugerida-de-implementação)
+5. Simplificar a tela conforme a resposta sobre `bankCode`
+6. Retomar a [ordem de implementação](design-produto.md#7-ordem-sugerida-de-implementação)
    a partir da etapa 5 — alimentar categorias e tetos com transação real
