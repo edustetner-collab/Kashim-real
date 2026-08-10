@@ -9,15 +9,23 @@
 
 ## Resumo em uma frase
 
-Todo o código está escrito, deployado e verificado — mas **nenhuma chamada real
-à API da Technospeed jamais funcionou**, porque o acesso está bloqueado por
-firewall no lado deles. Eles confirmaram que liberam **por IP**; o proxy de IP
-fixo já está no ar (`137.184.195.94`) e o IP foi enviado no formulário deles em
-**2026-08-10**. Aguardando a liberação para o primeiro teste real.
+**O bloqueio acabou em 2026-08-10.** A Technospeed liberou o IP do nosso proxy
+(`137.184.195.94`) e a primeira chamada autenticada da história funcionou:
+
+```
+GET /api/v1/payer  →  404 {"code":404,"message":"Pagador não encontrado"}
+```
+
+Esse 404 é sucesso: eles aceitaram as credenciais da Software House e
+consultaram o CPF, que de fato não existe. Falta agora testar o fluxo real
+ponta a ponta com um CPF verdadeiro.
 
 ---
 
-## O bloqueio
+## O bloqueio (histórico — resolvido em 2026-08-10)
+
+> Mantido porque o diagnóstico custou dias e pode se repetir se o IP mudar.
+> Se um dia voltar o `403` com HTML do `awselb`, é isto de novo.
 
 Toda requisição a `api.pagamentobancario.com.br` e
 `staging.pagamentobancario.com.br` devolve **403 com HTML do load balancer**
@@ -81,7 +89,8 @@ todas passam por um proxy próprio com IP fixo.
 | Endereço público | `https://proxy.kashim.com.br` (registro A na GoDaddy) |
 | TLS | Caddy 2.6.2, certificado Let's Encrypt renovado sozinho |
 | Firewall | `ufw` ativo — só 22, 80 e 443. A porta 3000 do Node só responde de dentro |
-| Código | repo privado `edustetner-collab/Kashim-proxy`, clonado em `/app` |
+| Código | repo privado `edustetner-collab/Kashim-proxy`; cópia local em `Sistemas/kashim-proxy` |
+| No servidor | `/app` — **não é mais um clone git**, os arquivos foram copiados por `scp` (ver incidente abaixo) |
 | Processo | PM2, app `kashim-proxy` |
 | Credenciais Technospeed | vivem **só** em `/app/.env` no Droplet, nunca no Vercel |
 
@@ -107,9 +116,18 @@ ssh root@137.184.195.94
 pm2 status                 # estado do proxy
 pm2 logs kashim-proxy      # logs do proxy
 systemctl status caddy     # estado do TLS
-cd /app && git pull        # atualizar código
-set -a; . .env; set +a; pm2 restart kashim-proxy --update-env
 ```
+
+Para publicar código novo (do PC, na pasta `Sistemas/kashim-proxy`):
+
+```bash
+scp index.js package.json root@137.184.195.94:/app/
+ssh root@137.184.195.94 "cd /app && set -a && . ./.env && set +a && pm2 restart kashim-proxy --update-env"
+```
+
+Só chave SSH — a autenticação por senha está desligada
+(`/etc/ssh/sshd_config.d/99-kashim-hardening.conf`). Para reverter, apagar esse
+arquivo e rodar `systemctl reload ssh`.
 
 O acesso é por chave SSH (`~/.ssh/id_ed25519` do PC do Eduardo, a mesma do
 GitHub) — não pede senha. Se a chave se perder, o caminho de recuperação é o
@@ -216,6 +234,46 @@ https://atendimento.tecnospeed.com.br/api/v2/help_center/pt-br/articles/<id>.jso
 https://docs.pagamentobancario.com.br/api.json          # spec completo, 808 KB
 ```
 
+### 5. Variável "Sensitive" no Vercel não volta nunca mais
+
+`vercel env pull` devolve `""` para variáveis marcadas como *Sensitive* —
+é write-only por definição. Vale para `TECHNOSPEED_CNPJ_SH`,
+`TECHNOSPEED_TOKEN_SH`, `TECHNOSPEED_BASE_URL`, `OF_WEBHOOK_SECRET` e
+`SUPABASE_JWT_SECRET`.
+
+**O Vercel não é backup de segredo.** A cópia recuperável dessas credenciais
+está em `Kashim/.env.local` (fora do git). Se esse arquivo sumir, só a
+Technospeed pode reemitir.
+
+### 6. `set -a` sem o hífen roda sem credencial e não reclama
+
+`set a` (sem hífen) atribui um parâmetro posicional em vez de ligar o
+auto-export. As variáveis viram locais do shell, o PM2 não herda nada, e o proxy
+sobe **sem as credenciais da Technospeed** — respondendo `{"ok":true}` no
+`/health` normalmente, porque o health check não usa credencial.
+
+Foi o que aconteceu em 2026-08-10 e só apareceu quando a Technospeed liberou o
+IP. Depois de qualquer restart, conferir de verdade:
+
+```bash
+curl -s -X POST https://proxy.kashim.com.br/proxy \
+  -H "Authorization: Bearer $PROXY_SECRET" -H 'Content-Type: application/json' \
+  -d '{"method":"GET","path":"/api/v1/payer","payerCpf":"11111111111"}'
+# esperado: {"status":404,...,"Pagador não encontrado"}  → credenciais OK
+# 401/403 → credenciais não chegaram no processo
+```
+
+### 7. Incidente: `/app` apagado em 2026-08-10
+
+A pasta sumiu do Droplet enquanto o processo seguia rodando em memória (por isso
+o `/health` continuava respondendo). Investigado: **não foi invasão** — só a
+chave do Eduardo e a do console da DigitalOcean estavam autorizadas, e todos os
+logins bem-sucedidos vieram do IP dele ou do console. As 489 tentativas de senha
+falhas eram varredura automática da internet.
+
+Reconstruído por `scp` a partir da cópia local. Depois disso a autenticação por
+senha no SSH foi desligada.
+
 ---
 
 ## Limites da API (definem a arquitetura)
@@ -262,10 +320,9 @@ bancos sai inteiro. **Por isso não vale mexer na tela antes da resposta.**
 
 ## Próximos passos, na ordem
 
-1. ⏳ Technospeed liberar o IP `137.184.195.94` (formulário enviado em 2026-08-10)
-2. Assim que liberar: rodar o curl de diagnóstico **de dentro do Droplet** —
-   é o único lugar com o IP liberado
-3. Testar o fluxo real ponta a ponta em **staging**
+1. ✅ ~~Technospeed liberar o IP~~ — liberado em 2026-08-10, chamada autenticada OK
+2. Testar o fluxo real ponta a ponta com um CPF verdadeiro (cadastrar pagador,
+   cadastrar conta, obter o link de autorização do Open Finance)
 4. Cadastrar o webhook na API deles:
    `https://kashim.com.br/api/of-webhook?secret=<OF_WEBHOOK_SECRET>`
 5. Simplificar a tela conforme a resposta sobre `bankCode`
