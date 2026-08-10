@@ -263,6 +263,19 @@ curl -s -X POST https://proxy.kashim.com.br/proxy \
 # 401/403 → credenciais não chegaram no processo
 ```
 
+### 8. `addressNumber` é obrigatório e o spec não diz
+
+`POST /api/v1/payer` devolve `422 "Campo addressNumber é obrigatório"`, mas o
+campo **não** está na lista `required` do `api.json`. O `neighborhood` também
+não pode ser vazio (`422`, `internalCode` 4004) — e o ViaCEP devolve bairro
+vazio em vários CEPs, então a tela precisa deixar os dois editáveis.
+
+Pior: o `ensurePayer` tratava **qualquer** `422` como "pagador já cadastrado" e
+seguia para o `GET`, que devolvia `404 Pagador não encontrado`. O motivo real
+sumia e o sintoma era um 404 sem sentido. Agora o `422` só passa quando a
+mensagem indica duplicidade, e o erro devolvido ao front traz
+`errors[].message`.
+
 ### 7. Incidente: `/app` apagado em 2026-08-10
 
 A pasta sumiu do Droplet enquanto o processo seguia rodando em memória (por isso
@@ -321,8 +334,15 @@ bancos sai inteiro. **Por isso não vale mexer na tela antes da resposta.**
 ## Próximos passos, na ordem
 
 1. ✅ ~~Technospeed liberar o IP~~ — liberado em 2026-08-10, chamada autenticada OK
-2. Testar o fluxo real ponta a ponta com um CPF verdadeiro (cadastrar pagador,
-   cadastrar conta, obter o link de autorização do Open Finance)
+2. ✅ ~~Cadastro de pagador~~ — funciona (`201`), depois de passar a enviar
+   `addressNumber` (ver armadilha 8)
+3. ⛔ **BLOQUEIO ATUAL — a Technospeed precisa ativar o Extrato Open Finance
+   para a nossa SoftwareHouse.** `POST /api/v1/account` devolve
+   `422 "Extrato Open Finance não ativo para softwareHouse ou Payer."`
+   (`internalCode` 40056), mesmo com o pagador criado com
+   `statementActived: true` — ou seja, o lado do pagador está OK e falta a
+   liberação comercial do produto na conta da Software House.
+   Sem isso não existe link de autorização e o fluxo não anda.
 4. Cadastrar o webhook na API deles:
    `https://kashim.com.br/api/of-webhook?secret=<OF_WEBHOOK_SECRET>`
 5. Simplificar a tela conforme a resposta sobre `bankCode`
