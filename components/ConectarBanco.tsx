@@ -190,6 +190,11 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
   const [cep, setCep] = useState('');
   const [cepLoading, setCepLoading] = useState(false);
   const [address, setAddress] = useState<{ neighborhood: string; city: string; state: string; zipcode: string; street?: string } | null>(null);
+  // A Technospeed exige addressNumber e um bairro com pelo menos 1 caractere.
+  // O ViaCEP não devolve número e deixa o bairro vazio em vários CEPs, então os
+  // dois precisam ser editáveis pelo usuário.
+  const [addressNumber, setAddressNumber] = useState('');
+  const [neighborhood, setNeighborhood] = useState('');
 
   const [selectedBank, setSelectedBank] = useState<Bank | null>(null);
   const [bankQuery, setBankQuery] = useState('');
@@ -244,6 +249,7 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
         zipcode: digits,
         street: data.logradouro,
       });
+      setNeighborhood(data.bairro ?? '');
       setError('');
     } catch {
       setAddress(null);
@@ -260,6 +266,8 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
     if (!ownerName.trim()) { setError('Informe seu nome completo'); return; }
     if (cpfDigits.length !== 11) { setError('CPF inválido'); return; }
     if (!address) { setError('CEP não encontrado'); return; }
+    if (!addressNumber.trim()) { setError('Informe o número do endereço'); return; }
+    if (!neighborhood.trim()) { setError('Informe o bairro'); return; }
     if (!selectedBank) { setError('Selecione o banco'); return; }
     if (!agency.trim()) { setError('Informe a agência'); return; }
     if (!accountNumber.trim()) { setError('Informe a conta'); return; }
@@ -275,7 +283,7 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
           householdId,
           ownerName: ownerName.trim(),
           cpf: cpfDigits,
-          address,
+          address: { ...address, neighborhood: neighborhood.trim(), addressNumber: addressNumber.trim() },
           bankCode: selectedBank.code,
           agency: agency.trim(),
           agencyDigit: agencyDigit.trim() || undefined,
@@ -480,10 +488,36 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
               </div>
               {address && (
                 <p className="text-green-400 text-xs mt-1.5">
-                  <i className="fas fa-check mr-1"></i>{address.neighborhood}, {address.city} — {address.state}
+                  <i className="fas fa-check mr-1"></i>{address.street ? `${address.street}, ` : ''}{address.city} — {address.state}
                 </p>
               )}
             </div>
+
+            {address && (
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-zinc-400 text-xs uppercase tracking-widest block mb-1.5">Número</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={addressNumber}
+                    onChange={(e) => setAddressNumber(e.target.value.slice(0, 10))}
+                    placeholder="123"
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white text-sm placeholder-zinc-600 focus:outline-none focus:border-green-500"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-zinc-400 text-xs uppercase tracking-widest block mb-1.5">Bairro</label>
+                  <input
+                    type="text"
+                    value={neighborhood}
+                    onChange={(e) => setNeighborhood(e.target.value.slice(0, 100))}
+                    placeholder="Centro"
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white text-sm placeholder-zinc-600 focus:outline-none focus:border-green-500"
+                  />
+                </div>
+              </div>
+            )}
 
             {error && (
               <p className="text-red-400 text-xs"><i className="fas fa-circle-exclamation mr-1"></i>{error}</p>
@@ -495,6 +529,8 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
                 if (!ownerName.trim()) { setError('Informe seu nome completo'); return; }
                 if (cpfDigits.length !== 11) { setError('CPF inválido'); return; }
                 if (!address) { setError('CEP não encontrado'); return; }
+                if (!addressNumber.trim()) { setError('Informe o número do endereço'); return; }
+                if (!neighborhood.trim()) { setError('Informe o bairro'); return; }
                 setError('');
                 setView('step-bank');
               }}

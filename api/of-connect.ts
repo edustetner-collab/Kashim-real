@@ -129,7 +129,20 @@ interface TSAddress {
   state: string;
   zipcode: string;
   street?: string;
-  addressNumber?: string;
+  /** Obrigatório na prática, apesar de não constar na lista `required` do spec. */
+  addressNumber: string;
+}
+
+/** Um 422 da Technospeed traz o motivo em `errors[].message`. */
+function tsErrorMessages(body: unknown): string[] {
+  const errs = (body as { errors?: Array<{ message?: string }> } | undefined)?.errors;
+  return Array.isArray(errs) ? errs.map((e) => e?.message ?? '').filter(Boolean) : [];
+}
+
+/** Distingue "pagador já cadastrado" de um 422 de validação de verdade. */
+function isAlreadyRegistered(err: TSError): boolean {
+  const msgs = tsErrorMessages(err.body).join(' ').toLowerCase();
+  return /j[áa] (existe|cadastrad)|already (exists|registered)|duplicad/.test(msgs);
 }
 
 /**
@@ -152,8 +165,10 @@ async function ensurePayer(name: string, cpf: string, address: TSAddress): Promi
     });
     return;
   } catch (err) {
-    // 422 costuma significar "pagador já cadastrado" — segue para a ativação
-    if (!(err instanceof TSError) || err.status !== 422) throw err;
+    // Um 422 pode ser "pagador já cadastrado" — aí seguimos para a ativação — ou
+    // um erro de validação real (addressNumber ausente, bairro vazio). Engolir os
+    // dois transformava o erro real no 404 enganoso do GET logo abaixo.
+    if (!(err instanceof TSError) || err.status !== 422 || !isAlreadyRegistered(err)) throw err;
   }
 
   const existing = await tsReq<{ statementActived?: boolean }>('GET', '/api/v1/payer', cpf);
@@ -328,6 +343,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!/^\d{11}$/.test(cpf)) {
         return res.status(400).json({ error: 'CPF inválido — informe 11 dígitos sem pontos ou traços' });
       }
+      // A Technospeed rejeita com 422 se faltar qualquer um dos dois
+      if (!address.addressNumber?.trim() || !address.neighborhood?.trim()) {
+        return res.status(400).json({ error: 'Endereço incompleto — número e bairro são obrigatórios' });
+      }
       if (!(await isMember(sub, householdId))) return res.status(403).json({ error: 'Forbidden' });
 
       // 1. Registrar pagador (idempotente)
@@ -427,7 +446,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (err: unknown) {
     if (err instanceof TSError) {
       const status = err.status === 422 ? 422 : 502;
-      return res.status(status).json({ error: `Technospeed: ${err.message}`, detail: err.body });
+      // Sem isto o usuário via só "Technospeed 422 /api/v1/payer" e o motivo
+      // real ("Campo addressNumber é obrigatório") ficava escondido no detail.
+      const reasons = tsErrorMessages(err.body);
+      const msg = reasons.length ? reasons.join('; ') : `Technospeed: ${err.message}`;
+      return res.status(status).json({ error: msg, detail: err.body });
     }
     const msg = err instanceof Error ? err.message : 'Internal server error';
     return res.status(500).json({ error: msg });
