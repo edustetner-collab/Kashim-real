@@ -152,7 +152,7 @@ function isAlreadyRegistered(err: TSError): boolean {
  */
 async function ensurePayer(name: string, cpf: string, address: TSAddress): Promise<void> {
   try {
-    await tsReq('POST', '/api/v1/payer', cpf, {
+    const created = await tsReq<{ statementActived?: boolean }>('POST', '/api/v1/payer', cpf, {
       name,
       cpfCnpj: cpf,
       neighborhood: address.neighborhood,
@@ -163,17 +163,19 @@ async function ensurePayer(name: string, cpf: string, address: TSAddress): Promi
       addressNumber: address.addressNumber,
       statementActived: true,
     });
-    return;
+    if (created?.statementActived === true) return;
   } catch (err) {
     // Um 422 pode ser "pagador já cadastrado" — aí seguimos para a ativação — ou
     // um erro de validação real (addressNumber ausente, bairro vazio). Engolir os
-    // dois transformava o erro real no 404 enganoso do GET logo abaixo.
+    // dois transformava o erro real num 404 enganoso.
     if (!(err instanceof TSError) || err.status !== 422 || !isAlreadyRegistered(err)) throw err;
+
+    const existing = await tsReq<{ statementActived?: boolean }>('GET', '/api/v1/payer', cpf);
+    if (existing?.statementActived === true) return;
   }
 
-  const existing = await tsReq<{ statementActived?: boolean }>('GET', '/api/v1/payer', cpf);
-  if (existing?.statementActived === true) return;
-
+  // Chega aqui quando a criação não confirmou o Extrato ou o pagador já existia
+  // sem ele. A equipe da Technospeed orienta ativar por este PUT.
   await tsReq('PUT', '/api/v1/payer', cpf, { statementActived: true });
 }
 
