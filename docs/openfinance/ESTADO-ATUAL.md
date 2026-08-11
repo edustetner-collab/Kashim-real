@@ -58,21 +58,31 @@ curl -i https://api.pagamentobancario.com.br/
 
 ---
 
-## Duas perguntas que mudam decisões de produto
+## As perguntas que mudavam decisões de produto — respondidas
 
-Ambas estão nos chamados. **Não construir mais nada até serem respondidas.**
-
-### 1. Exigem IP fixo? — **RESPONDIDA: sim**
+### 1. Exigem IP fixo? — **sim**
 
 Confirmado em 2026-08-10: eles liberam por IP, via formulário. Como o Vercel não
 tem IP de saída estável, foi montado um proxy dedicado — ver
 [a seção do proxy](#proxy-de-ip-fixo) abaixo.
 
-### 2. O limite de 1 protocolo a cada 6h é por conta ou por Software House?
+### 2. O limite de 4 consultas por dia é por conta — **não por Software House**
 
-Se for **por Software House**, o modelo não fecha para finanças pessoais: seriam
-4 sincronizações por dia divididas entre *todos* os clientes. Nesse caso vale
-reavaliar ir direto na Pluggy (que a Technospeed usa por baixo), Belvo ou Klavi.
+Gabriel Ambrozio (implantação), 2026-08-11, depois de confirmar com o comercial:
+são **4 consultas por dia para cada conta vinculada** no Open Finance. Um pagador
+com Bradesco, Santander e Itaú tem 4 por dia em cada uma.
+
+**O modelo fecha para finanças pessoais.** Era o risco que podia obrigar a migrar
+para Pluggy, Belvo ou Klavi — está descartado.
+
+Hoje o cron roda 2× por dia (`0 9,21 * * *`), usando 2 das 4. Dá para ir a 4
+(`0 3,9,15,21 * * *`) sem estourar, se valer a pena.
+
+### 3. Sempre usar produção, não homologação
+
+Recomendação explícita deles: `https://api.pagamentobancario.com.br/`. O
+`staging.pagamentobancario.com.br` existe mas os clientes normalmente não usam —
+é o que já está configurado em `TECHNOSPEED_BASE_URL`.
 
 ---
 
@@ -263,6 +273,27 @@ curl -s -X POST https://proxy.kashim.com.br/proxy \
 # 401/403 → credenciais não chegaram no processo
 ```
 
+### 9. Cartão de crédito não é uma conexão separada
+
+`POST /api/v1/statement/openfinance` aceita
+`statementType: "BANK" | "CREDIT_CARD"`, com `cardNumber` (4 últimos dígitos)
+obrigatório no segundo caso — **contra o mesmo `accountHash`**. Uma conexão por
+conta bancária, dois pedidos de extrato.
+
+`api/of-cron.ts` e `api/of-sync.ts` já fazem isso certo. Quem está errado é a
+tela: `ConectarBanco` trata cartão como conexão nova e chama
+`POST /api/v1/account` outra vez.
+
+**`POST /api/v1/account` não deduplica.** Duas chamadas com o mesmo
+banco/agência/conta devolveram `accountHash` diferentes (`kMwqp1q9ZM` e
+`VknmoSbS9X`). Conectar cartão pela tela hoje cria cadastro duplicado na
+Technospeed — o certo é o cartão virar uma opção dentro da conexão existente,
+pedindo só os 4 dígitos.
+
+Independente disso, o `CREDIT_CARD` só retorna dados se **o consentimento
+autorizado no banco incluir o cartão** — quem escolhe o escopo é o usuário, na
+tela da instituição.
+
 ### 8. `addressNumber` é obrigatório e o spec não diz
 
 `POST /api/v1/payer` devolve `422 "Campo addressNumber é obrigatório"`, mas o
@@ -343,8 +374,22 @@ bancos sai inteiro. **Por isso não vale mexer na tela antes da resposta.**
    `statementActived: true` — ou seja, o lado do pagador está OK e falta a
    liberação comercial do produto na conta da Software House.
    Sem isso não existe link de autorização e o fluxo não anda.
-4. Cadastrar o webhook na API deles:
-   `https://kashim.com.br/api/of-webhook?secret=<OF_WEBHOOK_SECRET>`
+4. Cadastrar o webhook em `POST /api/v1/notification` — o segredo vai no campo
+   `headers`, **não** na URL (o campo existe e está no spec):
+
+   ```json
+   {
+     "type": "webhook",
+     "url": "https://kashim.com.br/api/of-webhook",
+     "headers": { "x-webhook-secret": "<OF_WEBHOOK_SECRET>" },
+     "happen": ["STATEMENT_OPENFINANCE_PROCESSED", "STATEMENT_OPENFINANCE_REVOKED"]
+   }
+   ```
+
+   Em aberto: a rota exige `payercpfcnpj` de um pagador **cadastrado**, o que
+   sugere que a notificação é por pagador e não da Software House. Se for por
+   pagador, `of-connect.ts` precisa registrar o webhook a cada nova conexão.
+   Confirmar com o Gabriel ou testar com dois pagadores.
 5. Simplificar a tela conforme a resposta sobre `bankCode`
 6. Retomar a [ordem de implementação](design-produto.md#7-ordem-sugerida-de-implementação)
    a partir da etapa 5 — alimentar categorias e tetos com transação real

@@ -9,12 +9,21 @@ import { timingSafeEqual } from 'node:crypto';
  * a restabelece, ela volta com um ID NOVO. Sem tratar isso, a mesma compra
  * entraria duas vezes e inflaria o gasto do cliente.
  *
- * Eventos (cadastrar STATEMENT_OPENFINANCE_UPDATED na API deles):
+ * Eventos tratados (nomes vindos do guia de reprocessamento deles):
  *   transaction_deleted  → transação sumiu na origem; remover da nossa base
  *   transactions_updated → extrato reprocessado; novas transações disponíveis
  *
- * Segurança: a Technospeed não documenta assinatura HMAC neste webhook, então
- * protegemos por segredo na URL (?secret=...), comparado em tempo constante.
+ * Os nomes que se CADASTRAM em POST /api/v1/notification são outros:
+ * STATEMENT_OPENFINANCE, STATEMENT_OPENFINANCE_PROCESSED e
+ * STATEMENT_OPENFINANCE_REVOKED. Ainda não sabemos o formato do corpo desses —
+ * por isso eles caem no ramo "evento desconhecido", que responde 200 e grava em
+ * `of_webhook_events`. Ao ver o primeiro real, mapear aqui.
+ *
+ * Segurança: a Technospeed não documenta assinatura HMAC, então o segredo vai
+ * no cabeçalho `x-webhook-secret`, comparado em tempo constante. Vai no
+ * cabeçalho e não na URL porque URL entra em log de servidor e em histórico de
+ * proxy — o campo `headers` do cadastro de notificação existe justamente para
+ * isso.
  */
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL!;
@@ -43,7 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const provided = String(req.query.secret ?? req.headers['x-webhook-secret'] ?? '');
+  const provided = String(req.headers['x-webhook-secret'] ?? '');
   if (!secretOk(provided)) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
