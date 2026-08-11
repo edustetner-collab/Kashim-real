@@ -38,8 +38,9 @@ import { getNotifPrefs } from './lib/notifPrefs';
 import TermsGate from './components/TermsGate';
 import { hasAcceptedTerms, recordTermsAcceptance } from './lib/terms';
 import ExtratoBancario from './components/ExtratoBancario';
+import { hasOpenFinanceAccess } from './lib/ofAccess';
 
-const ADMIN_IDS = (import.meta.env.VITE_ADMIN_USER_IDS ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
+const ADMIN_IDS =(import.meta.env.VITE_ADMIN_USER_IDS ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
 const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
 // Fallback CSS p/ esconder login social no nativo (ver regra .native-app no index.html)
 if (isNativeApp) document.documentElement.classList.add('native-app');
@@ -1842,7 +1843,9 @@ const App: React.FC = () => {
             <button onClick={() => setActiveTab('metas')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'metas' ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#6e6e73] hover:text-[#1d1d1f]'}`}>Metas</button>
             <button onClick={() => setActiveTab('dividas')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'dividas' ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#6e6e73] hover:text-[#1d1d1f]'}`}>Dívidas</button>
             <button onClick={() => setActiveTab('desempenho')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'desempenho' ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#6e6e73] hover:text-[#1d1d1f]'}`}>Desempenho</button>
-            <button onClick={async () => { const t = await getToken({ template: 'supabase' }); if (t) { setOfAuthToken(t); setShowExtrato(true); } }} className="px-6 py-2 rounded-lg text-xs font-black uppercase transition-all text-[#6e6e73] hover:text-[#1d1d1f] flex items-center gap-1.5"><i className="fas fa-university text-sm" />Extrato</button>
+            {hasOpenFinanceAccess(user) && (
+              <button onClick={async () => { const t = await getToken({ template: 'supabase' }); if (t) { setOfAuthToken(t); setShowExtrato(true); } }} className="px-6 py-2 rounded-lg text-xs font-black uppercase transition-all text-[#6e6e73] hover:text-[#1d1d1f] flex items-center gap-1.5"><i className="fas fa-university text-sm" />Extrato</button>
+            )}
             {coachViewHouseholdId && (
               <div className="flex items-center gap-2 bg-[#f0fad0] border border-[rgba(122,184,0,0.3)] px-3 py-1.5 rounded-xl">
                 <i className="fas fa-eye text-[#7ab800] text-xs"></i>
@@ -2407,6 +2410,7 @@ const App: React.FC = () => {
               <span className="text-[9px] font-black uppercase tracking-wide">Desempenho</span>
             </button>
 
+            {hasOpenFinanceAccess(user) && (
             <button
               onClick={async () => { const t = await getToken({ template: 'supabase' }); if (t) { setOfAuthToken(t); setShowExtrato(true); } }}
               className="min-w-[72px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 text-[#aeaeb2] transition-colors active:scale-95"
@@ -2416,6 +2420,7 @@ const App: React.FC = () => {
               </div>
               <span className="text-[9px] font-black uppercase tracking-wide">Extrato</span>
             </button>
+            )}
 
             <button
               onClick={() => setShowSettings(true)}

@@ -264,6 +264,36 @@ const BANK_NAMES: Record<string, string> = {
   '756': 'Sicoob',
 };
 
+// ─── Portão de acesso ────────────────────────────────────────────────────────
+
+const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? '';
+const OF_BETA_USER_IDS = (process.env.OF_BETA_USER_IDS ?? '')
+  .split(',').map((s) => s.trim()).filter(Boolean);
+const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com'];
+
+/**
+ * Espelha `lib/ofAccess.ts` no servidor. Esconder o botão não impede ninguém de
+ * chamar esta rota, então o portão precisa existir dos dois lados.
+ * Duplicado de propósito: o Vercel não empacota import local em `api/`.
+ */
+async function hasOpenFinanceAccess(sub: string): Promise<boolean> {
+  if (OF_BETA_USER_IDS.includes(sub)) return true;
+  if (!CLERK_SECRET_KEY) return false;
+
+  try {
+    const r = await fetch(`https://api.clerk.com/v1/users/${sub}`, {
+      headers: { Authorization: `Bearer ${CLERK_SECRET_KEY}` },
+    });
+    if (!r.ok) return false;
+    const u = await r.json() as { email_addresses?: Array<{ email_address?: string }> };
+    return (u.email_addresses ?? []).some(
+      (e) => OF_BETA_EMAILS.includes((e.email_address ?? '').toLowerCase()),
+    );
+  } catch {
+    return false;
+  }
+}
+
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -271,6 +301,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const claims = verifyAuthToken(req.headers.authorization as string | undefined);
   if (!claims) return res.status(401).json({ error: 'Unauthorized' });
   const sub = claims.sub;
+
+  if (!(await hasOpenFinanceAccess(sub))) {
+    return res.status(403).json({ error: 'Open Finance ainda não está disponível para esta conta.' });
+  }
 
   if (!TS_CNPJ_SH || !TS_TOKEN_SH) {
     return res.status(500).json({ error: 'Credenciais Technospeed não configuradas no servidor.' });

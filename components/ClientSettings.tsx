@@ -9,6 +9,7 @@ import { NotifPrefs, getNotifPrefs, saveNotifPrefs } from '../lib/notifPrefs';
 import { scheduleTestNotification, scheduleTestQuoteNotification } from '../lib/notifications';
 import InvitePartner from './InvitePartner';
 import ConectarBanco from './ConectarBanco';
+import { hasOpenFinanceAccess } from '../lib/ofAccess';
 
 interface ClientSettingsProps {
   db: SupabaseClient;
@@ -418,8 +419,8 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
               </button>
             </div>
 
-            {/* Open Finance — visível só para o Eduardo durante os testes. Remover o wrapper quando abrir para todos. */}
-            {user?.emailAddresses.some(e => e.emailAddress === 'eduardo_cda@hotmail.com') && (
+            {/* Open Finance — quem vê é decidido em lib/ofAccess.ts, um lugar só. */}
+            {hasOpenFinanceAccess(user) && (
             <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 mb-4">
               <h3 className="text-white font-black uppercase italic tracking-tight mb-1 flex items-center gap-2">
                 <i className="fas fa-university text-green-400"></i>Bancos conectados
