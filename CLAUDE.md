@@ -37,6 +37,33 @@ Aliased: https://kashim.com.br
 
 Sem essa linha, **não está publicado** — não importa quantos commits foram feitos.
 
+## 🔒 OPEN FINANCE — VISÍVEL SÓ PARA O EDUARDO
+
+**Nenhuma superfície de Open Finance pode aparecer para cliente nenhum.**
+Decisão explícita do Eduardo (2026-08-11), repetida três vezes na mesma conversa.
+
+Vale para **tudo**: passo do onboarding, botão de Extrato, card na home, tela de
+conectar banco, avisos por e-mail, badge, tooltip. Se uma alteração pode ser
+vista por um cliente comum, ela está errada. **Na dúvida, esconde.**
+
+Sequência combinada: só o Eduardo → depois uma lista nominal que ele indicar →
+só então abre para todos. Nunca pular etapa.
+
+### Como respeitar
+
+- Quem vê é decidido em [`lib/ofAccess.ts`](lib/ofAccess.ts), **um lugar só**.
+  Toda tela nova chama `hasOpenFinanceAccess(user)` — nunca um `if` solto com
+  e-mail dentro do componente.
+- O servidor repete a checagem em `api/of-connect.ts`. Esconder o botão não
+  impede ninguém de chamar a rota.
+- Ampliar a lista é por `VITE_OF_BETA_USER_IDS` / `OF_BETA_USER_IDS` (IDs do
+  Clerk). Vazias, vale só o e-mail em código.
+
+Em 2026-08-11 o botão **Extrato** estava no menu do desktop e na barra do celular
+**sem portão nenhum**, visível para todos os clientes em produção, enquanto o
+"Gerenciar bancos" das Configurações estava protegido. Foi assim que escapou:
+a regra estava escrita dentro de um componente em vez de num lugar só.
+
 ## Se o Eduardo disser "continua do mesmo jeito"
 
 Ao **segundo** "continua igual" depois de uma correção, parar de investigar a
