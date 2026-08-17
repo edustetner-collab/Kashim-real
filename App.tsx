@@ -208,9 +208,21 @@ const App: React.FC = () => {
   const currentStartMonthRef = useRef<number>(new Date().getMonth());
   const currentStartYearRef = useRef<number>(new Date().getFullYear());
   const [tetoColumns, setTetoColumns] = useState<{ id: string; title: string; linkedItemId: string }[]>([]);
-  const [pendingExpense, setPendingExpense] = useState<(DetectedExpense & { source: 'ai' | 'manual' }) | null>(null);
+  // `ofTx` viaja junto quando o lançamento nasceu de uma transação do Open
+  // Finance: é ele que permite marcar a transação como categorizada e alimentar
+  // a memória do estabelecimento depois que o ExpenseSheet confirma.
+  const [pendingExpense, setPendingExpense] = useState<
+    (DetectedExpense & {
+      source: 'ai' | 'manual';
+      ofTx?: { transactionId: string; merchantKey: string };
+      knownPayMethod?: 'debit' | 'credit';
+      knownCardLast4?: string | null;
+    }) | null
+  >(null);
   // Guard: true only after items have been loaded from DB (prevents saving default items on load failure)
   const dbItemsLoadedRef = useRef(false);
+  // Guard: retroactive Variable Expense value fill runs only once per session
+  const retroactiveVarFixDoneRef = useRef(false);
 
   // Timeout: se Clerk não carregar em 12s, mostra tela de erro com retry
   useEffect(() => {
@@ -244,6 +256,13 @@ const App: React.FC = () => {
   const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '' });
   const [activeTab, setActiveTab] = useState<'plan' | 'teto' | 'metas' | 'desempenho' | 'dividas'>('plan');
   const [showExtrato, setShowExtrato] = useState(false);
+  const [ofInitialCardLast4, setOfInitialCardLast4] = useState<string | undefined>(undefined);
+  /** Transações do Extrato já lançadas nesta sessão — sai da lista sem recarregar. */
+  const [ofCategorized, setOfCategorized] = useState<string[]>([]);
+  /** Item cujo card deve receber o foco ao abrir Gastos (vindo do Plano). */
+  const [focusSpendingItemId, setFocusSpendingItemId] = useState<string | null>(null);
+  /** Filtro inicial do Gastos quando o usuário navega de uma linha do Plano. */
+  const [tetoInitialFilter, setTetoInitialFilter] = useState<{ linkedItemId: string; sourceKey: string } | null>(null);
   const [ofAuthToken, setOfAuthToken] = useState<string | null>(null);
   const [goals, setGoals] = useState<Goal[]>(() => {
     try { return JSON.parse(localStorage.getItem('kashim_goals') || '[]'); } catch { return []; }
@@ -356,11 +375,17 @@ const App: React.FC = () => {
               if (ownCoachRows.some((r: any) => r.status === 'approved')) hasCoach = true;
             } else {
               // Nem a API nem o fallback responderam de forma conclusiva.
-              // Não temos prova de que é cadastro espontâneo → não bloqueia.
+              // Trata como cliente de consultoria: dá o prazo de 5 meses em vez
+              // dos 30 dias do cadastro espontâneo. ATENÇÃO: desde 2026-08-12
+              // isto NÃO garante acesso — se o prazo já venceu, bloqueia. O que
+              // impede falha de rede de virar bloqueio é `first_access_at`
+              // ausente cair em "agora" logo abaixo, nunca em `created_at`.
               isCoachClient = true;
             }
           } catch {
-            isCoachClient = true; // erro de rede nunca bloqueia
+            // Erro de rede não decide nada sozinho: cai no prazo de 5 meses,
+            // que é generoso. Quem bloqueia é a data vencida, não a falha.
+            isCoachClient = true;
           }
         }
 
@@ -372,8 +397,19 @@ const App: React.FC = () => {
         // NÃO usar `&& !coachExpired` aqui: coaching_ends_at é gravado uma vez na
         // criação e nunca atualizado, então ficava no passado para todo cliente
         // antigo e derrubava o acesso de quem está com a consultoria ativa.
+        // Carimba o primeiro acesso na primeira vez que o cliente abre o app.
+        // É o marco que passa a valer para o grace de 5 meses.
+        const firstAccessAt = (household as any)?.first_access_at ?? null;
+        if (!firstAccessAt && hId) {
+          const agora = new Date().toISOString();
+          db!.from('households').update({ first_access_at: agora }).eq('id', hId)
+            .then(() => {}, () => {}); // falha aqui não pode travar o carregamento
+        }
+
         const access = computeAccess({
           createdAt: (household as any)?.created_at,
+          firstAccessAt: firstAccessAt ?? new Date().toISOString(),
+          accessUntil: (household as any)?.access_until ?? null,
           subscriptionStatus: status,
           subscriptionExpiresAt: (household as any)?.subscription_expires_at,
           hasActiveCoach: hasCoach,
@@ -465,6 +501,34 @@ const App: React.FC = () => {
     localStorage.setItem('kashim_startMonth', String(startMonth));
     localStorage.setItem('kashim_startYear', String(startYear));
   }, [startMonth, startYear]);
+
+  // Retroactive fix: fill zero values for Variable Expense items that already have partials.
+  // Runs once after the first DB load so items like "Serasa S.A." get their planned value
+  // set automatically, matching how new partials are handled in handleAddPartial.
+  useEffect(() => {
+    if (retroactiveVarFixDoneRef.current || items.length === 0 || months.length === 0) return;
+    retroactiveVarFixDoneRef.current = true;
+    setItems(prev => {
+      let changed = false;
+      const updated = prev.map(item => {
+        if (item.category !== CategoryType.VARIABLE_EXPENSE) return item;
+        const newValues = [...item.values];
+        let itemChanged = false;
+        months.forEach((m, mIdx) => {
+          if ((newValues[mIdx] || 0) > 0) return;
+          const mk = `${m.year}-${m.index}`;
+          const pts = ((item.partialExpenses as Record<string, { value: number }[]>)?.[mk] || []);
+          if (pts.length === 0) return;
+          newValues[mIdx] = pts.reduce((sum, p) => sum + p.value, 0);
+          itemChanged = true;
+        });
+        if (!itemChanged) return item;
+        changed = true;
+        return { ...item, values: newValues };
+      });
+      return changed ? updated : prev;
+    });
+  }, [items.length, months.length]);
 
   // Keep refs in sync with state so we can capture snapshots synchronously
   useEffect(() => { currentHouseholdIdRef.current = householdId; }, [householdId]);
@@ -609,7 +673,7 @@ const App: React.FC = () => {
   }, [db, coachViewHouseholdId]);
 
   // Fecha overlay do Extrato ao navegar para qualquer outra aba
-  useEffect(() => { setShowExtrato(false); }, [activeTab]);
+  useEffect(() => { setShowExtrato(false); setOfInitialCardLast4(undefined); }, [activeTab]);
 
   // Quando coach sai da visão de cliente, restaura os próprios dados
   useEffect(() => {
@@ -965,6 +1029,81 @@ const App: React.FC = () => {
     setItems(prev => [...prev, newItem]);
   };
 
+  /**
+   * Preenche a linha "Faturas de Cartao" com o valor real vindo do Open Finance.
+   *
+   * Roda uma vez por carregamento, depois que itens e meses ja existem. So
+   * escreve onde ha dado real; mes sem fatura conhecida fica como esta, para
+   * nao apagar a projecao que o coach digitou.
+   *
+   * Nao ha risco de dupla contagem: o custo do mes ja faz
+   * `Math.max(0, fatura - rastreado)` — o que foi categorizado nas despesas e
+   * descontado da fatura automaticamente.
+   */
+  useEffect(() => {
+    if (!hasOpenFinanceAccess(user) || !householdId || items.length === 0 || months.length === 0) return;
+    let cancelado = false;
+
+    (async () => {
+      try {
+        const token = await getToken({ template: 'supabase' });
+        if (!token) return;
+        const res = await fetch(`/api/of-connect?householdId=${householdId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const d = await res.json() as { connections?: Array<{ bankName: string; cardLast4: string | null; billTotals?: Record<string, number> }> };
+        if (cancelado) return;
+
+        for (const conn of d.connections ?? []) {
+          const totals = conn.billTotals ?? {};
+          if (Object.keys(totals).length === 0) continue;
+
+          // Valores da fatura na ordem dos meses do plano.
+          const valoresPorMes = months.map((m) => {
+            const chave = `${m.year}-${String(m.index + 1).padStart(2, '0')}`;
+            const v = totals[chave];
+            return typeof v === 'number' && v > 0 ? v : 0;
+          });
+          if (valoresPorMes.every((v) => v === 0)) continue;
+
+          const apelido = conn.cardLast4
+            ? `${conn.bankName} ••${conn.cardLast4}`
+            : `${conn.bankName} · Fatura`;
+
+          // Item daquele cartao especifico. Sem os 4 digitos no nome, nao
+          // reaproveitamos qualquer linha de cartao: dois cartoes cairiam na
+          // mesma e um sobrescreveria o outro.
+          const alvo = items.find((i) =>
+            i.category === CategoryType.CREDIT_CARD &&
+            (conn.cardLast4
+              ? (i.description ?? '').includes(conn.cardLast4)
+              : (i.description ?? '').toLowerCase().includes(conn.bankName.toLowerCase().split(' ')[0])),
+          );
+
+          if (!alvo) {
+            // Cartao identificado e sem linha no plano: cria ja preenchida.
+            handleAddItem(CategoryType.CREDIT_CARD, {
+              description: apelido,
+              values: valoresPorMes,
+            });
+            continue;
+          }
+
+          // Existe: atualiza so os meses que mudaram. Mes sem fatura conhecida
+          // fica como esta, para nao apagar a projecao digitada pelo coach.
+          valoresPorMes.forEach((real, idx) => {
+            if (real <= 0) return;
+            if (Math.abs((alvo.values[idx] ?? 0) - real) < 0.01) return;
+            handleUpdateValue(alvo.id, idx, String(real));
+          });
+        }
+      } catch { /* fatura e acessoria: falha nao pode travar o app */ }
+    })();
+
+    return () => { cancelado = true; };
+  }, [householdId, items.length, months.length, user]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleUpdateValue = (id: string, monthIdx: number, value: string) => {
     const numericValue = value === '' ? 0 : parseFloat(value);
     setItems(prev => prev.map(item => item.id === id ? { ...item, values: item.values.map((v, i) => i === monthIdx ? numericValue : v) } : item));
@@ -1101,7 +1240,19 @@ const App: React.FC = () => {
     setItems(prev => prev.map(item => {
       if (item.id !== itemId) return item;
       const partials = item.partialExpenses || {};
-      return { ...item, partialExpenses: { ...partials, [monthKey]: [...(partials[monthKey] || []), expense] } };
+      const newMonthPartials = [...(partials[monthKey] || []), expense];
+      const withPartial = { ...item, partialExpenses: { ...partials, [monthKey]: newMonthPartials } };
+      // Ponto 1: Contas Variáveis com valor zerado recebem o total dos lançamentos automaticamente
+      if (item.category === CategoryType.VARIABLE_EXPENSE) {
+        const mIdx = months.findIndex(m => m.year === targetYear && m.index === targetMonth);
+        if (mIdx >= 0 && (item.values[mIdx] || 0) === 0) {
+          const newTotal = newMonthPartials.reduce((sum, p) => sum + p.value, 0);
+          const newValues = [...withPartial.values];
+          newValues[mIdx] = newTotal;
+          return { ...withPartial, values: newValues };
+        }
+      }
+      return withPartial;
     }));
 
     if (db) {
@@ -1186,6 +1337,8 @@ const App: React.FC = () => {
           date: dateStr,
           description: fallbackDesc,
           value: data.value,
+          paymentSource: data.isCredit ? 'credit' : 'debit',
+          cardLast4: (data as { cardLast4?: string }).cardLast4,
         }, refYear, refMonth);
         if (!matchedItem && arrIdx >= 0) handleUpdateValue(data.itemId, arrIdx, String(data.value));
       }
@@ -1210,6 +1363,8 @@ const App: React.FC = () => {
             date: `${String(i === 0 ? refDay : 1).padStart(2, '0')}/${String(targetCalMonth + 1).padStart(2, '0')}`,
             description: `${fallbackDesc} ${i + 1}/${installments}`,
             value: data.value,
+            paymentSource: data.isCredit ? 'credit' : 'debit',
+            cardLast4: (data as { cardLast4?: string }).cardLast4,
           }, targetYear, targetCalMonth);
           if (!matchedItem && arrIdx >= 0) handleUpdateValue(data.itemId, arrIdx, String(data.value));
         }
@@ -1236,6 +1391,14 @@ const App: React.FC = () => {
   // Cada despesa variável vira sua PRÓPRIA linha, com o nome que a pessoa
   // digitou. (Havia aqui um balde único "Gastos Avulsos" que juntava todas as
   // despesas pontuais numa linha só e apagava o nome — bug real 2026-07-XX.)
+  const handleOpenExtrato = async (cardLast4?: string) => {
+    const t = await getToken({ template: 'supabase' });
+    if (!t) return;
+    setOfAuthToken(t);
+    setOfInitialCardLast4(cardLast4);
+    setShowExtrato(true);
+  };
+
   const handleCreateItem = (description: string, category: CategoryType, _isOneTime?: boolean): string => {
     const newId = crypto.randomUUID();
     setItems(prev => [...prev, {
@@ -1418,6 +1581,24 @@ const App: React.FC = () => {
     });
     return result;
   }, [items, allCards, mobileMonthIdx, months]);
+
+  // Total já categorizado pelo extrato bancário neste mês, por cardLast4.
+  // Reduz o "a categorizar" conforme o usuário confirma transações no Extrato.
+  const categorizedByCardLast4 = useMemo((): Record<string, number> => {
+    const curMonthData = months[mobileMonthIdx];
+    if (!curMonthData) return {};
+    const curMonthKey = `${curMonthData.year}-${curMonthData.index}`;
+    const result: Record<string, number> = {};
+    for (const item of items) {
+      if (item.category === CategoryType.CREDIT_CARD) continue;
+      for (const p of (item.partialExpenses?.[curMonthKey] ?? [])) {
+        if (p.paymentSource === 'credit' && p.cardLast4) {
+          result[p.cardLast4] = (result[p.cardLast4] ?? 0) + p.value;
+        }
+      }
+    }
+    return result;
+  }, [items, months, mobileMonthIdx]);
 
   const trackedByCardAllMonths = useMemo((): Record<string, Record<number, number>> => {
     const result: Record<string, Record<number, number>> = {};
@@ -1795,8 +1976,10 @@ const App: React.FC = () => {
       {/* ── HEADER ─────────────────────────────────────────────── */}
       <header id="header" className="bg-white/90 backdrop-blur-xl safe-top sticky top-0 z-50 border-b border-[#e8e8ed]">
 
-        {/* Mobile header */}
-        <div className="lg:hidden flex items-center justify-between px-4 py-2">
+        {/* Mobile header — py mínimo: o `safe-top` do <header> já reserva o
+            espaço do notch, e qualquer padding aqui se SOMA a ele. Era daí que
+            vinha a faixa branca sobre o nome Kashim. */}
+        <div className="lg:hidden flex items-center justify-between px-4 py-0.5">
           <div className="flex items-center gap-2">
             <img src="/kashim-icon.png" alt="Kashim" className="h-8 w-8 rounded-xl" />
             <span className="text-[#1d1d1f] font-black text-sm uppercase italic tracking-tight">Kashim</span>
@@ -1813,14 +1996,14 @@ const App: React.FC = () => {
           )}
           <div className="flex items-center gap-1">
             {!isAdmin && (
-              <button onClick={() => setShowInvitePanel(p => !p)} className="w-10 h-10 flex items-center justify-center text-[#aeaeb2] active:text-[#7ab800]">
+              <button onClick={() => setShowInvitePanel(p => !p)} className="w-9 h-9 flex items-center justify-center text-[#aeaeb2] active:text-[#7ab800]">
                 <i className="fas fa-user-plus text-base"></i>
               </button>
             )}
             {user?.imageUrl ? (
               <img src={user.imageUrl} className="w-8 h-8 rounded-full border border-[#e8e8ed] cursor-pointer" onClick={() => setShowSettings(true)} />
             ) : (
-              <button onClick={() => setShowSettings(true)} className="w-10 h-10 flex items-center justify-center text-[#aeaeb2] active:text-[#7ab800]">
+              <button onClick={() => setShowSettings(true)} className="w-9 h-9 flex items-center justify-center text-[#aeaeb2] active:text-[#7ab800]">
                 <i className="fas fa-user-circle text-xl"></i>
               </button>
             )}
@@ -1880,25 +2063,47 @@ const App: React.FC = () => {
           (acesso vale enquanto o coach não revogar) → nada de banner. */}
       {accessInfo && !isNativeApp && !coachViewHouseholdId && !isAdmin
         && (accessInfo.mode === 'expired' || (accessInfo.mode === 'trial' && accessInfo.daysLeft !== null)) && (
-        <div className={`flex items-center justify-center gap-2 text-[11px] font-black uppercase tracking-wide py-2 px-4 ${
-          accessInfo.mode === 'expired'
-            ? 'bg-[#fff0f0] text-[#ff3b30]'
-            : (accessInfo.daysLeft ?? 0) <= 14
-              ? 'bg-orange-50 text-orange-600'
-              : 'bg-[#f0fad0] text-[#7ab800]'
-        }`}>
-          <i className={`fas ${accessInfo.mode === 'expired' ? 'fa-lock' : 'fa-gift'} text-xs`}></i>
-          <span>
-            {accessInfo.mode === 'expired'
-              ? 'Seu acesso terminou'
-              : (accessInfo.daysLeft ?? 0) <= 14
-                ? `Seu acesso grátis termina em ${accessInfo.daysLeft} ${accessInfo.daysLeft === 1 ? 'dia' : 'dias'}`
-                : `Acesso de lançamento — ${accessInfo.daysLeft} dias grátis restantes`}
-          </span>
-          {accessInfo.mode === 'expired' && !isNativeApp && (
-            <button onClick={() => setShowSubscriptionGate(true)} className="underline ml-1">Renovar</button>
-          )}
-        </div>
+        /* A partir de 14 dias o aviso deixa de ser tarja e vira faixa com
+           chamada — a contagem regressiva discreta passava despercebida e o
+           cliente só descobria o fim do acesso quando já estava bloqueado. */
+        (() => {
+          const dias = accessInfo.daysLeft ?? 0;
+          // 30 dias de antecedência: prazo para o cliente se organizar ou
+          // falar com o coach antes de perder o acesso.
+          const urgente = accessInfo.mode === 'expired' || dias <= 30;
+          return (
+            <div className={`px-4 ${urgente ? 'py-3' : 'py-2'} ${
+              accessInfo.mode === 'expired'
+                ? 'bg-[#fff0f0] border-b border-[#ffd4d1]'
+                : dias <= 30
+                  ? 'bg-orange-50 border-b border-orange-200'
+                  : 'bg-[#f0fad0]'
+            }`}>
+              <div className={`max-w-3xl mx-auto flex items-center justify-center gap-2.5 flex-wrap ${
+                accessInfo.mode === 'expired' ? 'text-[#ff3b30]' : dias <= 30 ? 'text-orange-700' : 'text-[#7ab800]'
+              }`}>
+                <i className={`fas ${accessInfo.mode === 'expired' ? 'fa-lock' : 'fa-gift'} ${urgente ? 'text-base' : 'text-xs'}`}></i>
+                <span className={`font-black ${urgente ? 'text-sm' : 'text-[11px] uppercase tracking-wide'}`}>
+                  {accessInfo.mode === 'expired'
+                    ? 'Seu acesso terminou — regularize para continuar usando'
+                    : dias <= 30
+                      ? `Faltam ${dias} ${dias === 1 ? 'dia' : 'dias'} de acesso. Regularize seu plano para não perder seus dados de vista.`
+                      : `Acesso de lançamento — ${dias} dias grátis restantes`}
+                </span>
+                {urgente && !isNativeApp && (
+                  <button
+                    onClick={() => setShowSubscriptionGate(true)}
+                    className={`font-black text-xs uppercase tracking-wide px-4 py-1.5 rounded-full transition-all active:scale-95 ${
+                      accessInfo.mode === 'expired' ? 'bg-[#ff3b30] text-white' : 'bg-orange-600 text-white'
+                    }`}
+                  >
+                    Regularizar
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })()
       )}
 
       <main key={activeTab} className={`k-reveal ${activeTab === 'plan' ? 'max-w-[1600px]' : 'w-full px-2'} mx-auto px-2 lg:px-8 mt-2 lg:mt-8`} style={(activeTab === 'desempenho' || activeTab === 'metas') ? { maxWidth: '100%' } : {}}>
@@ -1955,14 +2160,14 @@ const App: React.FC = () => {
             {/* ── MOBILE MONTH NAVIGATOR ── */}
             <div id="month-navigator" className="lg:hidden bg-white border border-[#e8e8ed] rounded-[18px] mx-3 mb-3 shadow-sm">
               <div className="flex items-center justify-between px-3 py-3">
-                <button onClick={() => setMobileMonthIdx(i => Math.max(0, i - 1))} disabled={mobileMonthIdx === 0} className="w-10 h-10 flex items-center justify-center text-[#aeaeb2] disabled:opacity-20 active:text-[#7ab800] rounded-xl">
+                <button onClick={() => setMobileMonthIdx(i => Math.max(0, i - 1))} disabled={mobileMonthIdx === 0} className="w-9 h-9 flex items-center justify-center text-[#aeaeb2] disabled:opacity-20 active:text-[#7ab800] rounded-xl">
                   <i className="fas fa-chevron-left text-sm"></i>
                 </button>
                 <div className="text-center">
                   <div className="text-[#1d1d1f] font-black uppercase tracking-tight text-base">{months[mobileMonthIdx].monthName} {months[mobileMonthIdx].year}</div>
                   {months[mobileMonthIdx].index === currentActualMonth && months[mobileMonthIdx].year === currentActualYear && <div className="text-[#7ab800] text-[9px] font-black uppercase tracking-widest mt-0.5">Mês atual</div>}
                 </div>
-                <button onClick={() => setMobileMonthIdx(i => Math.min(11, i + 1))} disabled={mobileMonthIdx === 11} className="w-10 h-10 flex items-center justify-center text-[#aeaeb2] disabled:opacity-20 active:text-[#7ab800] rounded-xl">
+                <button onClick={() => setMobileMonthIdx(i => Math.min(11, i + 1))} disabled={mobileMonthIdx === 11} className="w-9 h-9 flex items-center justify-center text-[#aeaeb2] disabled:opacity-20 active:text-[#7ab800] rounded-xl">
                   <i className="fas fa-chevron-right text-sm"></i>
                 </button>
               </div>
@@ -2200,12 +2405,17 @@ const App: React.FC = () => {
                   // load, então ideal e realizado ficam no mesmo mês.
                   totalIncome={(monthlySummaries[mobileMonthIdx] ?? monthlySummaries[0]).totalIncome}
                   mobileMonthIdx={mobileMonthIdx}
+                  // Tocar no "Realizado" leva aos lançamentos que formam aquele
+                  // número, onde dá para recategorizar um a um.
+                  onOpenSpending={(itemId) => { setFocusSpendingItemId(itemId); setTetoInitialFilter(null); setActiveTab('teto'); }}
+                  onNavigateToGastos={(itemId, sourceKey) => { setFocusSpendingItemId(itemId); setTetoInitialFilter({ linkedItemId: itemId, sourceKey }); setActiveTab('teto'); }}
                   onAddItem={handleAddItem} onUpdateValue={handleUpdateValue} onTogglePaid={handleTogglePaid}
                   onRemoveItem={handleRemoveItem} onUpdateDescription={handleUpdateDescription}
                   onReplicateValue={handleReplicateValue} onLinkCard={handleLinkCard}
                   onUpdateCardConfig={handleUpdateCardConfig} onMoveItem={handleMoveItem}
                   trackedByCardId={block.type === CategoryType.CREDIT_CARD ? trackedByCardPrevMonth : undefined}
                   trackedByCardAllMonths={block.type === CategoryType.CREDIT_CARD ? trackedByCardAllMonths : undefined}
+                  categorizedByCardLast4={block.type === CategoryType.CREDIT_CARD ? categorizedByCardLast4 : undefined}
                   onRequestExpenseSheet={block.type === CategoryType.VARIABLE_EXPENSE
                     ? () => {
                         const vm = months[mobileMonthIdx];
@@ -2215,6 +2425,11 @@ const App: React.FC = () => {
                     : undefined}
                   onAddLeisureItem={block.type === CategoryType.PERSONAL_LEISURE ? handleAddLeisureItem : undefined}
                   isAdmin={isAdmin}
+                  onOpenExtrato={block.type === CategoryType.CREDIT_CARD && hasOpenFinanceAccess(user) ? handleOpenExtrato : undefined}
+                  // Só o cliente de Open Finance troca o seletor manual de forma de
+                  // pagamento pelo detalhamento por fonte. No plano normal o seletor
+                  // é a única maneira de informar débito x cartão.
+                  hasOpenFinance={hasOpenFinanceAccess(user)}
                 />
                 </React.Fragment>
               ))}
@@ -2319,7 +2534,7 @@ const App: React.FC = () => {
             </div>
           </>
         ) : (
-          <TetoGastos items={items} currentMonthIdx={currentActualMonth} currentYear={currentActualYear} months={months} onAddPartial={handleAddPartial} onRemovePartial={handleRemovePartial} db={db} householdId={householdId} resolveDbId={(localId) => itemIdMapRef.current[localId] ?? localId} tetoAlert={user ? (() => { const p = getNotifPrefs(user.id); return { enabled: p.tetoAlert, pct: p.tetoPct }; })() : undefined} />
+          <TetoGastos focusItemId={focusSpendingItemId} onFocusHandled={() => setFocusSpendingItemId(null)} initialFilter={tetoInitialFilter} onInitialFilterHandled={() => setTetoInitialFilter(null)} items={items} currentMonthIdx={currentActualMonth} currentYear={currentActualYear} months={months} onAddPartial={handleAddPartial} onRemovePartial={handleRemovePartial} db={db} householdId={householdId} resolveDbId={(localId) => itemIdMapRef.current[localId] ?? localId} tetoAlert={user ? (() => { const p = getNotifPrefs(user.id); return { enabled: p.tetoAlert, pct: p.tetoPct }; })() : undefined} onCreateItem={handleCreateItem} />
         )}
       </main>
 
@@ -2334,7 +2549,7 @@ const App: React.FC = () => {
           <div className="flex min-w-max">
             <button
               onClick={() => setActiveTab('plan')}
-              className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'plan' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
+              className={`min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'plan' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
             >
               <div className={`w-7 h-7 flex items-center justify-center rounded-[9px] transition-all ${activeTab === 'plan' ? 'bg-[#f0fad0]' : ''}`}>
                 <i className={`fas fa-chart-bar text-lg ${activeTab === 'plan' ? 'k-glow-lime' : ''}`}></i>
@@ -2345,7 +2560,7 @@ const App: React.FC = () => {
             <button
               id="tab-teto-mobile"
               onClick={() => setActiveTab('teto')}
-              className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'teto' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
+              className={`min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'teto' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
             >
               <div className={`w-7 h-7 flex items-center justify-center rounded-[9px] transition-all ${activeTab === 'teto' ? 'bg-[#f0fad0]' : ''}`}>
                 <i className={`fas fa-wallet text-lg ${activeTab === 'teto' ? 'k-glow-lime' : ''}`}></i>
@@ -2368,9 +2583,21 @@ const App: React.FC = () => {
               <span className="text-[9px] font-black uppercase tracking-wide text-[#182200]">Lançar</span>
             </button>
 
+            {hasOpenFinanceAccess(user) && (
+            <button
+              onClick={async () => { const t = await getToken({ template: 'supabase' }); if (t) { setOfAuthToken(t); setShowExtrato(true); } }}
+              className="min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 text-[#aeaeb2] transition-colors active:scale-95"
+            >
+              <div className="w-7 h-7 flex items-center justify-center rounded-[9px]">
+                <i className="fas fa-university text-lg"></i>
+              </div>
+              <span className="text-[9px] font-black uppercase tracking-wide">Extrato</span>
+            </button>
+            )}
+
             <button
               onClick={() => setActiveTab('metas')}
-              className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'metas' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
+              className={`min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'metas' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
             >
               <div className={`w-7 h-7 flex items-center justify-center rounded-[9px] transition-all ${activeTab === 'metas' ? 'bg-[#f0fad0]' : ''}`}>
                 <i className={`fas fa-bullseye text-lg ${activeTab === 'metas' ? 'k-glow-lime' : ''}`}></i>
@@ -2380,7 +2607,7 @@ const App: React.FC = () => {
 
             <button
               onClick={() => setActiveTab('dividas')}
-              className={`min-w-[72px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'dividas' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
+              className={`min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'dividas' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
             >
               <div className={`w-7 h-7 flex items-center justify-center rounded-[9px] transition-all ${activeTab === 'dividas' ? 'bg-[#f0fad0]' : ''}`}>
                 <i className={`fas fa-file-invoice-dollar text-lg ${activeTab === 'dividas' ? 'k-glow-lime' : ''}`}></i>
@@ -2391,7 +2618,7 @@ const App: React.FC = () => {
             {currentWeekQuote && (
               <button
                 onClick={() => setShowQuoteModal(true)}
-                className="min-w-[72px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 transition-colors active:scale-95 relative"
+                className="min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 transition-colors active:scale-95 relative"
               >
                 <div className="w-7 h-7 flex items-center justify-center rounded-[9px]" style={showQuoteModal ? {background:'rgba(34,197,94,0.12)'} : {}}>
                   <i className="fas fa-quote-left text-lg" style={{color:'#22c55e'}}></i>
@@ -2402,7 +2629,7 @@ const App: React.FC = () => {
 
             <button
               onClick={() => setActiveTab('desempenho')}
-              className={`min-w-[80px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'desempenho' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
+              className={`min-w-[80px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'desempenho' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
             >
               <div className={`w-7 h-7 flex items-center justify-center rounded-[9px] transition-all ${activeTab === 'desempenho' ? 'bg-[#f0fad0]' : ''}`}>
                 <i className={`fas fa-chart-pie text-lg ${activeTab === 'desempenho' ? 'k-glow-lime' : ''}`}></i>
@@ -2410,21 +2637,9 @@ const App: React.FC = () => {
               <span className="text-[9px] font-black uppercase tracking-wide">Desempenho</span>
             </button>
 
-            {hasOpenFinanceAccess(user) && (
-            <button
-              onClick={async () => { const t = await getToken({ template: 'supabase' }); if (t) { setOfAuthToken(t); setShowExtrato(true); } }}
-              className="min-w-[72px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 text-[#aeaeb2] transition-colors active:scale-95"
-            >
-              <div className="w-7 h-7 flex items-center justify-center rounded-[9px]">
-                <i className="fas fa-university text-lg"></i>
-              </div>
-              <span className="text-[9px] font-black uppercase tracking-wide">Extrato</span>
-            </button>
-            )}
-
             <button
               onClick={() => setShowSettings(true)}
-              className="min-w-[72px] flex flex-col items-center justify-center pt-2 pb-1 gap-0.5 text-[#aeaeb2] transition-colors active:scale-95"
+              className="min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 text-[#aeaeb2] transition-colors active:scale-95"
             >
               <div className="w-7 h-7 flex items-center justify-center rounded-[9px]">
                 <i className="fas fa-user-circle text-lg"></i>
@@ -2437,7 +2652,7 @@ const App: React.FC = () => {
       </nav>
 
       {/* Spacer so bottom tab bar doesn't cover content on mobile */}
-      <div className="lg:hidden h-20"></div>
+      <div className="lg:hidden h-16"></div>
 
       {/* Open Finance — Extrato Bancário overlay */}
       {showExtrato && ofAuthToken && householdId && (
@@ -2447,8 +2662,14 @@ const App: React.FC = () => {
           items={items}
           currentYear={currentActualYear}
           currentMonth={currentActualMonth}
+          months={months}
+          tetoAlert={user ? (() => { const p = getNotifPrefs(user.id); return { enabled: p.tetoAlert, pct: p.tetoPct }; })() : undefined}
+          categorizedIds={ofCategorized}
+          initialCardLast4={ofInitialCardLast4}
+          onLaunchExpense={(pre) => setPendingExpense({ source: 'manual', ...pre })}
+          onCreateItem={handleCreateItem}
           onAddPartial={handleAddPartial}
-          onClose={() => setShowExtrato(false)}
+          onClose={() => { setShowExtrato(false); setOfInitialCardLast4(undefined); }}
         />
       )}
 
@@ -2462,8 +2683,36 @@ const App: React.FC = () => {
         initialDescription={pendingExpense?.description}
         initialInstallments={pendingExpense?.installments}
         initialCategory={pendingExpense?.category}
+        knownPayMethod={pendingExpense?.knownPayMethod}
+        knownCardLast4={pendingExpense?.knownCardLast4}
         defaultPurchaseDate={pendingExpense?.purchaseDate}
-        onConfirm={(data) => { if (data.itemId) fireConfetti(); handleConfirmExpense(data); }}
+        onConfirm={(data) => {
+          if (data.itemId) fireConfetti();
+          // O cartao do extrato viaja junto ate o lancamento: sem isto, o gasto
+          // herdava o cartao da LINHA e um gasto do Bradesco aparecia como Latam.
+          if (pendingExpense?.knownCardLast4) {
+            (data as { cardLast4?: string }).cardLast4 = pendingExpense.knownCardLast4;
+          }
+          handleConfirmExpense(data);
+
+          // Veio do Extrato: fecha o ciclo marcando a transação e ensinando o
+          // estabelecimento, exatamente como o seletor antigo fazia.
+          const ofTx = pendingExpense?.ofTx;
+          if (ofTx && data.itemId && ofAuthToken) {
+            const auth = { 'Content-Type': 'application/json', Authorization: `Bearer ${ofAuthToken}` };
+            fetch('/api/of-transactions', {
+              method: 'PATCH', headers: auth,
+              body: JSON.stringify({ householdId, transactionId: ofTx.transactionId, action: 'categorize', itemId: data.itemId, category: data.category, partialId: null }),
+            }).catch(() => {});
+            if (ofTx.merchantKey) {
+              fetch('/api/of-merchant-memory', {
+                method: 'POST', headers: auth,
+                body: JSON.stringify({ householdId, merchantKey: ofTx.merchantKey, category: data.category, itemId: data.itemId }),
+              }).catch(() => {});
+            }
+            setOfCategorized((prev) => [...prev, ofTx.transactionId]);
+          }
+        }}
         onClose={() => setPendingExpense(null)}
         onCreateItem={handleCreateItem}
       />

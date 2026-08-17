@@ -1,14 +1,14 @@
 ﻿
 import React from 'react';
-import { SummaryData, FinanceItem, Goal, CategoryType } from '../types';
+import { SummaryData, FinanceItem, Goal } from '../types';
 import { formatCurrency, IDEAL_LIMITS } from '../constants';
+import { getPlanTotals, toIncomePct } from '../lib/planTotals';
 import {
   calculateScore, getLevel, getNextLevel, getLevelProgress,
   calculateStreak, checkBadges, BADGE_DEFS, LEVELS,
 } from '../lib/gamification';
 import ScoreRing from './ScoreRing';
 import { useTilt } from '../lib/useTilt';
-import { isEducationItem } from '../lib/educationUtils';
 
 interface DesempenhoProps {
   summary: SummaryData;
@@ -29,7 +29,7 @@ interface Category {
 }
 
 const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goals, monthIdx }) => {
-  const { totalIncome, totalFixed, totalVariable, totalLeisure, totalCreditCard, balance } = summary;
+  const { totalIncome, balance } = summary;
   const scoreTilt = useTilt(8);
 
   if (!totalIncome || totalIncome <= 0) {
@@ -50,16 +50,23 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
   const streak = calculateStreak(summaries);
   const unlockedBadges = checkBadges(summaries, items, goals);
 
-  const educationTotal = items
-    .filter(i => i.category === CategoryType.FIXED_EXPENSE && isEducationItem(i.description))
-    .reduce((sum, i) => sum + (i.values[monthIdx] || 0), 0);
-  const fixedCoreTotal = Math.max(0, totalFixed - educationTotal);
+  // Distribuição por categoria vem do MESMO cálculo da aba Plano (valores
+  // brutos do mês). Antes esta tela lia `totalFixed`/`totalLeisure` do summary,
+  // que são líquidos — todo gasto no cartão é descontado no mês corrente para
+  // não duplicar com a fatura. Serve para saldo, não para distribuição: quem
+  // pagava o lazer no cartão via "Lazer 0%", e as fixas do Eduardo apareciam
+  // 15% aqui contra 36% no Plano. Ver lib/planTotals.ts.
+  const plan = getPlanTotals(items, monthIdx);
+  const fixedCoreTotal = plan.fixedCore;
+  const educationTotal = plan.education;
 
+  // Sobra continua saindo do saldo oficial do app (líquido, sem dupla
+  // contagem da fatura) — é o mesmo número do resumo do mês.
   const poupanca = Math.max(0, balance);
-  const poupancaPct = (poupanca / totalIncome) * 100;
-  const fixedCorePct = (fixedCoreTotal / totalIncome) * 100;
-  const educationPct = (educationTotal / totalIncome) * 100;
-  const lazerPct = (totalLeisure / totalIncome) * 100;
+  const poupancaPct = toIncomePct(poupanca, totalIncome);
+  const fixedCorePct = toIncomePct(fixedCoreTotal, totalIncome);
+  const educationPct = toIncomePct(educationTotal, totalIncome);
+  const lazerPct = toIncomePct(plan.leisure, totalIncome);
 
   const categories: Category[] = [
     { label: 'Contas Fixas', icon: 'fa-home', actual: fixedCorePct, ideal: Math.round(IDEAL_LIMITS.FIXED * 100), color: 'bg-red-500', idealColor: 'text-red-400', description: 'Moradia, contas e despesas fixas' },
@@ -80,8 +87,8 @@ const Desempenho: React.FC<DesempenhoProps> = ({ summary, summaries, items, goal
     suggestions.push(`Gastos com educação estão ${formatCurrency(educationTotal - idealEducation)} acima do ideal de 10%.`);
   }
   const idealLazer = totalIncome * IDEAL_LIMITS.LEISURE;
-  if (totalLeisure > idealLazer) {
-    suggestions.push(`Lazer e gastos pessoais estão ${formatCurrency(totalLeisure - idealLazer)} acima do ideal. Tente limitar a ${formatCurrency(idealLazer)} por mês.`);
+  if (plan.leisure > idealLazer) {
+    suggestions.push(`Lazer e gastos pessoais estão ${formatCurrency(plan.leisure - idealLazer)} acima do ideal. Tente limitar a ${formatCurrency(idealLazer)} por mês.`);
   }
   const idealPoupanca = totalIncome * IDEAL_LIMITS.SAVINGS;
   if (poupanca < idealPoupanca) {

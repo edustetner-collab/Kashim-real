@@ -27,16 +27,30 @@ interface BlockSectionProps {
   onMoveItem?: (id: string, direction: 'up' | 'down') => void;
   trackedByCardId?: Record<string, number>;
   trackedByCardAllMonths?: Record<string, Record<number, number>>;
+  /** Total já categorizado pelo extrato no mês atual, por cardLast4. Usado para decrementar "a categorizar". */
+  categorizedByCardLast4?: Record<string, number>;
   /** Coach/assistente: pula os recados educativos (modal de instrução ao
       adicionar e aviso de parcelas) — eles são para o cliente. */
   isAdmin?: boolean;
+  /** Abre os lançamentos que compõem o Realizado deste item, em Gastos. */
+  onOpenSpending?: (itemId: string) => void;
+  /** Abre o Extrato pré-filtrado para um cartão específico (Open Finance). */
+  onOpenExtrato?: (cardLast4?: string) => void;
+  /** Navega para a aba Gastos pré-filtrada por este item e fonte de pagamento. */
+  onNavigateToGastos?: (itemId: string, sourceKey: string) => void;
+  /** Cliente com Open Finance ligado (portão em lib/ofAccess.ts).
+      Só ele troca o seletor manual de forma de pagamento pelo detalhamento
+      por fonte vindo do extrato. No plano normal (R$10/ano) o cliente
+      CONTINUA escolhendo débito/cartão na mão — sem isso ele não tem como
+      informar como pagou. */
+  hasOpenFinance?: boolean;
 }
 
 const BlockSection: React.FC<BlockSectionProps> = ({
   title, subtitle, category, items, allCards = [], months, totalIncome, mobileMonthIdx = 0,
   onAddItem, onUpdateValue, onTogglePaid, onRemoveItem, onUpdateDescription, onReplicateValue, onLinkCard,
-  onUpdateCardConfig, onMoveItem, trackedByCardId, trackedByCardAllMonths, onRequestExpenseSheet, onAddLeisureItem,
-  isAdmin = false
+  onUpdateCardConfig, onMoveItem, trackedByCardId, trackedByCardAllMonths, categorizedByCardLast4, onRequestExpenseSheet, onAddLeisureItem,
+  isAdmin = false, onOpenSpending, onOpenExtrato, onNavigateToGastos, hasOpenFinance = false,
 }) => {
   const [showInstructionModal, setShowInstructionModal] = useState(false);
   const [installmentWarning, setInstallmentWarning] = useState<string | null>(null);
@@ -177,9 +191,12 @@ const BlockSection: React.FC<BlockSectionProps> = ({
   };
 
   const tooltip = getTooltipContent();
-  const showLinkOption = category === CategoryType.FIXED_EXPENSE || 
-                        category === CategoryType.VARIABLE_EXPENSE || 
+  const showLinkOption = category === CategoryType.FIXED_EXPENSE ||
+                        category === CategoryType.VARIABLE_EXPENSE ||
                         category === CategoryType.PERSONAL_LEISURE;
+  // Lazer: uma única linha visual que agrega todos os itens PERSONAL_LEISURE
+  const isLeisureBlock = category === CategoryType.PERSONAL_LEISURE;
+  const firstLeisureId = isLeisureBlock ? items[0]?.id : null;
 
   // Âncoras do tour de onboarding — um id estável por bloco
   const blockTourId = {
@@ -532,7 +549,9 @@ const BlockSection: React.FC<BlockSectionProps> = ({
             <div className="h-1.5 bg-[#e8e8ed] rounded-full overflow-hidden">
               <div className="h-full rounded-full" style={{ width: `${idealPct}%`, background: 'linear-gradient(90deg,#a8e716,#7ab800)' }} />
             </div>
-            {/* Realizado */}
+            {/* Realizado do bloco inteiro (não de um item) — por isso NÃO é
+                clicável: não há um card único de destino. A navegação para os
+                lançamentos sai do card do item, em Gastos. */}
             <div className="flex items-center justify-between mt-1">
               <div className="flex items-center gap-2">
                 <span className={`text-[9px] font-black uppercase tracking-[1px] ${missing ? 'text-[#ff9500]' : ok ? 'text-[#007aff]' : 'text-[#ff3b30]'}`}>Realizado</span>
@@ -564,19 +583,28 @@ const BlockSection: React.FC<BlockSectionProps> = ({
       <div className="block lg:hidden print:hidden bg-white divide-y divide-[#e8e8ed]">
         {items.filter(item => {
           if (item.category === CategoryType.VARIABLE_EXPENSE) {
-            if (item.values[mobileMonthIdx] > 0) return true;
-            const md = months[mobileMonthIdx];
-            const mk = md ? `${md.year}-${md.index}` : '';
-            const pts: any[] = (item.partialExpenses as any)?.[mk] || [];
-            return pts.length > 0;
+            // Oculta automaticamente se não há nada do mês vigente em diante
+            return months.slice(mobileMonthIdx).some((m, i) => {
+              const actualIdx = mobileMonthIdx + i;
+              if ((item.values[actualIdx] || 0) > 0) return true;
+              const mk = `${m.year}-${m.index}`;
+              const pts: any[] = (item.partialExpenses as any)?.[mk] || [];
+              return pts.length > 0;
+            });
           }
           return true;
         }).map((item) => {
+          if (isLeisureBlock && item.id !== firstLeisureId) return null;
           const monthData = months[mobileMonthIdx];
           const monthKey = `${monthData.year}-${monthData.index}`;
-          const partials = item.partialExpenses?.[monthKey] || [];
+          const partials = isLeisureBlock
+            ? items.flatMap(i => (i.partialExpenses?.[monthKey] || []) as any[])
+            : (item.partialExpenses?.[monthKey] || []);
+          const teto = isLeisureBlock
+            ? items.reduce((sum, i) => sum + (i.values[mobileMonthIdx] || 0), 0)
+            : item.values[mobileMonthIdx];
           const realSpent = partials.reduce((acc: number, p: any) => acc + p.value, 0);
-          const isOver = realSpent > item.values[mobileMonthIdx] && item.values[mobileMonthIdx] > 0;
+          const isOverTeto = realSpent > teto && teto > 0;
           const isPaid = item.paidStatus[mobileMonthIdx];
           const isIncome = category === CategoryType.INCOME;
 
@@ -630,7 +658,40 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                 const tracked = trackedByCardId?.[item.id] ?? 0;
                 const fatura = item.values[mobileMonthIdx] || 0;
                 const prevMonthName = mobileMonthIdx > 0 ? months[mobileMonthIdx - 1]?.monthName : null;
-                if (!tracked || !prevMonthName) return null;
+                const last4 = item.description.match(/••(\d{4})/)?.[1];
+
+                const alreadyCategorized = categorizedByCardLast4?.[last4 ?? ''] ?? 0;
+
+                // Sem histórico rastreado: mostra só o CTA do Extrato se disponível
+                if (!tracked || !prevMonthName) {
+                  const remaining = Math.max(0, fatura - alreadyCategorized);
+                  if (!onOpenExtrato) return null;
+                  if (remaining <= 0 && fatura > 0) {
+                    return (
+                      <div className="mt-2 ml-7 px-2.5 py-2 bg-[#f0fad0] border border-[rgba(122,184,0,0.2)] rounded-xl text-[10px]">
+                        <div className="flex items-center gap-1.5 text-[#7ab800]">
+                          <i className="fas fa-check-circle text-xs" />
+                          <span className="font-black text-[9px] uppercase tracking-wider">Fatura categorizada</span>
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (!fatura) return null;
+                  return (
+                    <div className="mt-2 ml-7 px-2.5 py-2 bg-orange-50 border border-orange-200 rounded-xl text-[10px]">
+                      <div className="flex justify-between items-center">
+                        <span className="text-orange-600 font-black uppercase text-[9px] tracking-wider">A categorizar</span>
+                        <button
+                          onClick={() => onOpenExtrato(last4)}
+                          className="flex items-center gap-1 bg-orange-500 text-white font-black text-[9px] px-2 py-0.5 rounded-full active:opacity-70"
+                        >
+                          <span className="k-num">{formatCurrency(remaining > 0 ? remaining : fatura)}</span>
+                          <i className="fas fa-chevron-right text-[7px]" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
 
                 if (!fatura) {
                   return (
@@ -647,16 +708,32 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   );
                 }
 
-                const naoIdentificado = Math.max(0, fatura - tracked);
+                const naoIdentificado = Math.max(0, fatura - tracked - alreadyCategorized);
                 return (
                   <div className="mt-2 ml-7 px-2.5 py-2 bg-[#f0fad0] border border-[rgba(122,184,0,0.2)] rounded-xl space-y-1 text-[10px]">
                     <div className="flex justify-between items-center">
                       <span className="text-[#6e6e73]">Rastreado ({prevMonthName})</span>
                       <span className="text-[#7ab800] font-black k-num">− {formatCurrency(tracked)}</span>
                     </div>
+                    {alreadyCategorized > 0 && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#6e6e73]">Extrato (este mês)</span>
+                        <span className="text-[#7ab800] font-black k-num">− {formatCurrency(alreadyCategorized)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between items-center border-t border-[rgba(122,184,0,0.15)] pt-1">
                       <span className="text-[#aeaeb2] font-black uppercase text-[9px] tracking-wider">A categorizar</span>
-                      <span className={`font-black k-num ${naoIdentificado === 0 ? 'text-[#7ab800]' : 'text-orange-500'}`}>{formatCurrency(naoIdentificado)}</span>
+                      {naoIdentificado > 0 && onOpenExtrato ? (
+                        <button
+                          onClick={() => onOpenExtrato(last4)}
+                          className="flex items-center gap-1 bg-orange-500 text-white font-black text-[9px] px-2 py-0.5 rounded-full active:opacity-70"
+                        >
+                          <span className="k-num">{formatCurrency(naoIdentificado)}</span>
+                          <i className="fas fa-chevron-right text-[7px]" />
+                        </button>
+                      ) : (
+                        <span className={`font-black k-num ${naoIdentificado === 0 ? 'text-[#7ab800]' : 'text-orange-500'}`}>{formatCurrency(naoIdentificado)}</span>
+                      )}
                     </div>
                   </div>
                 );
@@ -677,7 +754,10 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   </select>
                 </div>
               )}
-              {showLinkOption && onLinkCard && (() => {
+              {/* Plano normal (R$10/ano): o cliente informa na mão como pagou.
+                  Este seletor é a ÚNICA forma dele registrar débito x cartão —
+                  esconder aqui apaga o recurso para quem não tem Open Finance. */}
+              {showLinkOption && onLinkCard && !hasOpenFinance && (() => {
                 const hasPayment = !!(item.linkType || item.linkedCardId);
                 const isOpen = openPaymentItemId === item.id;
                 let paymentLabel = '';
@@ -728,7 +808,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           const mobileVal = item.values[mobileMonthIdx];
                           const displayValue = realSpent > 0 ? realSpent : (isCardLinked && isCommitted && mobileVal > 0 ? mobileVal : 0);
                           if (!displayValue) return realSpent > 0 ? (
-                            <span className={`text-[10px] font-black px-2 py-1 rounded-xl k-num ${isOver ? 'bg-[#fff0f0] text-[#ff3b30]' : 'bg-[#f0f4ff] text-[#007aff]'}`}>
+                            <span className={`text-[10px] font-black px-2 py-1 rounded-xl k-num ${isOverTeto ? 'bg-[#fff0f0] text-[#ff3b30]' : 'bg-[#f0f4ff] text-[#007aff]'}`}>
                               {formatCurrency(realSpent)}
                             </span>
                           ) : null;
@@ -744,7 +824,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                             }
                           }
                           return (
-                            <span className={`text-[10px] font-black px-2 py-1 rounded-xl k-num flex items-center gap-1 flex-wrap ${realSpent > 0 && isOver ? 'bg-[#fff0f0] text-[#ff3b30]' : 'bg-[#f0f4ff] text-[#007aff]'}`}>
+                            <span className={`text-[10px] font-black px-2 py-1 rounded-xl k-num flex items-center gap-1 flex-wrap ${realSpent > 0 && isOverTeto ? 'bg-[#fff0f0] text-[#ff3b30]' : 'bg-[#f0f4ff] text-[#007aff]'}`}>
                               {faturaLabel && <span className="text-[8px] font-bold opacity-60 normal-case">{faturaLabel} ·</span>}
                               {formatCurrency(displayValue)}
                             </span>
@@ -812,6 +892,48 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   </div>
                 );
               })()}
+              {/* Open Finance: a forma de pagamento vem do extrato, então o seletor
+                  manual dá lugar ao detalhamento por fonte (clicável → Gastos). */}
+              {showLinkOption && hasOpenFinance && partials.length > 0 && (() => {
+                type SrcRow = { key: string; label: string; total: number; isCredit: boolean };
+                const srcMap = new Map<string, SrcRow>();
+                for (const p of partials) {
+                  const key = (p as any).paymentSource === 'credit' ? `credit_${(p as any).cardLast4 ?? ''}` : 'debit';
+                  if (!srcMap.has(key)) {
+                    srcMap.set(key, { key, label: (p as any).paymentSource === 'credit' ? `Cartão ••${(p as any).cardLast4 ?? '?'}` : 'Débito / Pix', total: 0, isCredit: (p as any).paymentSource === 'credit' });
+                  }
+                  srcMap.get(key)!.total += (p as any).value;
+                }
+                const rows = Array.from(srcMap.values());
+                const totalSpent = rows.reduce((sum, r) => sum + r.total, 0);
+                const isOver = teto > 0 && totalSpent > teto;
+                return (
+                  <div className={`mt-1.5 ml-7 flex flex-col gap-1 ${isOver ? 'rounded-xl bg-[#fff0f0] p-1.5 border border-[rgba(255,59,48,0.2)]' : ''}`}>
+                    {isOver && (
+                      <p className="text-[8px] font-black text-[#ff3b30] uppercase tracking-wider flex items-center gap-1">
+                        <i className="fas fa-exclamation-circle text-[9px]" />
+                        +{formatCurrency(totalSpent - teto)} acima do teto
+                      </p>
+                    )}
+                    {rows.map(r => (
+                      <button
+                        key={r.key}
+                        onClick={() => onNavigateToGastos?.(item.id, r.key)}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[9px] font-black border active:opacity-70 w-fit ${
+                          isOver
+                            ? 'bg-[#fff0f0] border-[rgba(255,59,48,0.15)] text-[#ff3b30]'
+                            : 'bg-[#f5f5f7] border-[#e8e8ed]'
+                        }`}
+                      >
+                        <i className={`fas ${r.isCredit ? 'fa-credit-card' : 'fa-arrow-right-from-bracket'} text-[8px] ${isOver ? 'text-[#ff3b30]' : r.isCredit ? 'text-[#ff9500]' : 'text-[#007aff]'}`} />
+                        <span className={isOver ? 'text-[#ff3b30]' : r.isCredit ? 'text-[#ff9500]' : 'text-[#007aff]'}>{r.label}</span>
+                        <span className={`k-num ${isOver ? 'text-[#ff3b30] font-black' : 'text-[#1d1d1f]'}`}>{formatCurrency(r.total)}</span>
+                        <i className={`fas fa-chevron-right text-[7px] ${isOver ? 'text-[#ff3b30]' : 'text-[#aeaeb2]'}`} />
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
               {/* Replicate button — only for categories that repeat every month. Fixed to the
                   card's bottom-right corner, slightly above the edge so it doesn't collide
                   with the payment-method row or future per-card spent totals. */}
@@ -872,7 +994,20 @@ const BlockSection: React.FC<BlockSectionProps> = ({
             </tr>
           </thead>
           <tbody>
-            {items.filter(item => showHidden || !hiddenItemIds.has(item.id)).map((item) => (
+            {items.filter(item => {
+              if (isLeisureBlock && item.id !== firstLeisureId) return false;
+              if (item.category === CategoryType.VARIABLE_EXPENSE && !showHidden) {
+                const hasActivity = months.slice(mobileMonthIdx).some((m, i) => {
+                  const actualIdx = mobileMonthIdx + i;
+                  if ((item.values[actualIdx] || 0) > 0) return true;
+                  const mk = `${m.year}-${m.index}`;
+                  const pts: any[] = (item.partialExpenses as any)?.[mk] || [];
+                  return pts.length > 0;
+                });
+                if (!hasActivity) return false;
+              }
+              return showHidden || !hiddenItemIds.has(item.id);
+            }).map((item) => (
               <tr key={item.id} className={`border-b transition-colors ${hiddenItemIds.has(item.id) ? 'opacity-35 bg-gray-50' : 'hover:bg-gray-50'}`}>
                 <td className="p-2 text-center">
                   <div className="flex flex-col items-center gap-0.5">
@@ -943,7 +1078,8 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                         </select>
                       </div>
                     )}
-                    {showLinkOption && onLinkCard && (() => {
+                    {/* Plano normal (R$10/ano): seletor manual de forma de pagamento. */}
+                    {showLinkOption && onLinkCard && !hasOpenFinance && (() => {
                       const hasPayment = !!(item.linkType || item.linkedCardId);
                       const isOpen = openPaymentItemId === item.id;
                       let paymentLabel = '';
@@ -1018,6 +1154,39 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                       </div>
                     );
                     })()}
+                    {/* Open Finance: detalhamento por fonte, vindo do extrato. */}
+                    {showLinkOption && hasOpenFinance && (() => {
+                      const monthData = months[mobileMonthIdx];
+                      const mKey = `${monthData.year}-${monthData.index}`;
+                      const mPartials = (item.partialExpenses?.[mKey] || []) as any[];
+                      if (mPartials.length === 0) return null;
+                      type SrcRow = { key: string; label: string; total: number; isCredit: boolean };
+                      const srcMap = new Map<string, SrcRow>();
+                      for (const p of mPartials) {
+                        const key = p.paymentSource === 'credit' ? `credit_${p.cardLast4 ?? ''}` : 'debit';
+                        if (!srcMap.has(key)) {
+                          srcMap.set(key, { key, label: p.paymentSource === 'credit' ? `Cartão ••${p.cardLast4 ?? '?'}` : 'Débito / Pix', total: 0, isCredit: p.paymentSource === 'credit' });
+                        }
+                        srcMap.get(key)!.total += p.value;
+                      }
+                      const rows = Array.from(srcMap.values());
+                      return (
+                        <div className="px-2 pb-1 flex flex-col gap-1">
+                          {rows.map(r => (
+                            <button
+                              key={r.key}
+                              onClick={() => onNavigateToGastos?.(item.id, r.key)}
+                              className="flex items-center gap-1 px-2 py-0.5 rounded text-[8px] font-black bg-zinc-50 border border-zinc-200 hover:border-zinc-400 transition-all w-fit"
+                            >
+                              <i className={`fas ${r.isCredit ? 'fa-credit-card text-orange-500' : 'fa-arrow-right-from-bracket text-blue-500'} text-[7px]`} />
+                              <span className={r.isCredit ? 'text-orange-600' : 'text-blue-600'}>{r.label}</span>
+                              <span className="k-num text-zinc-700">{formatCurrency(r.total)}</span>
+                              <i className="fas fa-chevron-right text-[6px] text-zinc-400" />
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </td>
                 {item.values.map((val, mIdx) => {
@@ -1025,9 +1194,14 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   const isIncome = category === CategoryType.INCOME;
                   const monthData = months[mIdx];
                   const monthKey = `${monthData.year}-${monthData.index}`;
-                  const partials = item.partialExpenses?.[monthKey] || [];
+                  const partials = isLeisureBlock
+                    ? items.flatMap(i => (i.partialExpenses?.[monthKey] || []))
+                    : (item.partialExpenses?.[monthKey] || []);
                   const realSpent = partials.reduce((acc, p) => acc + p.value, 0);
-                  const isOver = realSpent > val && val > 0;
+                  const displayVal = isLeisureBlock
+                    ? items.reduce((sum, i) => sum + (i.values[mIdx] || 0), 0)
+                    : val;
+                  const isOver = realSpent > displayVal && displayVal > 0;
 
                   return (
                     <td key={mIdx} className={`p-2 border-l text-center transition-colors focus-within:!bg-white ${isPaid ? 'bg-green-50/30' : val === 0 ? 'bg-zinc-100' : ''}`}>
@@ -1048,7 +1222,11 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                             <i className="fas fa-copy"></i>
                           </button>
                         </div>
-                        {category !== CategoryType.VARIABLE_EXPENSE && (() => {
+                        {/* O selo agora vale para Contas Variáveis também. Ele
+                            era o único lugar que mostrava quanto já foi lançado
+                            no item — e justamente nas variáveis, onde mais entra
+                            gasto automático do banco, não aparecia. */}
+                        {(() => {
                           const linkedCard = item.linkedCardId ? allCards.find(c => c.id === item.linkedCardId) : null;
                           const isCardLinked = !!(linkedCard && item.linkType !== LinkType.DEBIT);
                           const isCommitted = item.linkType === LinkType.INSTALLMENT;
@@ -1065,10 +1243,20 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                               faturaLabel = `↗ ${linkedCard!.description?.split(' ')[0] || 'Cartão'}`;
                             }
                           }
+                          // Só é clicável quando há lançamento de verdade por
+                          // trás: com `realSpent` zerado o selo mostra o valor
+                          // comprometido do cartão, e não há lista para abrir.
+                          const canOpen = !!onOpenSpending && realSpent > 0;
                           return (
-                            <div className={`text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-1 flex-wrap ${realSpent > 0 && isOver ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
+                            <div
+                              role={canOpen ? 'button' : undefined}
+                              onClick={canOpen ? (e) => { e.stopPropagation(); onOpenSpending!(item.id); } : undefined}
+                              title={canOpen ? 'Ver e recategorizar estes lançamentos' : undefined}
+                              className={`text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-1 flex-wrap ${canOpen ? 'cursor-pointer active:opacity-70' : ''} ${realSpent > 0 && isOver ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}
+                            >
                               {faturaLabel && <span className="text-[8px] opacity-60 normal-case font-bold">{faturaLabel} ·</span>}
                               {formatCurrency(displayValue)}
+                              {canOpen && <i className="fas fa-chevron-right text-[7px] opacity-60" />}
                             </div>
                           );
                         })()}
@@ -1099,6 +1287,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                             );
                           }
                           const aCategorizar = Math.max(0, val - tracked);
+                          const last4 = item.description.match(/••(\d{4})/)?.[1];
                           return (
                             <div className="mt-1 border border-[#e8e8ed] rounded-lg px-1.5 py-1 space-y-0.5">
                               <div className="flex justify-between items-center gap-1">
@@ -1107,7 +1296,17 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                               </div>
                               <div className="flex justify-between items-center gap-1 border-t border-[#f0f0f0] pt-0.5">
                                 <span className="text-[7px] text-[#aeaeb2] font-bold uppercase">A categ.</span>
-                                <span className={`text-[8px] font-black k-num ${aCategorizar === 0 ? 'text-[#7ab800]' : 'text-orange-500'}`}>{formatCurrency(aCategorizar)}</span>
+                                {aCategorizar > 0 && onOpenExtrato ? (
+                                  <button
+                                    onClick={() => onOpenExtrato(last4)}
+                                    className="flex items-center gap-0.5 bg-orange-500 text-white font-black text-[7px] px-1.5 py-0.5 rounded-full active:opacity-70"
+                                  >
+                                    <span className="k-num">{formatCurrency(aCategorizar)}</span>
+                                    <i className="fas fa-chevron-right text-[6px]" />
+                                  </button>
+                                ) : (
+                                  <span className={`text-[8px] font-black k-num ${aCategorizar === 0 ? 'text-[#7ab800]' : 'text-orange-500'}`}>{formatCurrency(aCategorizar)}</span>
+                                )}
                               </div>
                             </div>
                           );
