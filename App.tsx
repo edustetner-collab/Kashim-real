@@ -46,6 +46,13 @@ const ADMIN_IDS =(import.meta.env.VITE_ADMIN_USER_IDS ?? '').split(',').map((s: 
 const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
 // Fallback CSS p/ esconder login social no nativo (ver regra .native-app no index.html)
 if (isNativeApp) document.documentElement.classList.add('native-app');
+// iOS nativo usa `contentInset: 'automatic'` (capacitor.config.ts): o WKWebView JA
+// empurra o conteudo do scroll para baixo do notch. O header fica no fluxo do
+// scroll, entao somar `env(safe-area-inset-top)` por cima dava padding em dobro
+// (~47px do WebView + ~47px do CSS). Ver a regra .native-ios no index.html.
+if (isNativeApp && (window as any).Capacitor?.getPlatform?.() === 'ios') {
+  document.documentElement.classList.add('native-ios');
+}
 
 const DEFAULT_FIXED_EXPENSES = [
   'Moradia', 'Condominio', 'Telefone fixo', 'Internet', 'Celular',

@@ -49,6 +49,16 @@
       }
       .safe-top    { padding-top: env(safe-area-inset-top); }
       .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+      /* iPhone no app nativo: o WKWebView roda com contentInset 'automatic' e ja
+         reserva o espaco do notch para tudo que esta no fluxo do scroll. Somar o
+         inset do CSS aqui dava um vao de ~94px no topo (o dobro do necessario) a
+         partir da segunda abertura do app.
+         ATENCAO: esta regra depende de contentInset continuar 'automatic' no
+         capacitor.config.ts. Se um dia virar 'never', o WebView para de reservar
+         o espaco e esta regra tem de sair, senao o header sobe para debaixo do
+         relogio. Elemento `fixed` (o menu de baixo) nao sofre contentInset e
+         continua precisando do safe-bottom. */
+      html.native-ios .safe-top { padding-top: 0; }
       html, body { height: 100%; overflow-x: hidden; }
       /* Tabular numbers for all monetary values */
       .k-num {
