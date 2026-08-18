@@ -1453,81 +1453,103 @@ const App: React.FC = () => {
     }));
   };
 
+  /**
+   * Compilacao do mes em REGIME DE CAIXA (decisao do Eduardo, 2026-08-17).
+   *
+   * A pergunta que esta tabela responde e "quanto sai da minha conta neste mes",
+   * e nao "quanto eu gastei neste mes". Sao perguntas diferentes: uma compra no
+   * cartao dia 10 de agosto e gasto de agosto, mas o dinheiro so sai na fatura
+   * de setembro.
+   *
+   *   Custo do mes = fatura que vence no mes + o que sai fora do cartao
+   *
+   * Por isso a fatura entra INTEIRA, categorizada ou nao: o banco debita o valor
+   * cheio independentemente de o cliente ter classificado os lancamentos.
+   * Categorizar passa a servir so para dizer de que categoria era o gasto (teto
+   * de gastos e Desempenho, que usam a data da COMPRA via getPlanTotals).
+   *
+   * Antes o calculo misturava os dois regimes conforme o mes: descontava as
+   * contas no cartao so no mes corrente, e nos meses ja passados somava as
+   * categorias cheias MAIS a fatura cheia — contando o mesmo gasto duas vezes.
+   */
   const monthlySummaries = useMemo((): SummaryData[] => {
     const summaries: SummaryData[] = [];
     let accumulated = 0;
-    // Índice do mês atual no array do plano (ex: agosto → 1 quando plano começa em julho)
-    const currentPlanMonthIdx = months.findIndex(mo => mo.index === new Date().getMonth() && mo.year === new Date().getFullYear());
+
     for (let m = 0; m < 12; m++) {
-      const totalIncome = items.filter(i => i.category === CategoryType.INCOME).reduce((sum, i) => sum + (i.values[m] || 0), 0);
-      const totalFixed = items.filter(i => i.category === CategoryType.FIXED_EXPENSE).reduce((sum, i) => sum + (i.values[m] || 0), 0);
-      const totalVariable = items.filter(i => i.category === CategoryType.VARIABLE_EXPENSE).reduce((sum, i) => sum + (i.values[m] || 0), 0);
-      const totalLeisure = items.filter(i => i.category === CategoryType.PERSONAL_LEISURE).reduce((sum, i) => sum + (i.values[m] || 0), 0);
+      const monthData = months[m];
+      const monthKey = monthData ? `${monthData.year}-${monthData.index}` : '';
+      const prevMonthData = m > 0 ? months[m - 1] : null;
+      const prevMonthKey = prevMonthData ? `${prevMonthData.year}-${prevMonthData.index}` : null;
 
-      const prevMonthKey = m > 0 ? `${months[m - 1].year}-${months[m - 1].index}` : null;
-      const isCurrentMonth = m === currentPlanMonthIdx;
-      const isFutureMonth = currentPlanMonthIdx >= 0 && m > currentPlanMonthIdx;
+      const totalIncome = items
+        .filter(i => i.category === CategoryType.INCOME)
+        .reduce((sum, i) => sum + (i.values[m] || 0), 0);
 
-      // Contas no cartão: remove SOMENTE do mês atual (já vão para a fatura do próximo mês).
-      // Meses futuros permanecem com valor cheio — cliente precisa ver o total de fixas.
-      const totalFixedDuplicado = isCurrentMonth
-        ? items.filter(i => i.category === CategoryType.FIXED_EXPENSE && i.linkedCardId && i.linkType !== LinkType.DEBIT).reduce((sum, i) => sum + (i.values[m] || 0), 0)
-        : 0;
-      const totalVariableDuplicado = isCurrentMonth
-        ? items.filter(i => i.category === CategoryType.VARIABLE_EXPENSE && i.linkedCardId && i.linkType !== LinkType.DEBIT).reduce((sum, i) => sum + (i.values[m] || 0), 0)
-        : 0;
-      const totalLeisureDuplicado = isCurrentMonth
-        ? items.filter(i => i.category === CategoryType.PERSONAL_LEISURE && i.linkedCardId && i.linkType !== LinkType.DEBIT).reduce((sum, i) => sum + (i.values[m] || 0), 0)
-        : 0;
+      /**
+       * Quanto DESTE item sai da conta neste mes. O que foi (ou sera) pago no
+       * cartao fica de fora: ja esta dentro da fatura.
+       *
+       * Com lancamentos do extrato sabemos exatamente como cada real foi pago.
+       * O que sobra do teto e ainda nao foi gasto continua contando como saida
+       * — a menos que o item esteja declarado como cartao, caso em que a sobra
+       * tambem cairia na fatura.
+       */
+      const desembolsoDoItem = (item: FinanceItem): number => {
+        const partials = (item.partialExpenses?.[monthKey] || []) as PartialExpense[];
+        const gastoReal = partials.reduce((sum, p) => sum + p.value, 0);
+        const noCartao = partials
+          .filter(p => p.paymentSource === 'credit')
+          .reduce((sum, p) => sum + p.value, 0);
+        const noDebito = gastoReal - noCartao;
+        const declaradoCartao = !!item.linkedCardId && item.linkType !== LinkType.DEBIT;
+        const planejadoRestante = Math.max(0, (item.values[m] || 0) - gastoReal);
+        return noDebito + (declaradoCartao ? 0 : planejadoRestante);
+      };
 
-      // Automação TetoGastos: se o cliente rastreou gastos de conta fixa no cartão no
-      // mês anterior, esses valores já foram para a fatura — subtrai das fixas do mês
-      // atual para não duplicar. (Só para meses futuros; no mês corrente já foi excluído.)
-      const totalFixedCreditCardOffset = (isFutureMonth && prevMonthKey)
-        ? items.filter(i => i.category === CategoryType.FIXED_EXPENSE && i.linkedCardId && i.linkType !== LinkType.DEBIT)
-            .reduce((sum, i) => {
-              const prevTracked = (i.partialExpenses?.[prevMonthKey] || []).reduce((s, p) => s + p.value, 0);
-              return sum + Math.min(prevTracked, i.values[m] || 0);
-            }, 0)
-        : 0;
+      const somaDesembolso = (category: CategoryType) => items
+        .filter(i => i.category === category)
+        .reduce((sum, i) => sum + desembolsoDoItem(i), 0);
 
-      // Fatura: se informada, deduz rastreados do mês anterior (evita dupla contagem).
-      // Se não informada, projeta automaticamente a partir do rastreado via TetoGastos.
+      const totalFixed = somaDesembolso(CategoryType.FIXED_EXPENSE);
+      const totalVariable = somaDesembolso(CategoryType.VARIABLE_EXPENSE);
+      const totalLeisure = somaDesembolso(CategoryType.PERSONAL_LEISURE);
+
+      // Fatura do mes: valor informado, inteiro. Quando o cliente ainda nao
+      // informou, projeta pelo que foi lancado no cartao no mes anterior — e o
+      // que vai compor essa fatura. Casa tanto pelo vinculo do plano normal
+      // (linkedCardId) quanto pelo final do cartao que vem do extrato.
       const totalCreditCard = items
         .filter(i => i.category === CategoryType.CREDIT_CARD)
         .reduce((sum, card) => {
           const enteredFatura = card.values[m] || 0;
-          if (!enteredFatura && prevMonthKey) {
-            // Auto-projeta só do que foi rastreado (TetoGastos) — valores declarados
-            // já ficam nas fixas dos meses futuros, não duplica.
-            const trackedPrev = items
-              .filter(i => i.linkedCardId === card.id)
-              .reduce((s, i) => {
-                const partials = i.partialExpenses?.[prevMonthKey!] || [];
-                return s + partials.reduce((ps, p) => ps + p.value, 0);
+          if (enteredFatura) return sum + enteredFatura;
+          if (!prevMonthKey) return sum;
+          const last4 = card.description.match(/••(\d{4})/)?.[1];
+          const projetado = items
+            .filter(i => i.category !== CategoryType.CREDIT_CARD)
+            .reduce((acc, i) => {
+              const partials = (i.partialExpenses?.[prevMonthKey] || []) as PartialExpense[];
+              return acc + partials.reduce((ps, p) => {
+                if (p.paymentSource === 'credit') {
+                  return (last4 && p.cardLast4 === last4) ? ps + p.value : ps;
+                }
+                // Lancamento antigo, sem forma de pagamento gravada: vale o
+                // vinculo declarado no plano.
+                if (!p.paymentSource && i.linkedCardId === card.id && i.linkType !== LinkType.DEBIT) {
+                  return ps + p.value;
+                }
+                return ps;
               }, 0);
-            return sum + trackedPrev;
-          }
-          if (!enteredFatura || !prevMonthKey) return sum + enteredFatura;
-          // Desconta gastos rastreados via TetoGastos no mês anterior para evitar
-          // dupla contagem (rastreado em Maio + fatura de Junho com mesmo valor).
-          const trackedPrev = items
-            .filter(i => i.linkedCardId === card.id)
-            .reduce((s, i) => {
-              const partials = i.partialExpenses?.[prevMonthKey] || [];
-              return s + partials.reduce((ps, p) => ps + p.value, 0);
             }, 0);
-          return sum + Math.max(0, enteredFatura - trackedPrev);
+          return sum + projetado;
         }, 0);
 
-      const totalFixedNet = totalFixed - totalFixedDuplicado - totalFixedCreditCardOffset;
-      const totalVariableNet = totalVariable - totalVariableDuplicado;
-      const totalLeisureNet = totalLeisure - totalLeisureDuplicado;
-      const totalCost = totalCreditCard + totalFixedNet + totalVariableNet + totalLeisureNet;
+      const totalCost = totalCreditCard + totalFixed + totalVariable + totalLeisure;
       const balance = totalIncome - totalCost;
       accumulated += balance;
-      // Armazena valores líquidos (deduplicados) para que Desempenho e tabela anual usem os mesmos números do Plano
-      summaries.push({ totalIncome, totalCreditCard, totalFixed: totalFixedNet, totalVariable: totalVariableNet, totalLeisure: totalLeisureNet, totalCost, balance, accumulated });
+
+      summaries.push({ totalIncome, totalCreditCard, totalFixed, totalVariable, totalLeisure, totalCost, balance, accumulated });
     }
     return summaries;
   }, [items, months]);
@@ -2479,19 +2501,19 @@ const App: React.FC = () => {
                       {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-green-500 font-mono font-bold">{formatCurrency(s.totalIncome)}</td>)}
                     </tr>
                     <tr className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
-                      <td className="p-4 font-bold text-zinc-300">Faturas de Cartão</td>
+                      <td className="p-4 font-bold text-zinc-300">Faturas de Cartão<span className="block text-[10px] font-normal text-zinc-500 normal-case">valor cheio que vence no mês</span></td>
                       {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-orange-400 font-mono">{formatCurrency(s.totalCreditCard)}</td>)}
                     </tr>
                     <tr className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
-                      <td className="p-4 font-bold text-zinc-300">Custos Fixos</td>
+                      <td className="p-4 font-bold text-zinc-300">Custos Fixos<span className="block text-[10px] font-normal text-zinc-500 normal-case">fora do cartão</span></td>
                       {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-orange-400 font-mono">{formatCurrency(s.totalFixed)}</td>)}
                     </tr>
                     <tr className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
-                      <td className="p-4 font-bold text-zinc-300">Custos Variáveis</td>
+                      <td className="p-4 font-bold text-zinc-300">Custos Variáveis<span className="block text-[10px] font-normal text-zinc-500 normal-case">fora do cartão</span></td>
                       {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-orange-400 font-mono">{formatCurrency(s.totalVariable)}</td>)}
                     </tr>
                     <tr className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
-                      <td className="p-4 font-bold text-zinc-300">Gastos Pessoais e Lazer</td>
+                      <td className="p-4 font-bold text-zinc-300">Gastos Pessoais e Lazer<span className="block text-[10px] font-normal text-zinc-500 normal-case">fora do cartão</span></td>
                       {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-orange-400 font-mono">{formatCurrency(s.totalLeisure)}</td>)}
                     </tr>
                     <tr className="border-b border-zinc-800 bg-zinc-800/20">

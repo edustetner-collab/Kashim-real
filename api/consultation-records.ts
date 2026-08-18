@@ -132,9 +132,9 @@ function buildRecordEmail(clientFirstName: string, dateLabel: string, snap: Snap
   const table = wrapTable('Resumo', [
     row('Total de Entradas', s.map(x => x.totalIncome), false, '#15803d'),
     row('Faturas de Cartão', s.map(x => x.totalCreditCard)),
-    row('Custos Fixos', s.map(x => x.totalFixed)),
-    row('Custos Variáveis', s.map(x => x.totalVariable)),
-    row('Gastos Pessoais e Lazer', s.map(x => x.totalLeisure)),
+    row('Custos Fixos (fora do cartão)', s.map(x => x.totalFixed)),
+    row('Custos Variáveis (fora do cartão)', s.map(x => x.totalVariable)),
+    row('Gastos Pessoais e Lazer (fora do cartão)', s.map(x => x.totalLeisure)),
     row('Total de Custos', s.map(x => x.totalCost), true),
     row('Saldo Mensal', s.map(x => x.balance), true),
     row('Acumulado', s.map(x => x.accumulated), true, '#7ab800'),
