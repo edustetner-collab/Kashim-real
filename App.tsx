@@ -39,6 +39,8 @@ import TermsGate from './components/TermsGate';
 import { hasAcceptedTerms, recordTermsAcceptance } from './lib/terms';
 import ExtratoBancario from './components/ExtratoBancario';
 import { hasOpenFinanceAccess } from './lib/ofAccess';
+import { fillVariableValuesFromPartials } from './lib/fillFromPartials';
+import { getSourceInfo } from './lib/paymentSource';
 
 const ADMIN_IDS =(import.meta.env.VITE_ADMIN_USER_IDS ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
 const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
@@ -221,8 +223,6 @@ const App: React.FC = () => {
   >(null);
   // Guard: true only after items have been loaded from DB (prevents saving default items on load failure)
   const dbItemsLoadedRef = useRef(false);
-  // Guard: retroactive Variable Expense value fill runs only once per session
-  const retroactiveVarFixDoneRef = useRef(false);
 
   // Timeout: se Clerk não carregar em 12s, mostra tela de erro com retry
   useEffect(() => {
@@ -454,8 +454,9 @@ const App: React.FC = () => {
             }
             return true;
           });
-          savedItemHashRef.current = seedItemHashes(liveItems);
-          setItems(liveItems);
+          const fixedItems = fillVariableValuesFromPartials(liveItems, months);
+          savedItemHashRef.current = seedItemHashes(fixedItems);
+          setItems(fixedItems);
         }
 
         // Libera a gravação assim que o load termina com sucesso — MESMO com o
@@ -502,33 +503,8 @@ const App: React.FC = () => {
     localStorage.setItem('kashim_startYear', String(startYear));
   }, [startMonth, startYear]);
 
-  // Retroactive fix: fill zero values for Variable Expense items that already have partials.
-  // Runs once after the first DB load so items like "Serasa S.A." get their planned value
-  // set automatically, matching how new partials are handled in handleAddPartial.
-  useEffect(() => {
-    if (retroactiveVarFixDoneRef.current || items.length === 0 || months.length === 0) return;
-    retroactiveVarFixDoneRef.current = true;
-    setItems(prev => {
-      let changed = false;
-      const updated = prev.map(item => {
-        if (item.category !== CategoryType.VARIABLE_EXPENSE) return item;
-        const newValues = [...item.values];
-        let itemChanged = false;
-        months.forEach((m, mIdx) => {
-          if ((newValues[mIdx] || 0) > 0) return;
-          const mk = `${m.year}-${m.index}`;
-          const pts = ((item.partialExpenses as Record<string, { value: number }[]>)?.[mk] || []);
-          if (pts.length === 0) return;
-          newValues[mIdx] = pts.reduce((sum, p) => sum + p.value, 0);
-          itemChanged = true;
-        });
-        if (!itemChanged) return item;
-        changed = true;
-        return { ...item, values: newValues };
-      });
-      return changed ? updated : prev;
-    });
-  }, [items.length, months.length]);
+  // (A correcao de valores zerados agora acontece no load, via
+  // fillVariableValuesFromPartials — ver lib/fillFromPartials.ts.)
 
   // Keep refs in sync with state so we can capture snapshots synchronously
   useEffect(() => { currentHouseholdIdRef.current = householdId; }, [householdId]);
@@ -650,8 +626,9 @@ const App: React.FC = () => {
         if (dbItems.length > 0) {
           const { deduped, toDelete } = dedupeItems(dbItems);
           toDelete.forEach(id => deleteFinanceItem(db!, id).catch(() => {}));
-          savedItemHashRef.current = seedItemHashes(deduped);
-          setItems(deduped);
+          const dedupedFixed = fillVariableValuesFromPartials(deduped, months);
+          savedItemHashRef.current = seedItemHashes(dedupedFixed);
+          setItems(dedupedFixed);
         } else {
           // Cliente sem dados: itens padrão em branco NÃO estão no banco ainda —
           // hash vazio p/ que sejam criados na 1ª gravação.
@@ -1474,6 +1451,7 @@ const App: React.FC = () => {
    */
   const monthlySummaries = useMemo((): SummaryData[] => {
     const summaries: SummaryData[] = [];
+    const creditCardItems = items.filter(i => i.category === CategoryType.CREDIT_CARD);
     let accumulated = 0;
 
     for (let m = 0; m < 12; m++) {
@@ -1499,7 +1477,7 @@ const App: React.FC = () => {
         const partials = (item.partialExpenses?.[monthKey] || []) as PartialExpense[];
         const gastoReal = partials.reduce((sum, p) => sum + p.value, 0);
         const noCartao = partials
-          .filter(p => p.paymentSource === 'credit')
+          .filter(p => getSourceInfo(p, item, creditCardItems).isCredit)
           .reduce((sum, p) => sum + p.value, 0);
         const noDebito = gastoReal - noCartao;
         const declaradoCartao = !!item.linkedCardId && item.linkType !== LinkType.DEBIT;
@@ -1531,15 +1509,11 @@ const App: React.FC = () => {
             .reduce((acc, i) => {
               const partials = (i.partialExpenses?.[prevMonthKey] || []) as PartialExpense[];
               return acc + partials.reduce((ps, p) => {
-                if (p.paymentSource === 'credit') {
-                  return (last4 && p.cardLast4 === last4) ? ps + p.value : ps;
-                }
-                // Lancamento antigo, sem forma de pagamento gravada: vale o
-                // vinculo declarado no plano.
-                if (!p.paymentSource && i.linkedCardId === card.id && i.linkType !== LinkType.DEBIT) {
-                  return ps + p.value;
-                }
-                return ps;
+                const src = getSourceInfo(p, i, creditCardItems);
+                if (!src.isCredit) return ps;
+                // Casa pelo final do cartao; sem o numero, vale o vinculo da linha.
+                if (src.cardLast4 && last4) return src.cardLast4 === last4 ? ps + p.value : ps;
+                return i.linkedCardId === card.id ? ps + p.value : ps;
               }, 0);
             }, 0);
           return sum + projetado;

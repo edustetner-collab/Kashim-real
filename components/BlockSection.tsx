@@ -1,6 +1,7 @@
 ﻿
 import React, { useState, useEffect, useRef } from 'react';
 import { CategoryType, FinanceItem, LinkType, PartialExpense } from '../types';
+import { getSourceInfo } from '../lib/paymentSource';
 import { formatCurrency } from '../constants';
 import { isEducationItem } from '../lib/educationUtils';
 import CurrencyInput from './CurrencyInput';
@@ -1207,15 +1208,11 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                             vai) e escondia a que importa.
                             Plano normal (R$10/ano): segue exatamente como sempre foi. */}
                         {hasOpenFinance ? (() => {
-                          if (realSpent <= 0) {
-                            // "Sem gastos ainda" so cabe onde se espera MAIS DE UM
-                            // lancamento no mes: contas variaveis e lazer. Em conta
-                            // fixa (aluguel, internet) o gasto e unico, e o aviso
-                            // viraria ruido em toda linha do ano inteiro.
-                            const isMultiSpend = category === CategoryType.VARIABLE_EXPENSE || category === CategoryType.PERSONAL_LEISURE;
-                            if (!isMultiSpend || !displayVal) return null;
-                            return <div className="text-[8px] text-zinc-400 italic">sem gastos ainda</div>;
-                          }
+                          // Sem lancamento no mes: nao escreve nada. O aviso "sem
+                          // gastos ainda" foi testado e removido: mesmo em conta
+                          // variavel o gasto costuma ser unico (jardineiro, presente
+                          // de dia dos pais), entao ele mentia na maioria das linhas.
+                          if (realSpent <= 0) return null;
                           const excess = realSpent - displayVal;
                           return (
                             <div className="flex flex-col items-center gap-0.5">
@@ -1426,26 +1423,19 @@ const BlockSection: React.FC<BlockSectionProps> = ({
           ? items.reduce((sum, i) => sum + (i.values[breakdown.mIdx] || 0), 0)
           : (item.values[breakdown.mIdx] || 0);
 
-        // Casa o final do cartao do extrato com o cartao cadastrado no plano.
-        // Sem os 4 digitos nao da para afirmar qual cartao e, entao devolve
-        // null em vez de arriscar um match errado por substring.
-        const findCardByLast4 = (last4?: string) =>
-          last4 ? allCards.find(c => (c.description || '').includes(last4)) ?? null : null;
-
         type SrcRow = { key: string; label: string; total: number; count: number; isCredit: boolean; cardLast4?: string };
         const srcMap = new Map<string, SrcRow>();
         for (const p of partials) {
-          const isCredit = p.paymentSource === 'credit';
-          const key = isCredit ? `credit_${p.cardLast4 ?? ''}` : 'debit';
-          if (!srcMap.has(key)) {
-            const card = isCredit ? findCardByLast4(p.cardLast4) : null;
-            srcMap.set(key, {
-              key,
-              label: isCredit ? (card?.description || `Cartão ••${p.cardLast4 ?? '?'}`) : 'Débito / Pix',
-              total: 0, count: 0, isCredit, cardLast4: p.cardLast4,
-            });
+          // O dono do lancamento importa para o fallback: um partial antigo, sem
+          // forma de pagamento gravada, herda o cartao da linha a que pertence.
+          const owner = isLeisureBlock
+            ? items.find(i => (i.partialExpenses?.[monthKey] || []).some(x => x.id === p.id))
+            : item;
+          const src = getSourceInfo(p, owner, allCards);
+          if (!srcMap.has(src.key)) {
+            srcMap.set(src.key, { key: src.key, label: src.label, total: 0, count: 0, isCredit: src.isCredit, cardLast4: src.cardLast4 });
           }
-          const row = srcMap.get(key)!;
+          const row = srcMap.get(src.key)!;
           row.total += p.value;
           row.count += 1;
         }
@@ -1456,7 +1446,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
 
         // Para qual fatura vai o que foi no credito: usa o fechamento do cartao.
         const faturaDe = (last4?: string) => {
-          const card = findCardByLast4(last4);
+          const card = last4 ? allCards.find(c => (c.description || '').includes(last4)) ?? null : null;
           if (!card?.closingDay) return null;
           const idx = new Date().getDate() >= card.closingDay ? breakdown.mIdx + 1 : breakdown.mIdx;
           return months[Math.min(idx, months.length - 1)]?.monthName ?? null;

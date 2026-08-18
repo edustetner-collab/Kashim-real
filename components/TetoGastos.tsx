@@ -4,6 +4,16 @@ import { FinanceItem, PartialExpense, CategoryType } from '../types';
 import { formatCurrency, MONTHS_BR } from '../constants';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { loadTetoColumns, saveTetoColumns } from '../lib/db';
+import RecategorizarSheet from './RecategorizarSheet';
+import { getSourceInfo } from '../lib/paymentSource';
+
+/** Rótulo curto por categoria, para o seletor do diálogo de edição. */
+const CATEGORY_SHORT: Record<string, string> = {
+  [CategoryType.FIXED_EXPENSE]: 'Fixa',
+  [CategoryType.VARIABLE_EXPENSE]: 'Variável',
+  [CategoryType.PERSONAL_LEISURE]: 'Lazer',
+  [CategoryType.CREDIT_CARD]: 'Cartão',
+};
 
 interface TetoGastosProps {
   items: FinanceItem[];
@@ -14,6 +24,9 @@ interface TetoGastosProps {
   months: { index: number; year: number }[];
   onAddPartial: (itemId: string, expense: PartialExpense, year?: number, month?: number) => void;
   onRemovePartial: (itemId: string, expenseId: string) => void;
+  /** Item que veio do Plano — rola até ele e destaca ao abrir. */
+  focusItemId?: string | null;
+  onFocusHandled?: () => void;
   db?: SupabaseClient | null;
   householdId?: string | null;
   // Traduz o id local do item para o id que ele tem no banco. Sem isto, o
@@ -22,6 +35,12 @@ interface TetoGastosProps {
   resolveDbId?: (localId: string) => string;
   // Alerta de teto: aviso na tela quando um gasto cruza X% do teto
   tetoAlert?: { enabled: boolean; pct: number };
+  // Cria nova linha de gasto no plano e retorna o id
+  onCreateItem?: (description: string, category: CategoryType) => string;
+  /** Vindo do Plano: filtra este item nesta fonte de pagamento ao abrir. */
+  initialFilter?: { linkedItemId: string; sourceKey: string } | null;
+  /** Chamado depois de aplicar o filtro inicial, para limpar o estado no pai. */
+  onInitialFilterHandled?: () => void;
 }
 
 interface ColumnData {
@@ -49,7 +68,7 @@ function describeSaveError(err: unknown): string {
   return 'Verifique a conexão — o app segue tentando sozinho.';
 }
 
-const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, currentYear, months, onAddPartial, onRemovePartial, db, householdId, resolveDbId, tetoAlert }) => {
+const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, currentYear, months, onAddPartial, onRemovePartial, db, householdId, resolveDbId, tetoAlert, focusItemId, onFocusHandled, onCreateItem, initialFilter, onInitialFilterHandled }) => {
   const currentMonthKey = `${currentYear}-${currentMonthIdx}`;
 
   // MÊS DE TRABALHO: normalmente o mês corrente do calendário — mas o plano do
@@ -234,6 +253,34 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       setColumnsLoaded(true);
     });
   }, [db, householdId]);
+
+  /**
+   * Card nasce sozinho no SEGUNDO gasto da mesma linha.
+   *
+   * Premissa do Eduardo (2026-08-14): o card so existe para linha que acumula
+   * varios gastos no mes — mercado, gasolina, assinaturas. Conta de internet,
+   * paga uma vez, nao precisa de card.
+   *
+   * Sem isto, gasto lancado num item sem coluna ficava INALCANCAVEL: nao
+   * aparecia em Gastos, e como so de la se edita um lancamento, nao havia como
+   * recategorizar depois. O ciclo nao fechava.
+   */
+  useEffect(() => {
+    if (!dbSynced || !columnsLoaded) return;
+
+    const jaTemColuna = new Set(columns.map((c) => c.linkedItemId).filter(Boolean));
+    const novas = items
+      .filter((item) => {
+        if (item.category === CategoryType.INCOME) return false;
+        if (jaTemColuna.has(item.id)) return false;
+        // Conta os lancamentos do item em QUALQUER mes do plano: dois no mesmo
+        // mes ja justificam o card.
+        return Object.values(item.partialExpenses ?? {}).some((lista) => ((lista as PartialExpense[] | undefined)?.length ?? 0) > 1);
+      })
+      .map((item) => ({ id: crypto.randomUUID(), title: (item.description || 'GASTO').toUpperCase(), linkedItemId: item.id }));
+
+    if (novas.length > 0) setColumns((prev) => [...prev, ...novas]);
+  }, [items, columns, dbSynced, columnsLoaded]);
 
   useEffect(() => {
     if (!dbSynced || !db || !householdId) return;
@@ -482,9 +529,90 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   const [installData, setInstallData] = useState<Record<string, { desc: string; total: string; qty: string }>>({});
   const [installCardIds, setInstallCardIds] = useState<Record<string, string>>({});
   const [deletePartialConfirm, setDeletePartialConfirm] = useState<{ itemId: string; expId: string; description: string; value: number } | null>(null);
-  const [editPartialConfirm, setEditPartialConfirm] = useState<{ itemId: string; expId: string; description: string; value: number; date: string; monthKey: string } | null>(null);
+  const [editPartialConfirm, setEditPartialConfirm] = useState<{ itemId: string; expId: string; description: string; value: number; date: string; monthKey: string; paymentSource?: 'debit' | 'credit'; cardLast4?: string } | null>(null);
   const [editDesc, setEditDesc] = useState('');
   const [editValue, setEditValue] = useState('');
+  // Sub-cards por fonte: chave = col.id, valor = sourceKey ativo ou null
+  const [activeSourceKeys, setActiveSourceKeys] = useState<Record<string, string | null>>({});
+  // Sheet de seleção de meio de pagamento
+  const [sourceSheetColId, setSourceSheetColId] = useState<string | null>(null);
+
+  // Aplica filtro de fonte quando navegado do Plano (Ponto 3)
+  useEffect(() => {
+    if (!initialFilter) return;
+    const col = columns.find(c => c.linkedItemId === initialFilter.linkedItemId);
+    if (!col) return;
+    setActiveSourceKeys(prev => ({ ...prev, [col.id]: initialFilter.sourceKey }));
+    onInitialFilterHandled?.();
+  }, [initialFilter, columns]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Partial sendo recategorizado via RecategorizarSheet
+  const [recategorizando, setRecategorizando] = useState<{
+    itemId: string; expId: string; partial: PartialExpense; monthKey: string;
+  } | null>(null);
+  /**
+   * Item de destino ao editar. Existe para o lançamento poder MUDAR de
+   * categoria: o diálogo já removia e re-adicionava, mas sempre no mesmo item,
+   * então gasto que caiu no lugar errado — sobretudo os que vêm do Open Finance
+   * categorizados sozinhos — ficava preso onde entrou.
+   */
+  const [editItemId, setEditItemId] = useState('');
+
+  /**
+   * Rola até o card do item que veio do Plano e pisca a borda, para o cliente
+   * não ter que caçar na lista qual card formava aquele número.
+   */
+  const [flashItemId, setFlashItemId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!focusItemId) return;
+
+    // As colunas vem do banco (`teto_columns`), de forma assincrona. Um timeout
+    // fixo procurava o card antes de ele existir, nao achava nada e nao rolava
+    // — o cliente ficava onde estava e parecia que o app tinha levado para o
+    // card errado. Tenta ate aparecer, com teto de ~4s.
+    // Se o item NAO tem card, nao ha para onde rolar — e era isso que
+    // acontecia com "Assinaturas": um gasto so, card nunca criado, seletor sem
+    // alvo, tela parada onde estava. Criar o card aqui e o que faz o clique
+    // sempre ter destino; ele passa a existir porque o cliente quis olhar.
+    const alvoDb = resolveDbId?.(focusItemId) ?? focusItemId;
+    const temCard = columns.some((c) => c.linkedItemId === focusItemId || c.linkedItemId === alvoDb);
+    if (!temCard && dbSynced) {
+      const item = items.find((i) => i.id === focusItemId || i.id === alvoDb);
+      if (item) {
+        setColumns((prev) => [...prev, {
+          id: crypto.randomUUID(),
+          title: (item.description || 'GASTO').toUpperCase(),
+          linkedItemId: item.id,
+        }]);
+      }
+    }
+
+    let tentativas = 0;
+    let timer: ReturnType<typeof setTimeout>;
+
+    // As colunas guardam o id do BANCO (ver resolveDbId na gravação), enquanto
+    // o clique no Plano manda o id LOCAL do item. Sem tentar os dois, o seletor
+    // nunca casa e a tela simplesmente nao rola — foi por isso que clicar em
+    // Assinaturas parecia levar para Lazer: nao levava para lugar nenhum.
+    const alvos = [focusItemId, resolveDbId?.(focusItemId)].filter(Boolean) as string[];
+
+    const procurar = () => {
+      const el = alvos
+        .map((id) => document.querySelector(`[data-teto-item="${id}"]`))
+        .find(Boolean) ?? null;
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setFlashItemId(el.getAttribute('data-teto-item'));
+        setTimeout(() => setFlashItemId(null), 2200);
+        onFocusHandled?.();
+        return;
+      }
+      if (++tentativas < 20) timer = setTimeout(procurar, 200);
+      else onFocusHandled?.(); // desiste sem travar o estado
+    };
+
+    timer = setTimeout(procurar, 120);
+    return () => clearTimeout(timer);
+  }, [focusItemId, onFocusHandled, resolveDbId, columns, items, dbSynced]);
   const valueInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const handleSubmitEntry = (colId: string, itemId: string, value: string) => {
@@ -576,6 +704,22 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       [colId]: { ...(prev[colId] ?? { desc: '', total: '', qty: '2' }), [field]: value },
     }));
   };
+
+  // Ponto 2: todos os itens PERSONAL_LEISURE se fundem num único card visual
+  // Cartoes cadastrados: usados para resolver a forma de pagamento de
+  // lancamentos antigos, que herdam o cartao da linha.
+  const creditCards = items.filter(i => i.category === CategoryType.CREDIT_CARD);
+  const leisureItems = items.filter(i => i.category === CategoryType.PERSONAL_LEISURE);
+  const partialItemMap = new Map<string, string>();
+  const aggregatedLeisurePartials: PartialExpense[] = leisureItems.flatMap(i => {
+    const ps = (i.partialExpenses?.[monthKey] ?? []) as PartialExpense[];
+    ps.forEach(p => partialItemMap.set(p.id, i.id));
+    return ps;
+  });
+  const firstLeisureColId = displayColumns.find(col => {
+    const it = items.find(i => i.id === col.linkedItemId);
+    return it?.category === CategoryType.PERSONAL_LEISURE;
+  })?.id;
 
   return (
     <div className="p-3 lg:p-6 animate-in fade-in zoom-in-95 duration-500">
@@ -711,11 +855,19 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
         ))}
         {displayColumns.map((col, colIdx) => {
           const linkedItem = items.find(i => i.id === col.linkedItemId);
+          const isLeisureCol = linkedItem?.category === CategoryType.PERSONAL_LEISURE;
+          if (isLeisureCol && col.id !== firstLeisureColId) return null;
           const teto = linkedItem && tetoSlotIdx >= 0 ? (linkedItem.values[tetoSlotIdx] || 0) : 0;
-          const partials = linkedItem?.partialExpenses?.[monthKey] || [];
+          const partials = isLeisureCol ? aggregatedLeisurePartials : (linkedItem?.partialExpenses?.[monthKey] || []);
           const totalSpent = partials.reduce((acc, p) => acc + p.value, 0);
           const isOverLimit = totalSpent > teto && teto > 0;
           const progressPct = teto > 0 ? Math.min(100, (totalSpent / teto) * 100) : 0;
+          // Lançamento sem origem gravada (anterior a este campo) conta como
+          // "já saiu": é o que era verdade antes de existir a distinção.
+          const creditTotal = partials.reduce((a, p) => a + (p.paymentSource === 'credit' ? p.value : 0), 0);
+          const debitTotal = totalSpent - creditTotal;
+          const debitPct = teto > 0 ? Math.min(100, (debitTotal / teto) * 100) : 0;
+          const creditPct = teto > 0 ? Math.min(100 - debitPct, (creditTotal / teto) * 100) : 0;
 
           const card = linkedItem?.linkedCardId ? items.find(i => i.id === linkedItem.linkedCardId) : null;
           const todayDay = new Date().getDate();
@@ -737,6 +889,10 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
           return (
             <div
               key={col.id}
+              data-teto-item={col.linkedItemId || undefined}
+              style={flashItemId && col.linkedItemId === flashItemId
+                ? { outline: '2px solid #7ab800', outlineOffset: '2px', borderRadius: '18px' }
+                : undefined}
               onTouchStart={handleColTouchStart(col.id)}
               onTouchMove={handleColTouchMove}
               onTouchEnd={handleColTouchEnd}
@@ -846,12 +1002,36 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                     <span className="text-[8px] font-black text-[#aeaeb2] uppercase tracking-widest">Teto</span>
                     <span className={`text-xs font-black k-num ${isOverLimit ? 'text-[#ff3b30]' : 'text-[#6e6e73]'}`}>{formatCurrency(teto)}</span>
                   </div>
-                  <div className="h-1.5 bg-[#e8e8ed] rounded-full overflow-hidden">
+                  {/* Uma barra, duas texturas: sólido é o que já saiu da conta
+                      (débito/Pix), listrado é o que ainda vai sair na fatura do
+                      cartão. O TETO continua sendo um só — o cliente decide
+                      quanto quer gastar com a coisa, não com a forma de pagar. */}
+                  <div className="h-1.5 bg-[#e8e8ed] rounded-full overflow-hidden flex">
                     <div
-                      className={`h-full rounded-full transition-all ${isOverLimit ? 'bg-[#ff3b30]' : progressPct > 80 ? 'bg-[#a8e716]' : 'bg-[#7ab800]'}`}
-                      style={{ width: `${progressPct}%` }}
+                      className={`h-full transition-all ${isOverLimit ? 'bg-[#ff3b30]' : progressPct > 80 ? 'bg-[#a8e716]' : 'bg-[#7ab800]'}`}
+                      style={{ width: `${debitPct}%` }}
+                    />
+                    <div
+                      className="h-full transition-all"
+                      style={{
+                        width: `${creditPct}%`,
+                        backgroundImage: `repeating-linear-gradient(135deg, ${isOverLimit ? '#ff3b30' : '#7ab800'} 0 3px, transparent 3px 6px)`,
+                        backgroundColor: isOverLimit ? 'rgba(255,59,48,0.22)' : 'rgba(122,184,0,0.22)',
+                      }}
                     />
                   </div>
+                  {creditTotal > 0 && debitTotal > 0 && (
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="text-[8px] font-black text-[#6e6e73] flex items-center gap-1">
+                        <i className="fas fa-square text-[6px]" style={{ color: isOverLimit ? '#ff3b30' : '#7ab800' }} />
+                        {formatCurrency(debitTotal)} já saiu
+                      </span>
+                      <span className="text-[8px] font-black text-[#aeaeb2] flex items-center gap-1">
+                        <i className="fas fa-credit-card text-[7px]" />
+                        {formatCurrency(creditTotal)} na fatura
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -977,34 +1157,118 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                 </div>
               )}
 
+              {/* Sub-cards por fonte de pagamento */}
+              {(() => {
+                type SourceGroup = { key: string; label: string; total: number; isCredit: boolean };
+                const groups = new Map<string, SourceGroup>();
+                for (const p of partials) {
+                  // Lancamento antigo sem forma de pagamento herda o cartao da linha.
+                  const owner = isLeisureCol
+                    ? items.find(i => (i.partialExpenses?.[monthKey] || []).some(x => x.id === p.id))
+                    : linkedItem;
+                  const src = getSourceInfo(p, owner, creditCards);
+                  if (!groups.has(src.key)) {
+                    groups.set(src.key, { key: src.key, label: src.label, total: 0, isCredit: src.isCredit });
+                  }
+                  groups.get(src.key)!.total += p.value;
+                }
+                const list = Array.from(groups.values());
+                if (list.length === 0) return null;
+                const hasCredit = list.some(g => g.isCredit);
+                const activeKey = activeSourceKeys[col.id] ?? null;
+                return (
+                  <div className="px-3 pt-2 pb-2 bg-white border-t border-[#e8e8ed] space-y-1.5">
+                    {/* Filtro: ativo ou botão único */}
+                    {list.length > 0 && (
+                      activeKey ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black bg-[#1d1d1f] text-white">
+                            <i className="fas fa-filter text-[7px]" />
+                            {list.find(g => g.key === activeKey)?.label}
+                          </span>
+                          <button
+                            onClick={() => setActiveSourceKeys(prev => ({ ...prev, [col.id]: null }))}
+                            className="w-4 h-4 rounded-full bg-[#e8e8ed] flex items-center justify-center text-[#6e6e73] active:opacity-70"
+                          >
+                            <i className="fas fa-times text-[7px]" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setSourceSheetColId(col.id)}
+                          className="inline-flex items-center gap-1.5 text-[9px] text-[#007aff] font-black active:opacity-70"
+                        >
+                          <i className="fas fa-filter text-[8px]" />
+                          Meios de pagamento
+                          <i className="fas fa-chevron-right text-[7px]" />
+                        </button>
+                      )
+                    )}
+
+                    {hasCredit && (
+                      <p className="text-[8px] text-[#ff9500] font-bold flex items-center gap-1">
+                        <i className="fas fa-info-circle text-[7px]" />
+                        Compras no cartão entram na fatura do próximo mês
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Expense list — only shown when there are expenses */}
-              {partials.length > 0 && (
-                <div className="flex flex-col bg-white border-t border-[#e8e8ed]">
-                  {partials.map((p) => (
-                    <div key={p.id} className="border-b border-[#f5f5f7] flex items-center gap-2 px-3 py-2">
-                      <span className="text-[9px] text-[#aeaeb2] font-bold uppercase shrink-0">{p.date}</span>
-                      <button
-                        className="flex-1 flex items-center gap-2 min-w-0 text-left active:opacity-60"
-                        onClick={() => {
-                          if (isFutureView) return;
-                          setEditPartialConfirm({ itemId: col.linkedItemId, expId: p.id, description: p.description, value: p.value, date: p.date, monthKey });
-                          setEditDesc(p.description);
-                          setEditValue(String(p.value));
-                        }}
-                      >
-                        <span className="flex-1 text-[10px] text-[#6e6e73] font-medium truncate">{p.description}</span>
-                        <span className="text-xs font-black text-[#1d1d1f] k-num shrink-0">{formatCurrency(p.value)}</span>
-                      </button>
-                      <button
-                        onClick={() => setDeletePartialConfirm({ itemId: col.linkedItemId, expId: p.id, description: p.description, value: p.value })}
-                        className="text-[#ff3b30]/60 active:text-[#ff3b30] p-1 shrink-0"
-                      >
-                        <i className="fas fa-times-circle text-xs"></i>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {partials.length > 0 && (() => {
+                const activeKey = activeSourceKeys[col.id] ?? null;
+                const shown = activeKey
+                  ? partials.filter(p => {
+                      const k = p.paymentSource === 'credit' ? `credit_${p.cardLast4 ?? ''}` : 'debit';
+                      return k === activeKey;
+                    })
+                  : partials;
+                return (
+                  <div className="flex flex-col bg-white border-t border-[#e8e8ed]">
+                    {shown.map((p) => (
+                      <div key={p.id} className="border-b border-[#f5f5f7] flex items-center gap-2 px-3 py-2.5">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <span className="text-[8px] text-[#aeaeb2] font-bold uppercase shrink-0">{p.date}</span>
+                            {p.paymentSource === 'credit' && (
+                              <span className="text-[8px] text-[#ff9500] whitespace-nowrap">
+                                <i className="fas fa-credit-card text-[7px] mr-0.5" />
+                                {p.cardLast4 ? `••${p.cardLast4}` : 'Cartão'}
+                              </span>
+                            )}
+                            {p.paymentSource === 'debit' && (
+                              <span className="text-[8px] text-[#007aff] whitespace-nowrap">
+                                <i className="fas fa-arrow-right-from-bracket text-[7px] mr-0.5" />
+                                Débito
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-[#1d1d1f] font-medium truncate block">{p.description}</span>
+                        </div>
+                        <span className="text-xs font-black text-[#1d1d1f] k-num shrink-0 mx-1">{formatCurrency(p.value)}</span>
+                        {!isFutureView && (
+                          <button
+                            onClick={() => {
+                              setRecategorizando({ itemId: isLeisureCol ? (partialItemMap.get(p.id) ?? col.linkedItemId) : col.linkedItemId, expId: p.id, partial: p, monthKey });
+                            }}
+                            className="shrink-0 flex items-center gap-1 bg-[#f0fad0] text-[#5a8c00] text-[9px] font-black px-2 py-1 rounded-full active:opacity-70 transition-all"
+                          >
+                            <i className="fas fa-pen text-[7px]" />
+                            Editar
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setDeletePartialConfirm({ itemId: isLeisureCol ? (partialItemMap.get(p.id) ?? col.linkedItemId) : col.linkedItemId, expId: p.id, description: p.description, value: p.value })}
+                          className="text-[#ff3b30]/50 active:text-[#ff3b30] p-1 shrink-0"
+                        >
+                          <i className="fas fa-times-circle text-xs"></i>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
 
               {/* Total footer — only shown when there are expenses */}
               {totalSpent > 0 && (
@@ -1032,6 +1296,108 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
           );
         })}
       </div>
+
+      {/* RecategorizarSheet */}
+      {recategorizando && onCreateItem && (
+        <RecategorizarSheet
+          expense={{
+            description: recategorizando.partial.description,
+            value: recategorizando.partial.value,
+            date: recategorizando.partial.date,
+            paymentSource: recategorizando.partial.paymentSource,
+            cardLast4: recategorizando.partial.cardLast4,
+            currentItemId: recategorizando.itemId,
+          }}
+          items={items}
+          workingMonthKey={recategorizando.monthKey}
+          onKeep={() => setRecategorizando(null)}
+          onClose={() => setRecategorizando(null)}
+          onCreateItem={onCreateItem}
+          onConfirm={(newItemId) => {
+            const [ty, tm] = recategorizando.monthKey.split('-').map(Number);
+            const { description, value } = recategorizando.partial;
+            const sourceItem = items.find(i => i.id === recategorizando.itemId);
+
+            // Coleta a parcela atual + todas as irmãs futuras (mesma desc + valor)
+            const toMove: Array<{ expId: string; partial: PartialExpense; year: number; month: number }> = [];
+            for (const [mk, monthPartials] of Object.entries((sourceItem?.partialExpenses ?? {}) as Record<string, PartialExpense[]>)) {
+              const [y, m] = mk.split('-').map(Number);
+              if (y < ty || (y === ty && m < tm)) continue;
+              for (const p of monthPartials) {
+                if (p.description === description && Math.abs(p.value - value) < 0.01) {
+                  toMove.push({ expId: p.id, partial: p, year: y, month: m });
+                }
+              }
+            }
+            if (toMove.length === 0) {
+              toMove.push({ expId: recategorizando.expId, partial: recategorizando.partial, year: ty, month: tm });
+            }
+
+            for (const { expId, partial, year, month } of toMove) {
+              onRemovePartial(recategorizando.itemId, expId);
+              onAddPartial(newItemId, { ...partial, id: crypto.randomUUID() }, year, month);
+            }
+            setRecategorizando(null);
+          }}
+        />
+      )}
+
+      {/* Sheet: selecionar meio de pagamento para filtrar */}
+      {sourceSheetColId && (() => {
+        const sheetCol = columns.find(c => c.id === sourceSheetColId);
+        if (!sheetCol) return null;
+        const sheetItem = items.find(i => i.id === sheetCol.linkedItemId);
+        const isLeisureSheet = sheetItem?.category === CategoryType.PERSONAL_LEISURE;
+        const sheetPartials = isLeisureSheet ? aggregatedLeisurePartials : (sheetItem?.partialExpenses?.[monthKey] ?? []);
+        type SourceGroup = { key: string; label: string; total: number; isCredit: boolean };
+        const sheetGroups = new Map<string, SourceGroup>();
+        for (const p of sheetPartials) {
+          const owner = isLeisureSheet
+            ? items.find(i => (i.partialExpenses?.[monthKey] || []).some(x => x.id === p.id))
+            : sheetItem;
+          const src = getSourceInfo(p, owner, creditCards);
+          if (!sheetGroups.has(src.key)) {
+            sheetGroups.set(src.key, { key: src.key, label: src.label, total: 0, isCredit: src.isCredit });
+          }
+          sheetGroups.get(src.key)!.total += p.value;
+        }
+        const sheetList = Array.from(sheetGroups.values());
+        return (
+          <div className="fixed inset-0 z-[65] flex items-end" onClick={() => setSourceSheetColId(null)}>
+            <div
+              className="w-full bg-white rounded-t-3xl pb-10 border-t border-[#e8e8ed] animate-in slide-in-from-bottom-4 duration-200"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="w-8 h-1 bg-[#e8e8ed] rounded-full mx-auto mt-4 mb-4" />
+              <div className="px-6 pb-4 border-b border-[#f5f5f7]">
+                <p className="text-[#1d1d1f] font-black text-base">{sheetCol.title}</p>
+                <p className="text-[9px] text-[#aeaeb2] font-black uppercase tracking-widest mt-0.5">Filtrar por meio de pagamento</p>
+              </div>
+              <div className="px-6 pt-4 space-y-2">
+                {sheetList.map(g => (
+                  <button
+                    key={g.key}
+                    onClick={() => {
+                      setActiveSourceKeys(prev => ({ ...prev, [sourceSheetColId]: g.key }));
+                      setSourceSheetColId(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-[#e8e8ed] active:opacity-70"
+                  >
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${g.isCredit ? 'bg-orange-100' : 'bg-blue-100'}`}>
+                      <i className={`fas ${g.isCredit ? 'fa-credit-card text-orange-500' : 'fa-arrow-right-from-bracket text-blue-500'} text-sm`} />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="text-[#1d1d1f] font-black text-sm">{g.label}</p>
+                      <p className="text-[#6e6e73] text-xs k-num">{formatCurrency(g.total)}</p>
+                    </div>
+                    <i className="fas fa-chevron-right text-[#aeaeb2] text-xs" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Delete expense confirmation modal */}
       {deletePartialConfirm && (
@@ -1081,10 +1447,36 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
               </div>
               <div>
                 <p className="text-[#1d1d1f] font-black text-sm">Editar lançamento</p>
-                <p className="text-[#6e6e73] text-xs mt-0.5">Altere a descrição ou o valor</p>
+                <p className="text-[#6e6e73] text-xs mt-0.5">
+                  {editPartialConfirm.paymentSource === 'credit'
+                    ? 'Veio da fatura do cartão — o valor não muda'
+                    : 'Altere a categoria, a descrição ou o valor'}
+                </p>
               </div>
             </div>
             <div className="space-y-3 mb-5">
+              <div>
+                <p className="text-[9px] text-[#aeaeb2] font-black uppercase tracking-widest mb-1.5">Categoria</p>
+                <select
+                  value={editItemId}
+                  onChange={e => setEditItemId(e.target.value)}
+                  className="w-full px-3 py-2.5 text-sm rounded-xl bg-[#f5f5f7] border border-[#e8e8ed] text-[#1d1d1f] font-bold outline-none appearance-none"
+                >
+                  {items
+                    .filter(i => i.category !== CategoryType.INCOME)
+                    .map(i => (
+                      <option key={i.id} value={i.id}>
+                        {CATEGORY_SHORT[i.category] ?? ''}{CATEGORY_SHORT[i.category] ? ' · ' : ''}{i.description}
+                      </option>
+                    ))}
+                </select>
+                {editItemId !== editPartialConfirm.itemId && (
+                  <p className="text-[10px] text-[#7ab800] font-bold mt-1.5">
+                    <i className="fas fa-arrow-right-arrow-left mr-1" />
+                    Este gasto vai mudar de categoria ao salvar
+                  </p>
+                )}
+              </div>
               <div>
                 <p className="text-[9px] text-[#aeaeb2] font-black uppercase tracking-widest mb-1.5">Descrição</p>
                 <input
@@ -1104,7 +1496,8 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                     inputMode="decimal"
                     value={editValue}
                     onChange={e => setEditValue(e.target.value)}
-                    className="flex-1 pl-2 pr-3 py-2.5 text-sm bg-transparent text-[#1d1d1f] font-black outline-none k-num"
+                    readOnly={editPartialConfirm.paymentSource === 'credit'}
+                    className={`flex-1 pl-2 pr-3 py-2.5 text-sm bg-transparent font-black outline-none k-num ${editPartialConfirm.paymentSource === 'credit' ? 'text-[#8e8e93] cursor-not-allowed' : 'text-[#1d1d1f]'}`}
                   />
                 </div>
               </div>
@@ -1121,12 +1514,19 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                   const newValue = parseFloat(editValue.replace(',', '.'));
                   if (!editDesc.trim() || isNaN(newValue) || newValue <= 0) return;
                   const [targetYear, targetMonthIdx] = editPartialConfirm.monthKey.split('-').map(Number);
+                  // Tira do item antigo e devolve no ESCOLHIDO — é o que permite
+                  // mover o gasto de categoria sem apagar e relançar.
                   onRemovePartial(editPartialConfirm.itemId, editPartialConfirm.expId);
-                  onAddPartial(editPartialConfirm.itemId, {
+                  onAddPartial(editItemId || editPartialConfirm.itemId, {
                     id: crypto.randomUUID(),
                     date: editPartialConfirm.date,
                     description: editDesc.trim(),
-                    value: newValue,
+                    // Gasto de cartao mantem o valor original: ele ja foi
+                    // cobrado, mudar aqui descasaria da fatura.
+                    value: editPartialConfirm.paymentSource === 'credit' ? editPartialConfirm.value : newValue,
+                    // A origem viaja junto: recategorizar nao transforma um
+                    // gasto de cartao em gasto de debito.
+                    paymentSource: editPartialConfirm.paymentSource,
                   }, targetYear, targetMonthIdx);
                   setEditPartialConfirm(null);
                 }}
