@@ -1600,6 +1600,26 @@ const App: React.FC = () => {
     return result;
   }, [items, months, mobileMonthIdx]);
 
+  // Igual ao categorizedByCardLast4, porem para TODOS os meses: a tabela da web
+  // mostra 12 colunas de uma vez, e o mapa de um mes so deixava o 'a categorizar'
+  // invisivel no desktop para cartao que vem do Open Finance (o Bradesco aparecia
+  // mudo enquanto o Latam, com rastreamento antigo, mostrava a caixa).
+  const categorizedByCardAllMonths = useMemo((): Record<string, Record<number, number>> => {
+    const result: Record<string, Record<number, number>> = {};
+    months.forEach((monthData, mIdx) => {
+      const monthKey = `${monthData.year}-${monthData.index}`;
+      for (const item of items) {
+        if (item.category === CategoryType.CREDIT_CARD) continue;
+        for (const p of (item.partialExpenses?.[monthKey] ?? [])) {
+          if (p.paymentSource !== 'credit' || !p.cardLast4) continue;
+          if (!result[p.cardLast4]) result[p.cardLast4] = {};
+          result[p.cardLast4][mIdx] = (result[p.cardLast4][mIdx] ?? 0) + p.value;
+        }
+      }
+    });
+    return result;
+  }, [items, months]);
+
   const trackedByCardAllMonths = useMemo((): Record<string, Record<number, number>> => {
     const result: Record<string, Record<number, number>> = {};
     allCards.forEach(card => {
@@ -2416,6 +2436,7 @@ const App: React.FC = () => {
                   trackedByCardId={block.type === CategoryType.CREDIT_CARD ? trackedByCardPrevMonth : undefined}
                   trackedByCardAllMonths={block.type === CategoryType.CREDIT_CARD ? trackedByCardAllMonths : undefined}
                   categorizedByCardLast4={block.type === CategoryType.CREDIT_CARD ? categorizedByCardLast4 : undefined}
+                  categorizedByCardAllMonths={block.type === CategoryType.CREDIT_CARD ? categorizedByCardAllMonths : undefined}
                   onRequestExpenseSheet={block.type === CategoryType.VARIABLE_EXPENSE
                     ? () => {
                         const vm = months[mobileMonthIdx];

@@ -1,6 +1,6 @@
 ﻿
 import React, { useState, useEffect, useRef } from 'react';
-import { CategoryType, FinanceItem, LinkType } from '../types';
+import { CategoryType, FinanceItem, LinkType, PartialExpense } from '../types';
 import { formatCurrency } from '../constants';
 import { isEducationItem } from '../lib/educationUtils';
 import CurrencyInput from './CurrencyInput';
@@ -29,6 +29,8 @@ interface BlockSectionProps {
   trackedByCardAllMonths?: Record<string, Record<number, number>>;
   /** Total já categorizado pelo extrato no mês atual, por cardLast4. Usado para decrementar "a categorizar". */
   categorizedByCardLast4?: Record<string, number>;
+  /** Mesmo dado por mes (indice da coluna) - a tabela da web mostra 12 meses. */
+  categorizedByCardAllMonths?: Record<string, Record<number, number>>;
   /** Coach/assistente: pula os recados educativos (modal de instrução ao
       adicionar e aviso de parcelas) — eles são para o cliente. */
   isAdmin?: boolean;
@@ -49,7 +51,7 @@ interface BlockSectionProps {
 const BlockSection: React.FC<BlockSectionProps> = ({
   title, subtitle, category, items, allCards = [], months, totalIncome, mobileMonthIdx = 0,
   onAddItem, onUpdateValue, onTogglePaid, onRemoveItem, onUpdateDescription, onReplicateValue, onLinkCard,
-  onUpdateCardConfig, onMoveItem, trackedByCardId, trackedByCardAllMonths, categorizedByCardLast4, onRequestExpenseSheet, onAddLeisureItem,
+  onUpdateCardConfig, onMoveItem, trackedByCardId, trackedByCardAllMonths, categorizedByCardLast4, categorizedByCardAllMonths, onRequestExpenseSheet, onAddLeisureItem,
   isAdmin = false, onOpenSpending, onOpenExtrato, onNavigateToGastos, hasOpenFinance = false,
 }) => {
   const [showInstructionModal, setShowInstructionModal] = useState(false);
@@ -60,6 +62,8 @@ const BlockSection: React.FC<BlockSectionProps> = ({
     itemId: string; cardId: string; totalInput: string; currentInput: string;
   } | null>(null);
   const [openPaymentItemId, setOpenPaymentItemId] = useState<string | null>(null);
+  // Celula cujo detalhamento por forma de pagamento esta aberto (so Open Finance).
+  const [breakdown, setBreakdown] = useState<{ itemId: string; mIdx: number } | null>(null);
   const [leisureModal, setLeisureModal] = useState<{ suggested: number; input: string } | null>(null);
   const [trackedInfoCardId, setTrackedInfoCardId] = useState<string | null>(null);
   const timersRef = useRef<Record<string, number>>({});
@@ -1154,39 +1158,11 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                       </div>
                     );
                     })()}
-                    {/* Open Finance: detalhamento por fonte, vindo do extrato. */}
-                    {showLinkOption && hasOpenFinance && (() => {
-                      const monthData = months[mobileMonthIdx];
-                      const mKey = `${monthData.year}-${monthData.index}`;
-                      const mPartials = (item.partialExpenses?.[mKey] || []) as any[];
-                      if (mPartials.length === 0) return null;
-                      type SrcRow = { key: string; label: string; total: number; isCredit: boolean };
-                      const srcMap = new Map<string, SrcRow>();
-                      for (const p of mPartials) {
-                        const key = p.paymentSource === 'credit' ? `credit_${p.cardLast4 ?? ''}` : 'debit';
-                        if (!srcMap.has(key)) {
-                          srcMap.set(key, { key, label: p.paymentSource === 'credit' ? `Cartão ••${p.cardLast4 ?? '?'}` : 'Débito / Pix', total: 0, isCredit: p.paymentSource === 'credit' });
-                        }
-                        srcMap.get(key)!.total += p.value;
-                      }
-                      const rows = Array.from(srcMap.values());
-                      return (
-                        <div className="px-2 pb-1 flex flex-col gap-1">
-                          {rows.map(r => (
-                            <button
-                              key={r.key}
-                              onClick={() => onNavigateToGastos?.(item.id, r.key)}
-                              className="flex items-center gap-1 px-2 py-0.5 rounded text-[8px] font-black bg-zinc-50 border border-zinc-200 hover:border-zinc-400 transition-all w-fit"
-                            >
-                              <i className={`fas ${r.isCredit ? 'fa-credit-card text-orange-500' : 'fa-arrow-right-from-bracket text-blue-500'} text-[7px]`} />
-                              <span className={r.isCredit ? 'text-orange-600' : 'text-blue-600'}>{r.label}</span>
-                              <span className="k-num text-zinc-700">{formatCurrency(r.total)}</span>
-                              <i className="fas fa-chevron-right text-[6px] text-zinc-400" />
-                            </button>
-                          ))}
-                        </div>
-                      );
-                    })()}
+                    {/* Com Open Finance a quebra por forma de pagamento NAO fica
+                        aqui. Uma despesa tem varias formas no mesmo mes, e mostrar
+                        so uma delas embaixo do nome dava informacao errada — o
+                        "Debito / Pix" do Mercado, que na verdade foi tudo no cartao.
+                        A quebra virou o popup do selo de gasto, mes a mes. */}
                   </div>
                 </td>
                 {item.values.map((val, mIdx) => {
@@ -1222,11 +1198,42 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                             <i className="fas fa-copy"></i>
                           </button>
                         </div>
-                        {/* O selo agora vale para Contas Variáveis também. Ele
-                            era o único lugar que mostrava quanto já foi lançado
-                            no item — e justamente nas variáveis, onde mais entra
-                            gasto automático do banco, não aparecia. */}
-                        {(() => {
+                        {/* SELO DE GASTO.
+                            Open Finance: responde "quanto ja gastei com isto neste
+                            mes", somando TODAS as formas de pagamento. A quebra por
+                            cartao/debito, e para qual fatura cada parte vai, sai no
+                            popup ao clicar. Antes o selo trazia "-> Fatura Setembro"
+                            na frente do numero: responde outra pergunta (para onde
+                            vai) e escondia a que importa.
+                            Plano normal (R$10/ano): segue exatamente como sempre foi. */}
+                        {hasOpenFinance ? (() => {
+                          if (realSpent <= 0) {
+                            // "Sem gastos ainda" so cabe onde se espera MAIS DE UM
+                            // lancamento no mes: contas variaveis e lazer. Em conta
+                            // fixa (aluguel, internet) o gasto e unico, e o aviso
+                            // viraria ruido em toda linha do ano inteiro.
+                            const isMultiSpend = category === CategoryType.VARIABLE_EXPENSE || category === CategoryType.PERSONAL_LEISURE;
+                            if (!isMultiSpend || !displayVal) return null;
+                            return <div className="text-[8px] text-zinc-400 italic">sem gastos ainda</div>;
+                          }
+                          const excess = realSpent - displayVal;
+                          return (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setBreakdown({ itemId: item.id, mIdx }); }}
+                                title="Ver em que formas de pagamento este gasto aconteceu"
+                                className={`text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-1 transition-all hover:brightness-95 ${isOver ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}
+                              >
+                                <span className="text-[8px] opacity-60 uppercase font-bold">Gasto</span>
+                                <span className="k-num">{formatCurrency(realSpent)}</span>
+                                <i className="fas fa-chevron-right text-[7px] opacity-60" />
+                              </button>
+                              {isOver && excess > 0 && (
+                                <span className="text-[8px] font-black text-red-600 k-num">+ {formatCurrency(excess)} acima</span>
+                              )}
+                            </div>
+                          );
+                        })() : (() => {
                           const linkedCard = item.linkedCardId ? allCards.find(c => c.id === item.linkedCardId) : null;
                           const isCardLinked = !!(linkedCard && item.linkType !== LinkType.DEBIT);
                           const isCommitted = item.linkType === LinkType.INSTALLMENT;
@@ -1263,6 +1270,9 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                         {category === CategoryType.VARIABLE_EXPENSE && (() => {
                           const linkedCard = item.linkedCardId ? allCards.find(c => c.id === item.linkedCardId) : null;
                           // Só sinaliza em meses com valor lançado — evita poluir os meses vazios
+                          // Com Open Finance a fatura de destino ja aparece no popup,
+                          // por cartao — repetir aqui era a informacao que confundia.
+                          if (hasOpenFinance) return null;
                           if (!linkedCard || item.linkType === LinkType.DEBIT || !val) return null;
                           let faturaLabel = '→ próxima fatura';
                           if (linkedCard.closingDay) {
@@ -1274,25 +1284,31 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                         })()}
                         {category === CategoryType.CREDIT_CARD && mIdx > 0 && (() => {
                           const tracked = trackedByCardAllMonths?.[item.id]?.[mIdx] ?? 0;
-                          if (!tracked) return null;
+                          const last4 = item.description.match(/••(\d{4})/)?.[1];
+                          // Cartao vindo do Open Finance nao tem rastreamento antigo: o que
+                          // ele tem e o categorizado do extrato. Sem somar os dois, o Bradesco
+                          // caia no `return null` e a web nao mostrava 'a categorizar' nenhum,
+                          // enquanto o aplicativo mostrava certo.
+                          const fromExtrato = categorizedByCardAllMonths?.[last4 ?? '']?.[mIdx] ?? 0;
+                          const identificado = tracked + fromExtrato;
+                          if (!identificado) return null;
                           const prevMonthName = months[mIdx - 1]?.monthName;
                           if (!prevMonthName) return null;
                           if (!val) {
                             return (
                               <div className="mt-1 rounded-lg border border-dashed border-[rgba(122,184,0,0.5)] bg-[#f0fad0]/70 px-1.5 py-1 text-center">
                                 <div className="text-[7px] text-[#aeaeb2] font-bold uppercase tracking-wide">≈ estimado</div>
-                                <div className="text-[9px] text-[#7ab800] font-black k-num">{formatCurrency(tracked)}</div>
+                                <div className="text-[9px] text-[#7ab800] font-black k-num">{formatCurrency(identificado)}</div>
                                 <div className="text-[7px] text-[#aeaeb2]">de {prevMonthName}</div>
                               </div>
                             );
                           }
-                          const aCategorizar = Math.max(0, val - tracked);
-                          const last4 = item.description.match(/••(\d{4})/)?.[1];
+                          const aCategorizar = Math.max(0, val - identificado);
                           return (
                             <div className="mt-1 border border-[#e8e8ed] rounded-lg px-1.5 py-1 space-y-0.5">
                               <div className="flex justify-between items-center gap-1">
                                 <span className="text-[7px] text-[#aeaeb2] font-bold uppercase">Identif.</span>
-                                <span className="text-[8px] text-[#7ab800] font-black k-num">{formatCurrency(tracked)}</span>
+                                <span className="text-[8px] text-[#7ab800] font-black k-num">{formatCurrency(identificado)}</span>
                               </div>
                               <div className="flex justify-between items-center gap-1 border-t border-[#f0f0f0] pt-0.5">
                                 <span className="text-[7px] text-[#aeaeb2] font-bold uppercase">A categ.</span>
@@ -1390,6 +1406,132 @@ const BlockSection: React.FC<BlockSectionProps> = ({
           )}
         </table>
       </div>
+
+      {/* ── Detalhamento do gasto por forma de pagamento (Open Finance) ──
+          Responde "desses R$ X que ja gastei, quanto foi em cada cartao e
+          quanto no debito". Cada linha leva aos lancamentos daquela fonte.
+          A fatura de destino aparece aqui, ao lado do cartao — que e onde a
+          pergunta "para onde isso vai" realmente surge. */}
+      {breakdown && (() => {
+        const item = items.find(i => i.id === breakdown.itemId);
+        if (!item) return null;
+        const monthData = months[breakdown.mIdx];
+        if (!monthData) return null;
+        const monthKey = `${monthData.year}-${monthData.index}`;
+
+        const partials = isLeisureBlock
+          ? items.flatMap(i => (i.partialExpenses?.[monthKey] || []) as PartialExpense[])
+          : ((item.partialExpenses?.[monthKey] || []) as PartialExpense[]);
+        const teto = isLeisureBlock
+          ? items.reduce((sum, i) => sum + (i.values[breakdown.mIdx] || 0), 0)
+          : (item.values[breakdown.mIdx] || 0);
+
+        // Casa o final do cartao do extrato com o cartao cadastrado no plano.
+        // Sem os 4 digitos nao da para afirmar qual cartao e, entao devolve
+        // null em vez de arriscar um match errado por substring.
+        const findCardByLast4 = (last4?: string) =>
+          last4 ? allCards.find(c => (c.description || '').includes(last4)) ?? null : null;
+
+        type SrcRow = { key: string; label: string; total: number; count: number; isCredit: boolean; cardLast4?: string };
+        const srcMap = new Map<string, SrcRow>();
+        for (const p of partials) {
+          const isCredit = p.paymentSource === 'credit';
+          const key = isCredit ? `credit_${p.cardLast4 ?? ''}` : 'debit';
+          if (!srcMap.has(key)) {
+            const card = isCredit ? findCardByLast4(p.cardLast4) : null;
+            srcMap.set(key, {
+              key,
+              label: isCredit ? (card?.description || `Cartão ••${p.cardLast4 ?? '?'}`) : 'Débito / Pix',
+              total: 0, count: 0, isCredit, cardLast4: p.cardLast4,
+            });
+          }
+          const row = srcMap.get(key)!;
+          row.total += p.value;
+          row.count += 1;
+        }
+        const rows = Array.from(srcMap.values()).sort((a, b) => b.total - a.total);
+        const totalSpent = rows.reduce((sum, r) => sum + r.total, 0);
+        const excess = totalSpent - teto;
+        const isOver = teto > 0 && excess > 0;
+
+        // Para qual fatura vai o que foi no credito: usa o fechamento do cartao.
+        const faturaDe = (last4?: string) => {
+          const card = findCardByLast4(last4);
+          if (!card?.closingDay) return null;
+          const idx = new Date().getDate() >= card.closingDay ? breakdown.mIdx + 1 : breakdown.mIdx;
+          return months[Math.min(idx, months.length - 1)]?.monthName ?? null;
+        };
+
+        return (
+          <div
+            className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-5"
+            onClick={() => setBreakdown(null)}
+          >
+            <div
+              className="w-full max-w-[380px] bg-white rounded-[20px] overflow-hidden shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="relative px-4 pt-4 pb-3.5 bg-[#f5f5f7] border-b border-[#e8e8ed]">
+                <button
+                  onClick={() => setBreakdown(null)}
+                  className="absolute top-3 right-3 w-6 h-6 rounded-full border border-[#e8e8ed] bg-white text-[#6e6e73] hover:text-[#1d1d1f] text-[11px]"
+                  aria-label="Fechar"
+                >
+                  <i className="fas fa-times" />
+                </button>
+                <div className="text-[9px] font-black text-[#aeaeb2] uppercase tracking-[0.13em]">
+                  {item.description || 'Sem nome'} · {monthData.monthName} {monthData.year}
+                </div>
+                <div className="text-[15px] font-black text-[#1d1d1f] mt-0.5">Onde esse gasto aconteceu</div>
+                <div className="mt-2.5 flex items-baseline justify-between gap-3">
+                  <span className="text-[9px] font-black text-[#aeaeb2] uppercase tracking-[0.09em]">Total gasto</span>
+                  <span className={`text-[21px] font-black k-num ${isOver ? 'text-[#ff3b30]' : 'text-[#1d1d1f]'}`}>
+                    {formatCurrency(totalSpent)}
+                  </span>
+                </div>
+                {teto > 0 && (
+                  <div className="text-[11px] text-[#6e6e73] mt-0.5 text-right">
+                    Teto de <span className="k-num">{formatCurrency(teto)}</span>
+                    {isOver
+                      ? <> · <b className="text-[#ff3b30] font-black k-num">{formatCurrency(excess)} acima</b></>
+                      : <> · <span className="k-num">{formatCurrency(teto - totalSpent)}</span> disponível</>}
+                  </div>
+                )}
+              </div>
+
+              <div className="px-2 py-1.5 max-h-[46vh] overflow-y-auto">
+                {rows.map((r, idx) => {
+                  const fatura = r.isCredit ? faturaDe(r.cardLast4) : null;
+                  return (
+                    <button
+                      key={r.key}
+                      onClick={() => { setBreakdown(null); onNavigateToGastos?.(item.id, r.key); }}
+                      className={`w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-left hover:bg-[#f5f5f7] transition-colors ${idx > 0 ? 'border-t border-[#f0f0f0]' : ''}`}
+                    >
+                      <span className={`shrink-0 w-[30px] h-[30px] rounded-[9px] grid place-items-center text-[13px] ${r.isCredit ? 'bg-orange-50 text-orange-500' : 'bg-blue-50 text-blue-500'}`}>
+                        <i className={`fas ${r.isCredit ? 'fa-credit-card' : 'fa-arrow-right-from-bracket'}`} />
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-[12.5px] font-bold text-[#1d1d1f] truncate">{r.label}</span>
+                        <span className="block text-[10px] text-[#aeaeb2] font-semibold mt-px">
+                          {fatura ? `vai para a fatura de ${fatura} · ` : ''}
+                          {r.count} {r.count === 1 ? 'lançamento' : 'lançamentos'}
+                        </span>
+                      </span>
+                      <span className="text-[13.5px] font-black text-[#1d1d1f] k-num shrink-0">{formatCurrency(r.total)}</span>
+                      <i className="fas fa-chevron-right text-[9px] text-[#aeaeb2] shrink-0" />
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="px-4 py-3 border-t border-[#e8e8ed] text-[10.5px] text-[#aeaeb2] text-center">
+                Toque numa linha para ver os lançamentos
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
