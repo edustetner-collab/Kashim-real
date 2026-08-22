@@ -20,6 +20,68 @@ Esse 404 é sucesso: eles aceitaram as credenciais da Software House e
 consultaram o CPF, que de fato não existe. Falta agora testar o fluxo real
 ponta a ponta com um CPF verdadeiro.
 
+## Estado verificado na API em 2026-08-11
+
+**Um consentimento chegou ao fim.** Consulta direta à Technospeed pelo pagador
+do Eduardo (8 contas cadastradas):
+
+| accountHash | banco | ag/conta | statusOpenfinance | openfinanceId |
+|---|---|---|---|---|
+| `PHqs1Xi0tx` | 237 Bradesco | 1667 / 1877 | **ATIVO** | `7cb2cc9a-…62ec` |
+| `zrzJjKmJ2H` `aH1b-TLawb` `A3Nh6BvDZo` `dVbWGsARzI` | 237 Bradesco | 1667 / 1877 | PENDENTE_ATIVACAO | vazio |
+| `9jJjvSWjt4` `MOsgjL_yD6` | 341 Itaú | 7440 / 08713 | PENDENTE_ATIVACAO | vazio |
+| `zy2Z3xmvyg` | 341 Itaú | **1667** / 08713 | PENDENTE_ATIVACAO | vazio |
+
+Três conclusões que corrigem páginas anteriores deste documento:
+
+1. **O status ativo se chama `ATIVO`**, não `CONCLUIDO` como dito no kick-off.
+   O ciclo real é `PENDENTE_ATIVACAO` → `PROCESSANDO` → `ATIVO`.
+2. **`statementActived` do pagador é `true`.** No kick-off o Gabriel atribuiu o
+   bloqueio a esse campo estar desligado — não era. O `ensurePayer` já cuida
+   disso, inclusive curando pagador antigo por `PUT`.
+3. **O Itaú segue travado** em todas as três variantes, coerente com a quebra do
+   universal link. O Bradesco, no mesmo app e no mesmo dia, foi até o fim — o
+   que reforça que o problema é do handoff Pluggy → Itaú, não do nosso código.
+
+Cadastros duplicados a limpar: os 4 Bradesco pendentes, `MOsgjL_yD6` e
+`zy2Z3xmvyg` (este com agência 1667, provável digitação). Manter `PHqs1Xi0tx`
+(o que funciona) e `9jJjvSWjt4`.
+
+### Primeiro extrato importado — 2026-08-11
+
+Pipeline completo funcionou pela primeira vez, disparado pelo próprio
+`api/of-cron` (não por chamada manual à Technospeed, de propósito: assim o
+`last_protocol_id` fica gravado e a rodada seguinte reaproveita em vez de
+gerar outro).
+
+```
+protocolo ETnif0f_tI-ys4 · conta PHqs1Xi0tx · SUCCESS · 110 transações
+rodada generate → processing 1
+rodada monitor  → done 1, upserted 15, notified 1
+```
+
+Duas surpresas úteis:
+
+1. **Não demorou 6 a 24 horas.** O protocolo saiu `SUCCESS` em menos de um
+   minuto. A latência documentada vale para quando o banco ainda não sincronizou
+   com a Pluggy; com consentimento já ativo e dados quentes, é imediato. Não
+   prometer 24h como se fosse regra — prometer "até 24h".
+2. **110 no extrato, 15 no app.** Diferença esperada: `cutoffDate()` corta no
+   primeiro dia do mês corrente. O extrato traz o histórico completo do
+   consentimento; nós importamos só o mês.
+
+`ETnif0f_tI-ys4` é o comprovante do Programa de Incentivo (protocolo de produção
+com transações). Falta abrir o ticket.
+
+### Limite confirmado pelo comercial (WhatsApp, 2026-08-11)
+
+> "Sobre as 4 consultas por dia, é **por conta**, então caso você cadastrou um
+> pagador com o bradesco, santander, itau… ele pode consultar 4 vezes por dia no
+> máximo **para cada conta** vinculada no open finance."
+
+Confirma por escrito a premissa que sustenta o modelo para pessoa física. Era
+inferência até aqui; agora é fato.
+
 ---
 
 ## O bloqueio (histórico — resolvido em 2026-08-10)
@@ -233,6 +295,22 @@ aceita as duas grafias. O mesmo vale para `openfinanceLink` / `openFinanceLink`.
 
 E o mais traiçoeiro: no exemplo oficial, `transaction` vem **vazio** e as
 transações estão todas em `transactionDuplicated`. O parser lê os dois blocos.
+O deck de kick-off (slide 16) reproduz esse mesmo exemplo, então é comportamento
+real e não erro de digitação da documentação.
+
+#### O deck de kick-off contradiz o `api.json` — o deck é que está errado
+
+O PDF "Kick-off PlugBank — Extrato Open Finance 2.0" (slides 15 e 17) descreve
+`POST /api/v1/statement/openfinance` com `Content-Type: form-data` e campos
+**`dataStart` / `dataEnd`** (grafia portuguesa). O `api.json` diz
+`Content-Type: application/json` e **`dateStart` / `dateEnd`**.
+
+**Vale o `api.json`** — é o que o código já faz e o que funciona. Conferido em
+2026-08-11 justamente porque o slide quase provocou uma "correção" que teria
+quebrado a geração de protocolo.
+
+Regra: o deck serve para entender o *fluxo*; nome de campo se confere no
+`api.json`, nunca no slide.
 
 ### 4. Documentação só abre pela API JSON
 
@@ -280,19 +358,36 @@ curl -s -X POST https://proxy.kashim.com.br/proxy \
 obrigatório no segundo caso — **contra o mesmo `accountHash`**. Uma conexão por
 conta bancária, dois pedidos de extrato.
 
-`api/of-cron.ts` e `api/of-sync.ts` já fazem isso certo. Quem está errado é a
-tela: `ConectarBanco` trata cartão como conexão nova e chama
-`POST /api/v1/account` outra vez.
+`api/of-cron.ts` e `api/of-sync.ts` já fazem isso certo. A tela estava errada:
+`ConectarBanco` tratava cartão como conexão nova e chamava
+`POST /api/v1/account` outra vez. **Corrigido em 2026-08-11** — o seletor
+"Conta Corrente / Cartão de Crédito" saiu da tela e toda conexão nasce
+`checking`.
 
 **`POST /api/v1/account` não deduplica.** Duas chamadas com o mesmo
 banco/agência/conta devolveram `accountHash` diferentes (`kMwqp1q9ZM` e
-`VknmoSbS9X`). Conectar cartão pela tela hoje cria cadastro duplicado na
-Technospeed — o certo é o cartão virar uma opção dentro da conexão existente,
-pedindo só os 4 dígitos.
+`VknmoSbS9X`). Era assim que a tela criava cadastro duplicado na Technospeed.
 
-Independente disso, o `CREDIT_CARD` só retorna dados se **o consentimento
-autorizado no banco incluir o cartão** — quem escolhe o escopo é o usuário, na
-tela da instituição.
+#### O escopo NÃO é escolhido pelo usuário
+
+Esta página afirmava que "quem escolhe o escopo é o usuário, na tela da
+instituição". **Está errado.** Quem percorreu o fluxo de autorização não
+encontrou, em momento nenhum, opção de escolher produto: é uma autorização
+única, que já cobre conta e cartão do mesmo banco.
+
+Faz sentido com o modelo do Open Finance brasileiro — as permissões vêm no
+consentimento montado pela instituição receptora, e a pessoa aceita ou recusa
+o conjunto; não monta o pedido à la carte.
+
+Consequência prática: **nunca instruir o cliente a "marcar conta e cartão" na
+tela do banco.** Já foi para produção uma vez um checklist pedindo isso, e ele
+manda procurar um controle que não existe — quem lê conclui que errou o passo.
+A tela de autorização hoje descreve o que vai acontecer, sem pedir ação que a
+interface do banco não oferece.
+
+Ainda não confirmado de ponta a ponta: nenhuma autorização chegou ao fim (ver
+o bloqueio do Itaú). Se um consentimento completo trouxer só `BANK` e nenhum
+cartão, esta conclusão volta para a mesa.
 
 ### 8. `addressNumber` é obrigatório e o spec não diz
 

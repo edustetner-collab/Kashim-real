@@ -56,13 +56,32 @@ export function computeAccess(params: {
   isCoachClient?: boolean;
   /** Data em que o coaching encerrou (coaching_ends_at da API). null = ainda ativo ou sem data. */
   coachingEndsAt?: string | null;
+  /** Primeiro acesso REAL do cliente. É daqui que os 5 meses passam a contar. */
+  firstAccessAt?: string | null;
+  /** Reativação manual do coach. Data no futuro libera, venha o que vier. */
+  accessUntil?: string | null;
 }): AccessInfo {
   const now = Date.now();
 
-  // 1. Coach ativo: acesso ilimitado
-  if (params.hasActiveCoach) {
-    return { mode: 'coach', hasAccess: true, endsAt: null, daysLeft: null };
+  // 0. Reativação manual do coach vence tudo — é decisão explícita dele.
+  if (params.accessUntil) {
+    const until = new Date(params.accessUntil);
+    if (until.getTime() > now) {
+      return { mode: 'trial', hasAccess: true, endsAt: until, daysLeft: daysUntil(until) };
+    }
   }
+
+  // 1. Coach ativo NÃO dá mais acesso ilimitado.
+  //
+  // Regra atual (Eduardo, 2026-08-12): o relógio de 5 meses começa no PRIMEIRO
+  // ACESSO do cliente e vale mesmo com a consultoria em andamento. Vencido o
+  // prazo sem o coach postergar, bloqueia. Antes, `approved` liberava para
+  // sempre e o prazo só passava a valer depois da revogação.
+  //
+  // O que protege contra o incidente de 2026-08-07 (clientes ativos derrubados
+  // por data velha) não é mais "nunca bloquear", e sim a data ser confiável:
+  // `first_access_at` é carimbado quando o cliente abre o app, não herdado da
+  // criação do perfil. E o coach tem o botão Reativar no painel.
 
   // 2. Assinatura paga vigente
   if (params.subscriptionStatus === 'active' && params.subscriptionExpiresAt) {
@@ -81,18 +100,22 @@ export function computeAccess(params: {
   // na criação do perfil e fica no passado para qualquer cliente com mais de 5
   // meses de casa.
   if (params.isCoachClient) {
-    const graceFrom = params.coachingEndsAt ?? params.createdAt ?? null;
-    if (graceFrom) {
-      const trialEnd = addMonths(new Date(graceFrom), TRIAL_MONTHS);
-      if (trialEnd.getTime() > now) {
-        return { mode: 'trial', hasAccess: true, endsAt: trialEnd, daysLeft: daysUntil(trialEnd) };
-      }
+    // O relógio conta do PRIMEIRO ACESSO. `coachingEndsAt` e `createdAt` marcam
+    // quando o coach criou o perfil — perfil criado em janeiro e acessado em
+    // junho já nascia com metade do prazo gasto.
+    const graceFrom = params.firstAccessAt ?? params.coachingEndsAt ?? params.createdAt ?? null;
+
+    // Sem nenhuma data não há relógio para contar. Libera: é cliente novo cujo
+    // carimbo de primeiro acesso ainda não gravou.
+    if (!graceFrom) return { mode: 'trial', hasAccess: true, endsAt: null, daysLeft: null };
+
+    const trialEnd = addMonths(new Date(graceFrom), TRIAL_MONTHS);
+    if (trialEnd.getTime() > now) {
+      return { mode: 'trial', hasAccess: true, endsAt: trialEnd, daysLeft: daysUntil(trialEnd) };
     }
-    // Datas vencidas ou ausentes: mantém o acesso liberado, sem contagem
-    // regressiva na tela. Cliente da consultoria só perde acesso quando o coach
-    // revoga (aí hasCoach=false e isCoachClient continua true → 5 meses de grace
-    // contados da revogação).
-    return { mode: 'trial', hasAccess: true, endsAt: null, daysLeft: null };
+
+    // Prazo vencido e o coach não postergou → bloqueia até regularizar.
+    return { mode: 'expired', hasAccess: false, endsAt: trialEnd, daysLeft: 0 };
   }
 
   // 4. Cadastro espontâneo: 30 dias a partir do created_at

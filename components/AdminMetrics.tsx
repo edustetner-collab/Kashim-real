@@ -82,6 +82,8 @@ const AdminMetrics: React.FC = () => {
   const [filter, setFilter] = useState<Status | 'all'>('all');
   const [showHidden, setShowHidden] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [regularizando, setRegularizando] = useState(false);
+  const [regularizouMsg, setRegularizouMsg] = useState('');
 
   const load = useCallback(async () => {
     setError('');
@@ -103,6 +105,28 @@ const AdminMetrics: React.FC = () => {
   }, [getToken]);
 
   useEffect(() => { load(); }, [load]);
+
+  /** Dá a todo cliente o prazo devido: 5 meses a partir do primeiro acesso. */
+  async function regularizarTodos() {
+    setRegularizando(true);
+    setRegularizouMsg('');
+    try {
+      const token = await getToken({ template: 'supabase' });
+      const res = await fetch('/api/client-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: 'regularize-all' }),
+      });
+      const body = await res.json().catch(() => ({})) as { atualizados?: number; error?: string };
+      if (!res.ok) throw new Error(body.error ?? `Erro ${res.status}`);
+      setRegularizouMsg(`${body.atualizados ?? 0} cliente(s) regularizado(s).`);
+      await load();
+    } catch (e) {
+      setRegularizouMsg(e instanceof Error ? e.message : 'Erro ao regularizar');
+    } finally {
+      setRegularizando(false);
+    }
+  }
 
   async function toggleHidden(c: ClientRow) {
     setTogglingId(c.id);
@@ -153,9 +177,36 @@ const AdminMetrics: React.FC = () => {
         <p className="text-green-500 text-[10px] font-black uppercase tracking-[0.25em] mb-1">Faturamento mensal (MRR)</p>
         <p className="text-white text-4xl font-black font-mono tracking-tight">{formatBRL(t.mrr)}</p>
         <p className="text-zinc-500 text-xs mt-2">
-          Potencial se os {t.inTrial} em trial assinarem: <span className="text-green-400 font-bold">{formatBRL(t.potentialMrr)}</span>
+          Potencial se os {t.inTrial + t.coachActive} com acesso assinarem: <span className="text-green-400 font-bold">{formatBRL(t.potentialMrr)}</span>
         </p>
       </div>
+
+      {/* Regularizar — aplica a régua da casa (5 meses do 1º acesso) em todos.
+          Só estende prazo; nunca encurta o de ninguém. */}
+      {(t.inTrial > 0 || t.expired > 0) && (
+        <div className="bg-zinc-900 border border-green-500/25 rounded-2xl p-4 mb-4">
+          <p className="text-white text-xs font-black uppercase tracking-wide mb-1">
+            <i className="fas fa-wand-magic-sparkles text-green-400 mr-2"></i>
+            {t.inTrial + t.expired} cliente(s) fora do plano de 5 meses
+          </p>
+          <p className="text-zinc-500 text-[11px] mb-3 leading-snug">
+            Dá a todos o prazo devido: 5 meses contados do primeiro acesso de cada um.
+            Só estende — ninguém perde tempo que já tem.
+          </p>
+          <button
+            onClick={regularizarTodos}
+            disabled={regularizando}
+            className="bg-green-500 active:bg-green-400 disabled:opacity-50 text-black font-black text-xs px-4 py-2.5 rounded-xl uppercase transition-all"
+          >
+            {regularizando
+              ? <><i className="fas fa-circle-notch animate-spin mr-2"></i>Regularizando…</>
+              : 'Dar 5 meses a todos'}
+          </button>
+          {regularizouMsg && (
+            <p className="text-green-400 text-[11px] font-bold mt-2">{regularizouMsg}</p>
+          )}
+        </div>
+      )}
 
       {/* Grid de números */}
       <div className="grid grid-cols-2 gap-3 mb-4">

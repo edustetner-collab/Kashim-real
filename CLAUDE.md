@@ -87,15 +87,26 @@ conhece a infra — e **verificar**, em vez de reafirmar a hipótese.
 
 ## Regra de acesso (quem pode usar o app)
 
-- Registro `approved` em `coach_access` → **acesso ilimitado**. Quem encerra é o
-  coach, revogando no painel (`status='revoked'`) — **nunca uma data**.
-- Já foi cliente do coach (revogado) → 5 meses de grace period.
-- Cadastro espontâneo (pela landing) → 30 dias.
-- **`coaching_ends_at` não serve para bloquear**: é gravado uma única vez no
-  `create-client.ts` (`created_at + 5 meses`) e nunca atualizado, então está no
-  passado para todo cliente com mais de 5 meses de casa.
-- **Na dúvida, libera.** Falha de rede ou erro de query nunca pode virar
-  bloqueio — isso mostrava o gate de pagamento para cliente pagante.
+**Revisada em 2026-08-12 pelo Eduardo. A regra antiga — `approved` = acesso
+ilimitado, bloqueio só por revogação — não vale mais.**
+
+- O relógio começa no **primeiro acesso do cliente** (`households.first_access_at`,
+  carimbado quando ele abre o app pela primeira vez). Criar o perfil **não**
+  inicia a contagem: perfil criado em janeiro e acessado em junho conta a partir
+  de junho.
+- A partir daí são **5 meses**, valendo **mesmo com a consultoria ativa**.
+  Vencido o prazo sem o coach postergar, **bloqueia** até regularizar.
+- O aviso aparece com **30 dias** de antecedência e vai apertando.
+- O coach posterga pelo botão **Reativar** no painel (`households.access_until`),
+  que vence qualquer outro cálculo. Clientes fora do prazo caem sozinhos no
+  filtro **Antigos**.
+- Cadastro espontâneo (pela landing) → 30 dias a partir do `created_at`.
+- **`coaching_ends_at` não serve para nada disto**: é gravado uma única vez no
+  `create-client.ts` e nunca atualizado. Foi ele que causou o incidente de
+  2026-08-07, derrubando clientes ativos. Quem substitui é `first_access_at`.
+- **Na dúvida, libera** continua valendo para *falha de infraestrutura*: erro de
+  rede ou query sem resposta nunca pode virar bloqueio. O que mudou é que prazo
+  vencido, com data confiável, agora bloqueia de propósito.
 
 ### Cuidado com `.order()` em queries do Supabase
 

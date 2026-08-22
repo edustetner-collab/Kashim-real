@@ -7,22 +7,66 @@ export type CategorySuggestion = {
   confidence: 'high' | 'medium' | 'low';
 };
 
-// ─── Credit-card OF codes → Kashim bucket ────────────────────────────────────
-// Based on the real Technospeed data (exemplo_cartaoCredito.json)
+/**
+ * Códigos que NUNCA são gasto e precisam sumir do extrato.
+ *
+ * Levantado do extrato real do Bradesco (protocolo ETnif0f_tI-ys4, 2026-08-11),
+ * onde estes três somavam R$ 78.278 de "despesa" que não existe:
+ *
+ *   CREDITCARDFEES          R$ 58.117,85  ← a FATURA do cartão
+ *   SAMEPERSONTRANSFER      R$ 19.960,00  ← dinheiro indo de uma conta sua para outra
+ *   SAMEPERSONTRANSFERCASH  R$    200,00  ← saque no caixa eletrônico
+ *
+ * O da fatura é o mais perigoso: as compras do cartão já entram uma a uma pelo
+ * extrato de cartão. Contar o pagamento da fatura também é somar tudo duas
+ * vezes — é a regra de "sem dupla contagem" do design-produto.md.
+ */
+const IGNORE_CODES = new Set([
+  'CREDITCARDPAYMENT',
+  'CREDITCARDFEES',
+  'SAMEPERSONTRANSFER',
+  'SAMEPERSONTRANSFERCASH',
+  'TEV',
+]);
 
-const CC_CODE_MAP: Record<string, CategoryType> = {
+/**
+ * Códigos ambíguos: pode ser gasto de verdade (pagar o pedreiro) ou só
+ * remanejamento. Não chutamos — entram sem sugestão para o cliente decidir.
+ */
+const ASK_USER_CODES = new Set([
+  'TRANSFERPIX',
+  'TRANSFERBANKSLIP',
+  'TRANSFERTED',
+  'TRANSFERDOC',
+]);
+
+// ─── Códigos da Technospeed → categoria do Kashim ────────────────────────────
+// Valem para conta corrente E cartão. Antes só o cartão consultava este mapa, e
+// por isso todo débito de conta caía em "Variável" — inclusive luz e água.
+
+const CODE_MAP: Record<string, CategoryType> = {
   ELECTRICITY: CategoryType.FIXED_EXPENSE,
   UTILITIES: CategoryType.FIXED_EXPENSE,
+  WATER: CategoryType.FIXED_EXPENSE,
   TELECOM: CategoryType.FIXED_EXPENSE,
+  TELECOMMUNICATIONS: CategoryType.FIXED_EXPENSE,
   INTERNET: CategoryType.FIXED_EXPENSE,
   INSURANCE: CategoryType.FIXED_EXPENSE,
   RENT: CategoryType.FIXED_EXPENSE,
+  HOUSING: CategoryType.FIXED_EXPENSE,
   MORTGAGE: CategoryType.FIXED_EXPENSE,
   SCHOOL: CategoryType.FIXED_EXPENSE,
+  EDUCATION: CategoryType.FIXED_EXPENSE,
   HEALTH: CategoryType.FIXED_EXPENSE,
   MEDICALSERVICES: CategoryType.FIXED_EXPENSE,
   SUBSCRIPTION: CategoryType.FIXED_EXPENSE,
   WELLNESSANDFITNESS: CategoryType.FIXED_EXPENSE,
+  TAXES: CategoryType.FIXED_EXPENSE,
+  TAXONFINANCIALOPERATIONS: CategoryType.FIXED_EXPENSE,
+  BANKFEES: CategoryType.FIXED_EXPENSE,
+  GROCERIES: CategoryType.VARIABLE_EXPENSE,
+  OFFICESUPPLIES: CategoryType.VARIABLE_EXPENSE,
+  ONLINEBET: CategoryType.PERSONAL_LEISURE,
   SERVICES: CategoryType.VARIABLE_EXPENSE,
   VEHICLEMAINTENANCE: CategoryType.VARIABLE_EXPENSE,
   AUTOMOTIVE: CategoryType.VARIABLE_EXPENSE,
@@ -131,10 +175,10 @@ export function suggestCategory(params: {
   paymentMethod: string | null;
 }): CategorySuggestion {
   const { accountType, rawDirection, code, ofCategory } = params;
+  const upperCode = (code ?? '').toUpperCase();
 
-  // Always skip these
-  if (code === 'CREDITCARDPAYMENT') return { category: null, direction: 'ignore', confidence: 'high' };
-  if (code === 'TEV') return { category: null, direction: 'ignore', confidence: 'high' };
+  // Fatura de cartão, transferência entre contas próprias e saque: nunca gasto.
+  if (IGNORE_CODES.has(upperCode)) return { category: null, direction: 'ignore', confidence: 'high' };
 
   const normalizedLabel = ofCategory ? normalizeLabel(ofCategory) : '';
 
@@ -153,11 +197,22 @@ export function suggestCategory(params: {
       return { category: CategoryType.INCOME, direction: 'income', confidence: 'low' };
     }
 
-    // Debit — check label for category
+    // PIX/TED para terceiros: pode ser gasto real ou remanejamento. Sem sugestão
+    // — o cliente decide, em vez de o app chutar "Variável".
+    if (ASK_USER_CODES.has(upperCode)) {
+      return { category: null, direction: 'expense', confidence: 'low' };
+    }
+
+    // Debit — rótulo primeiro (mais específico), depois o código
     if (normalizedLabel) {
       const cat = LABEL_CATEGORY_MAP[normalizedLabel];
       if (cat) return { category: cat, direction: 'expense', confidence: 'high' };
     }
+    // Faltava isto: o código do Open Finance vale para conta corrente também.
+    // Sem esta linha, luz, água, escola e seguro caíam todos em "Variável".
+    const codeCat = CODE_MAP[upperCode];
+    if (codeCat) return { category: codeCat, direction: 'expense', confidence: 'medium' };
+
     return { category: CategoryType.VARIABLE_EXPENSE, direction: 'expense', confidence: 'low' };
   }
 
@@ -168,7 +223,7 @@ export function suggestCategory(params: {
   }
 
   // CC debit → expense, use code map first then label
-  const ccCat = CC_CODE_MAP[code.toUpperCase()];
+  const ccCat = CODE_MAP[upperCode];
   if (ccCat) return { category: ccCat, direction: 'expense', confidence: 'medium' };
 
   if (normalizedLabel) {

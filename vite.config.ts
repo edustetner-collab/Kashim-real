@@ -61,7 +61,13 @@ export default defineConfig(({ mode }) => {
       ],
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY ?? process.env.GEMINI_API_KEY ?? ''),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY ?? process.env.GEMINI_API_KEY ?? '')
+        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY ?? process.env.GEMINI_API_KEY ?? ''),
+        // Carimbo do build, exibido em Configurações. Serve para responder em
+        // segundos a pergunta "a mudança entrou?" — sem ele já se gastou horas
+        // depurando lógica nova contra um bundle antigo em cache.
+        __BUILD_STAMP__: JSON.stringify(
+          new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
+        ),
       },
       resolve: {
         alias: {

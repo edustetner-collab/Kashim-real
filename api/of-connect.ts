@@ -71,6 +71,8 @@ interface TSAccountInfo {
   bankCode?: string;
   openFinanceLink?: string | null;
   openfinanceLink?: string | null;
+  statusOpenfinance?: string | null;
+  openfinanceId?: string | null;
 }
 
 /** Chama a Technospeed através do proxy de IP fixo. */
@@ -121,6 +123,14 @@ async function tsReq<T>(method: string, path: string, payerCpf: string, body?: u
 
   if (!res.ok) throw new TSError(res.status, path, json);
   return json as T;
+}
+
+/** Um cartão da conta, com liga/desliga e a janela do próprio protocolo. */
+interface StoredCard {
+  last4: string;
+  enabled: boolean;
+  protocolId: string | null;
+  protocolAt: string | null;
 }
 
 interface TSAddress {
@@ -193,7 +203,7 @@ function extractLink(obj: Record<string, unknown> | undefined): string | null {
 async function createAccount(
   payerCpf: string,
   params: { bankCode: string; agency: string; agencyDigit?: string; accountNumber: string; accountNumberDigit?: string },
-): Promise<{ accountHash: string; openFinanceLink: string }> {
+): Promise<{ accountHash: string; openFinanceLink: string; openfinanceId: string | null; openfinanceStatus: string | null }> {
   const result = await tsReq<{ accounts: TSAccountInfo[] }>('POST', '/api/v1/account', payerCpf, [
     {
       bankCode: params.bankCode,
@@ -210,6 +220,13 @@ async function createAccount(
   if (typeof accountHash !== 'string' || !accountHash) {
     throw new Error('Technospeed não retornou accountHash');
   }
+
+  const openfinanceId = typeof account?.openfinanceId === 'string' && account.openfinanceId
+    ? account.openfinanceId
+    : null;
+  const openfinanceStatus = typeof account?.statusOpenfinance === 'string' && account.statusOpenfinance
+    ? account.statusOpenfinance
+    : null;
 
   let link = extractLink(account);
 
@@ -237,7 +254,7 @@ async function createAccount(
   }
 
   if (!link) throw new Error('Technospeed não devolveu o link de autorização do Open Finance');
-  return { accountHash, openFinanceLink: link };
+  return { accountHash, openFinanceLink: link, openfinanceId, openfinanceStatus };
 }
 
 async function revokeOpenFinance(payerCpf: string, accountHash: string): Promise<void> {
@@ -317,12 +334,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!householdId) return res.status(400).json({ error: 'householdId obrigatório' });
       if (!(await isMember(sub, householdId))) return res.status(403).json({ error: 'Forbidden' });
 
+      // Revogada não volta para a lista. O DELETE marca `revoked` em vez de
+      // apagar (para não levar junto as transações já categorizadas), então sem
+      // este filtro a conexão excluída reaparecia como "Desconectado" e dava a
+      // impressão de que a exclusão não funcionou.
       const { data, error } = await db
         .from('bank_connections')
         .select('*')
-        .eq('household_id', householdId);
+        .eq('household_id', householdId)
+        .neq('consent_status', 'revoked');
 
       if (error) throw error;
+
+      // Descobre os cartões de quem já autorizou e ainda não tem lista. Vem
+      // ligado: a decisão do produto é que o raro é NÃO querer a fatura.
+      // Falha aqui não derruba a listagem — o cliente vê os bancos do mesmo
+      // jeito e a descoberta tenta de novo na próxima abertura.
+      for (const r of data ?? []) {
+        const jaTem = Array.isArray(r.cards) && r.cards.length > 0;
+        if (jaTem || r.consent_status !== 'active' || r.account_type === 'credit_card') continue;
+        if (!r.payer_cpf || !r.account_hash) continue;
+        try {
+          const found = await tsReq<Array<{ cardNumber?: string }>>(
+            'GET', `/api/v1/statement/credit-card/openfinance?accountHash=${r.account_hash}`, r.payer_cpf,
+          );
+          const cards: StoredCard[] = (Array.isArray(found) ? found : [])
+            .filter((c) => c?.cardNumber)
+            .map((c) => ({ last4: String(c.cardNumber), enabled: true, protocolId: null, protocolAt: null }));
+          if (cards.length === 0) continue;
+          await db.from('bank_connections').update({ cards }).eq('id', r.id);
+          r.cards = cards;
+        } catch { /* tenta na próxima */ }
+      }
 
       return res.status(200).json({
         connections: (data ?? []).map((r) => ({
@@ -336,6 +379,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           consentStatus: r.consent_status,
           cardLast4: r.card_last4,
           openFinanceLink: r.open_finance_link,
+          openFinanceId: r.openfinance_id ?? null,
+          openfinanceStatus: r.openfinance_status ?? null,
+          accountImportEnabled: r.account_import_enabled ?? true,
+          ownerFirstName: (r.payer_name ?? '').trim().split(' ')[0] || null,
+          billTotals: (r.bill_totals && typeof r.bill_totals === 'object') ? r.bill_totals : {},
+          cards: Array.isArray(r.cards) ? r.cards : [],
           lastSyncedAt: r.last_synced_at,
           createdAt: r.created_at,
         })),
@@ -389,7 +438,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await ensurePayer(ownerName, cpf, address);
 
       // 2. Criar conta com Extrato ativo — a resposta já traz o link do conector
-      const { accountHash, openFinanceLink } = await createAccount(cpf, {
+      const { accountHash, openFinanceLink, openfinanceId, openfinanceStatus } = await createAccount(cpf, {
         bankCode,
         agency,
         agencyDigit,
@@ -413,10 +462,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             bank_name: bankName,
             account_type: accountType,
             display_name: displayName,
-            consent_status: 'active',
+            // Status real: o usuário ainda não autorizou no banco. Antes era
+            // gravado 'active' aqui, mas a Technospeed devolve PENDENTE_ATIVACAO.
+            consent_status: 'pending_authorization',
             payer_cpf: cpf,
+            payer_name: ownerName.trim(),
             open_finance_link: openFinanceLink,
             card_last4: cardLast4 ?? null,
+            openfinance_id: openfinanceId,
+            openfinance_status: openfinanceStatus,
           },
           { onConflict: 'household_id,account_hash', ignoreDuplicates: false },
         )
@@ -434,6 +488,77 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         displayName,
         openFinanceLink,
       });
+    }
+
+    // ── PATCH — status do consentimento ou liga/desliga do cartão ──────────────
+    if (req.method === 'PATCH') {
+      const { householdId, connectionId, consentStatus, cardImport, accountImport, cardLast4 } = req.body as {
+        householdId?: string;
+        connectionId?: string;
+        consentStatus?: string;
+        cardImport?: boolean;
+        accountImport?: boolean;
+        cardLast4?: string;
+      };
+
+      if (!householdId || !connectionId) {
+        return res.status(400).json({ error: 'householdId e connectionId obrigatórios' });
+      }
+      if (!(await isMember(sub, householdId))) return res.status(403).json({ error: 'Forbidden' });
+
+      // Liga/desliga: a conta corrente, ou UM cartão específico.
+      if (typeof cardImport === 'boolean' || typeof accountImport === 'boolean') {
+        const { data: conn } = await db
+          .from('bank_connections')
+          .select('cards')
+          .eq('id', connectionId)
+          .eq('household_id', householdId)
+          .maybeSingle();
+        if (!conn) return res.status(404).json({ error: 'Conexão não encontrada' });
+
+        if (typeof accountImport === 'boolean') {
+          const { error } = await db
+            .from('bank_connections')
+            .update({ account_import_enabled: accountImport })
+            .eq('id', connectionId).eq('household_id', householdId);
+          if (error) throw error;
+          return res.status(200).json({ ok: true, accountImport });
+        }
+
+        if (!cardLast4) return res.status(400).json({ error: 'cardLast4 obrigatório para ligar/desligar um cartão' });
+
+        const cards: StoredCard[] = Array.isArray(conn.cards) ? conn.cards : [];
+        const next = cards.map((c) => (c.last4 === cardLast4 ? { ...c, enabled: cardImport } : c));
+        if (!next.some((c) => c.last4 === cardLast4)) {
+          next.push({ last4: cardLast4, enabled: !!cardImport, protocolId: null, protocolAt: null });
+        }
+
+        const { error } = await db
+          .from('bank_connections')
+          .update({ cards: next })
+          .eq('id', connectionId).eq('household_id', householdId);
+        if (error) throw error;
+
+        return res.status(200).json({ ok: true, cards: next });
+      }
+
+      if (!consentStatus) {
+        return res.status(400).json({ error: 'Informe consentStatus ou cardImport' });
+      }
+
+      const ALLOWED_STATUSES = ['pending_authorization', 'authorized_fetching', 'active', 'expired', 'revoked', 'failed'];
+      if (!ALLOWED_STATUSES.includes(consentStatus)) {
+        return res.status(400).json({ error: `consentStatus inválido. Use: ${ALLOWED_STATUSES.join(', ')}` });
+      }
+
+      const { error: patchError } = await db
+        .from('bank_connections')
+        .update({ consent_status: consentStatus })
+        .eq('id', connectionId)
+        .eq('household_id', householdId);
+
+      if (patchError) throw patchError;
+      return res.status(200).json({ ok: true });
     }
 
     // ── DELETE — revogar conexão ──────────────────────────────────────────────
@@ -464,12 +589,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       await db.from('bank_connections').update({ consent_status: 'revoked' }).eq('id', connectionId);
 
-      // Sem conexões ativas restantes → desliga a flag do household
+      // Sem conexões ativas (ou aguardando) restantes → desliga a flag do household
       const { count } = await db
         .from('bank_connections')
         .select('id', { count: 'exact', head: true })
         .eq('household_id', householdId)
-        .eq('consent_status', 'active');
+        .in('consent_status', ['pending_authorization', 'authorized_fetching', 'active']);
 
       if (!count) {
         await db.from('households').update({ has_open_finance: false }).eq('id', householdId);

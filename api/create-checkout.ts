@@ -34,6 +34,22 @@ function verifyToken(authHeader?: string): { sub: string } | null {
   return claims ? { sub: claims.sub } : null;
 }
 
+// Rate limit via Postgres (embutido: Vercel não empacota import local em api/).
+// FALHA ABERTO de propósito: qualquer problema no limiter nunca vira bloqueio de
+// cliente legítimo — vale o "na dúvida, libera" do resto do sistema. Só protege
+// depois que docs/sql/rate-limiting.sql roda no Supabase.
+async function rateLimitOk(key: string, limit: number, windowSeconds: number): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.rpc('check_rate_limit', {
+      p_key: key, p_limit: limit, p_window_seconds: windowSeconds,
+    });
+    if (error) return true;
+    return data === true;
+  } catch {
+    return true;
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -41,6 +57,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!payload) return res.status(401).json({ error: 'Unauthorized' });
 
   const clerkUserId = payload.sub;
+
+  // Anti-abuso: no máximo 8 pedidos de checkout por usuário a cada 5 min.
+  // Gerar link de pagamento chama a Pagar.me e cria pedido — não pode virar
+  // fábrica de spam. O usuário legítimo clica 1–2 vezes; 8 é folgado.
+  if (!(await rateLimitOk(`checkout:${clerkUserId}`, 8, 300))) {
+    return res.status(429).json({ error: 'Muitas tentativas. Aguarde alguns minutos e tente de novo.' });
+  }
 
   const { data: membership } = await supabase
     .from('household_members')

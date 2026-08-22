@@ -38,6 +38,7 @@ import { getNotifPrefs } from './lib/notifPrefs';
 import TermsGate from './components/TermsGate';
 import { hasAcceptedTerms, recordTermsAcceptance } from './lib/terms';
 import ExtratoBancario from './components/ExtratoBancario';
+import CategorizePopup from './components/CategorizePopup';
 import { hasOpenFinanceAccess } from './lib/ofAccess';
 import { fillVariableValuesFromPartials } from './lib/fillFromPartials';
 import { getSourceInfo } from './lib/paymentSource';
@@ -264,6 +265,10 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'plan' | 'teto' | 'metas' | 'desempenho' | 'dividas'>('plan');
   const [showExtrato, setShowExtrato] = useState(false);
   const [ofInitialCardLast4, setOfInitialCardLast4] = useState<string | undefined>(undefined);
+  /** Pop-up "X transações a categorizar" — só para quem tem Open Finance. */
+  const [categorizeCount, setCategorizeCount] = useState(0);
+  const [showCategorizePopup, setShowCategorizePopup] = useState(false);
+  const categorizeCheckedRef = useRef(false);
   /** Transações do Extrato já lançadas nesta sessão — sai da lista sem recarregar. */
   const [ofCategorized, setOfCategorized] = useState<string[]>([]);
   /** Item cujo card deve receber o foco ao abrir Gastos (vindo do Plano). */
@@ -554,6 +559,23 @@ const App: React.FC = () => {
     }, 2500);
     return () => clearTimeout(t);
   }, [householdId, coachViewHouseholdId, needsTermsAcceptance, items, months, user, notifPrefsVersion]);
+
+  // Heartbeat: marca "mexeu no app agora" (households.last_active_at). Base do
+  // futuro push de reengajamento. Não conta a visualização do coach como
+  // atividade do cliente. Fire-and-forget: falha nunca atrapalha o app.
+  useEffect(() => {
+    if (!householdId || coachViewHouseholdId || !user) return;
+    (async () => {
+      try {
+        const token = await getToken({ template: 'supabase' });
+        if (!token) return;
+        await fetch('/api/heartbeat', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch { /* acessório */ }
+    })();
+  }, [householdId, coachViewHouseholdId, user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!householdId) return;
@@ -1088,6 +1110,39 @@ const App: React.FC = () => {
     return () => { cancelado = true; };
   }, [householdId, items.length, months.length, user]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Pop-up "X transações a categorizar" — só para quem tem Open Finance
+  // liberado (hoje: só o Eduardo). Para todos os demais este efeito sai na
+  // primeira linha e nenhuma chamada acontece. Roda uma vez por sessão do app,
+  // reaproveitando o MESMO endpoint do Extrato (status=pending) — assim o pop-up
+  // pega carona no que a migração fizer com as transações, sem lógica paralela.
+  useEffect(() => {
+    if (!hasOpenFinanceAccess(user) || !householdId) return;
+    if (categorizeCheckedRef.current) return;
+    if (coachViewHouseholdId || needsTermsAcceptance) return; // não interrompe coach nem aceite de termos
+    categorizeCheckedRef.current = true;
+    let cancelado = false;
+
+    (async () => {
+      try {
+        const token = await getToken({ template: 'supabase' });
+        if (!token) return;
+        const params = new URLSearchParams({ householdId, status: 'pending', limit: '200' });
+        const r = await fetch(`/api/of-transactions?${params}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!r.ok || cancelado) return;
+        const json = await r.json() as { transactions?: unknown[] };
+        const n = json.transactions?.length ?? 0;
+        if (n > 0 && !cancelado) {
+          setCategorizeCount(n);
+          setShowCategorizePopup(true);
+        }
+      } catch { /* aviso é acessório: falha nunca trava o app */ }
+    })();
+
+    return () => { cancelado = true; };
+  }, [householdId, coachViewHouseholdId, needsTermsAcceptance, user]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleUpdateValue = (id: string, monthIdx: number, value: string) => {
     const numericValue = value === '' ? 0 : parseFloat(value);
     setItems(prev => prev.map(item => item.id === id ? { ...item, values: item.values.map((v, i) => i === monthIdx ? numericValue : v) } : item));
@@ -1480,6 +1535,13 @@ const App: React.FC = () => {
        * — a menos que o item esteja declarado como cartao, caso em que a sobra
        * tambem cairia na fatura.
        */
+      // Mês estritamente depois do mês real de hoje. O diagnóstico do cliente é
+      // lido nos meses futuros ("planejamento"); o mês corrente é o "real".
+      const isMesFuturo = !!monthData && (
+        monthData.year > currentActualYear ||
+        (monthData.year === currentActualYear && monthData.index > currentActualMonth)
+      );
+
       const desembolsoDoItem = (item: FinanceItem): number => {
         const partials = (item.partialExpenses?.[monthKey] || []) as PartialExpense[];
         const gastoReal = partials.reduce((sum, p) => sum + p.value, 0);
@@ -1489,7 +1551,13 @@ const App: React.FC = () => {
         const noDebito = gastoReal - noCartao;
         const declaradoCartao = !!item.linkedCardId && item.linkType !== LinkType.DEBIT;
         const planejadoRestante = Math.max(0, (item.values[m] || 0) - gastoReal);
-        return noDebito + (declaradoCartao ? 0 : planejadoRestante);
+        // Opção B (Eduardo, 2026-08-20): a despesa planejada e ainda não gasta
+        // SEMPRE conta nos MESES FUTUROS, mesmo declarada no cartão — é o coração
+        // do diagnóstico (o cliente precisa enxergar o % de conta fixa sobre o
+        // salário em todo mês futuro). No mês corrente/passado ela sai daqui:
+        // já foi atualizada na fatura, e contar de novo duplicaria.
+        const excluiPorEstarNaFatura = declaradoCartao && !isMesFuturo;
+        return noDebito + (excluiPorEstarNaFatura ? 0 : planejadoRestante);
       };
 
       const somaDesembolso = (category: CategoryType) => items
@@ -1533,7 +1601,7 @@ const App: React.FC = () => {
       summaries.push({ totalIncome, totalCreditCard, totalFixed, totalVariable, totalLeisure, totalCost, balance, accumulated });
     }
     return summaries;
-  }, [items, months]);
+  }, [items, months, currentActualMonth, currentActualYear]);
 
   // Backup automático: snapshot do PLANO INTEIRO (todos os itens) marcado no mês
   // vigente. Rede de segurança contra perda de dados — o saveSnapshot existia mas
@@ -2139,7 +2207,7 @@ const App: React.FC = () => {
         ) : activeTab === 'plan' ? (
           <>
             <div id="stets"><AICoach summary={monthlySummaries[mobileMonthIdx]} items={items} monthName={months[mobileMonthIdx].monthName} onExpenseDetected={handleExpenseDetected} tetoColumns={tetoColumns} /></div>
-            <div id="diagnosis" className="hidden lg:block"><Diagnosis summary={monthlySummaries[mobileMonthIdx]} items={items} monthIdx={mobileMonthIdx} monthName={months[mobileMonthIdx].monthName} /></div>
+            <div id="diagnosis" className="hidden lg:block"><Diagnosis summary={monthlySummaries[mobileMonthIdx]} items={items} monthIdx={mobileMonthIdx} monthName={months[mobileMonthIdx].monthName} isCurrentMonth={months[mobileMonthIdx].index === currentActualMonth && months[mobileMonthIdx].year === currentActualYear} /></div>
 
             {/* ── MOBILE SUMMARY CARDS ──────────────────────────────── */}
             {/* Hero dark card — Acumulado */}
@@ -2679,7 +2747,7 @@ const App: React.FC = () => {
       <div className="lg:hidden h-16"></div>
 
       {/* Open Finance — Extrato Bancário overlay */}
-      {showExtrato && ofAuthToken && householdId && (
+      {showExtrato && ofAuthToken && householdId && hasOpenFinanceAccess(user) && (
         <ExtratoBancario
           householdId={householdId}
           authToken={ofAuthToken}
@@ -2694,6 +2762,16 @@ const App: React.FC = () => {
           onCreateItem={handleCreateItem}
           onAddPartial={handleAddPartial}
           onClose={() => { setShowExtrato(false); setOfInitialCardLast4(undefined); }}
+        />
+      )}
+
+      {/* Pop-up de categorização — gated por hasOpenFinanceAccess no efeito que
+          liga showCategorizePopup. "Categorizar agora" abre o Extrato. */}
+      {showCategorizePopup && categorizeCount > 0 && hasOpenFinanceAccess(user) && (
+        <CategorizePopup
+          count={categorizeCount}
+          onCategorize={() => { setShowCategorizePopup(false); handleOpenExtrato(); }}
+          onDismiss={() => setShowCategorizePopup(false)}
         />
       )}
 

@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!;
@@ -55,6 +55,27 @@ ${refresh}
 </html>`;
 }
 
+// Rate limit via Postgres (embutido: Vercel não empacota import local em api/).
+// FALHA ABERTO: problema no limiter nunca vira bloqueio. Só protege depois que
+// docs/sql/rate-limiting.sql roda no Supabase.
+async function rateLimitOk(db: SupabaseClient, key: string, limit: number, windowSeconds: number): Promise<boolean> {
+  try {
+    const { data, error } = await db.rpc('check_rate_limit', {
+      p_key: key, p_limit: limit, p_window_seconds: windowSeconds,
+    });
+    if (error) return true;
+    return data === true;
+  } catch {
+    return true;
+  }
+}
+
+function clientIp(req: VercelRequest): string {
+  const xff = (req.headers['x-forwarded-for'] as string | undefined) ?? '';
+  const first = xff.split(',')[0].trim();
+  return first || (req.headers['x-real-ip'] as string | undefined) || 'sem-ip';
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const code = (req.query.code as string | undefined)?.trim();
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -66,6 +87,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+    // Rota pública: 60 aberturas por IP a cada 5 min conta enxurrada/varredura
+    // sem incomodar quem só está abrindo o próprio link.
+    if (!(await rateLimitOk(db, `short:${clientIp(req)}`, 60, 300))) {
+      res.status(429).send(page({ heading: 'Muitas tentativas', sub: 'Aguarde um instante e abra o link de novo.' }));
+      return;
+    }
+
     const { data } = await db
       .from('short_links')
       .select('target_url, expires_at')

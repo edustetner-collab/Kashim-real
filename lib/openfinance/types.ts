@@ -60,6 +60,21 @@ export interface OFRawTransaction {
   paymentDiscountAmount?: string | null;
   paymentInterestAmount?: string | null;
   paymentPenaltyAmount?: string | null;
+  /**
+   * Contraparte real da transação — não aparece no exemplo da documentação,
+   * mas vem preenchido em ~75% do extrato real. É daqui que sai o nome do
+   * estabelecimento ("EDP SAO PAULO DISTRIBUICAO DE ENERGIA S.A."); o campo
+   * `name` é sempre o titular da conta e não serve para isso.
+   */
+  participantPayer?: OFRawParticipant | null;
+  participantReceiver?: OFRawParticipant | null;
+}
+
+export interface OFRawParticipant {
+  name?: string | null;
+  routingNumber?: string | null;
+  routingNumberISPB?: string | null;
+  documentNumber?: { type?: string | null; value?: string | null } | null;
 }
 
 export interface OFRawBalance {
@@ -113,6 +128,12 @@ export interface OFTransaction {
   date: string;
   /** Normalized, UTF-8-clean description */
   description: string;
+  /**
+   * Nome de quem recebeu (ou pagou, se for entrada). É o que o cliente
+   * reconhece — "PIX QR CODE DINAMICO - DES: EDP SP" não diz nada, "EDP São
+   * Paulo" diz. `null` quando o extrato não identifica a contraparte.
+   */
+  merchant: string | null;
   ofCode: string;
   /** Human-readable category from provider, UTF-8 clean */
   ofCategory: string | null;
@@ -147,6 +168,8 @@ export interface BankTransaction {
   amount: number;
   transactionDate: string;
   description: string | null;
+  /** Nome de quem recebeu/pagou — é o que a tela mostra em destaque */
+  merchant: string | null;
   paymentMethod: string | null;
   cardLast4: string | null;
   billDueDate: string | null;
@@ -158,7 +181,10 @@ export interface BankTransaction {
   categorizedAt: string | null;
   createdAt: string;
   suggestedCategory: string | null;
+  /** 'memory' = o cliente já categorizou este estabelecimento antes */
   suggestionConfidence: string | null;
+  /** Item do plano lembrado da última vez — só vem junto com 'memory' */
+  suggestedItemId: string | null;
   installmentCurrent: number | null;
   installmentTotal: number | null;
 }

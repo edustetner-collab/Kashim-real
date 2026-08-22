@@ -119,6 +119,8 @@ export async function addPartialExpense(
     date: expense.date,
     description: expense.description,
     value: expense.value,
+    payment_source: expense.paymentSource ?? null,
+    card_last4: expense.cardLast4 ?? null,
   });
   if (error) throw error;
 }
@@ -323,6 +325,8 @@ function rowToFinanceItem(row: any): FinanceItem {
         date: pe.date,
         description: pe.description,
         value: pe.value,
+        paymentSource: pe.payment_source ?? undefined,
+        cardLast4: pe.card_last4 ?? undefined,
       });
     }
   }

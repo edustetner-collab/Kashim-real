@@ -87,11 +87,32 @@ const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onClose, isNative =
             <i className="fas fa-hourglass-end text-2xl text-green-400"></i>
           </div>
           <h2 className="text-white text-2xl font-black uppercase italic tracking-tighter mb-3">
-            Período de avaliação encerrado
+            Seu acesso está inativo
           </h2>
-          <p className="text-zinc-400 text-sm leading-relaxed mb-8">
-            Seu período de avaliação gratuito do Kashim terminou. Obrigado por experimentar o app!
+          <p className="text-zinc-400 text-sm leading-relaxed mb-6">
+            Sua conta do Kashim está inativa no momento. Seus dados continuam guardados —
+            nada foi apagado.
           </p>
+
+          {/* Sem botão de compra e sem link para checkout: dentro do app da Apple
+              isso é o que não pode. Um perfil social não é meio de pagamento, e é
+              de lá que a pessoa acha o caminho. */}
+          <div className="bg-zinc-800/60 border border-zinc-700 rounded-2xl p-4 mb-6 text-left">
+            <p className="text-zinc-300 text-xs leading-relaxed">
+              Para reativar, acesse sua conta pelo computador ou navegador do celular.
+              Enviamos as instruções no seu e-mail cadastrado.
+            </p>
+          </div>
+
+          <a
+            href="https://www.instagram.com/kashim.app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 w-full bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-sm py-3.5 rounded-2xl transition-colors mb-3"
+          >
+            <i className="fab fa-instagram"></i> Falar com a gente
+          </a>
+
           {onSignOut && (
             <button
               onClick={onSignOut}
@@ -210,12 +231,27 @@ const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onClose, isNative =
           {loading ? <i className="fas fa-circle-notch animate-spin"></i> : `Assinar ${tier === 'of' ? 'com Open Finance' : ''} ${cycle === 'annual' ? 'anual' : 'mensal'}`.replace(/\s+/g, ' ').trim()}
         </button>
 
-        <button
-          onClick={onClose}
-          className="w-full text-zinc-600 hover:text-zinc-400 text-xs font-bold uppercase py-2 transition-colors"
+        {/* "Lembrar depois" saiu: fechava o portão de quem já expirou e devolvia
+            o app inteiro de graça — o bloqueio era decorativo na web. Fica só a
+            saída de recurso, para quem acha que o bloqueio é indevido. Sem ela,
+            um falso positivo na conta de acesso deixaria cliente pagante preso
+            sem ter a quem recorrer. */}
+        <a
+          href="https://www.instagram.com/kashim.app"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block w-full text-center text-zinc-500 hover:text-zinc-300 text-xs font-bold py-2 transition-colors"
         >
-          Lembrar depois
-        </button>
+          Já paguei ou acha que é engano? Fale com a gente
+        </a>
+        {onSignOut && (
+          <button
+            onClick={onSignOut}
+            className="w-full text-zinc-700 hover:text-zinc-500 text-[11px] font-bold uppercase py-1 transition-colors"
+          >
+            Sair da conta
+          </button>
+        )}
       </div>
     </div>
   );

@@ -15,7 +15,11 @@ export const DEFAULT_NOTIF_PREFS: NotifPrefs = {
   bills: true,
   tetoAlert: true,
   tetoPct: 80,
-  updateDays: 0,
+  // Ligado por padrão em 3 dias: se o cliente passar 3 dias sem abrir o app,
+  // recebe o cutucão para lançar os gastos (reagendado a cada abertura, então
+  // conta a partir da última vez que mexeu). Quem desligar nas Configurações
+  // fica com o 0 salvo e não é afetado por esta mudança de padrão.
+  updateDays: 3,
 };
 
 function key(userId: string): string {

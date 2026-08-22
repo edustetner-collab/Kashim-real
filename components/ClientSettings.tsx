@@ -5,7 +5,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { NotificationPrefs, SummaryData } from '../types';
 import { saveNotificationPrefs, loadNotificationPrefs } from '../lib/db';
 import { MONTHS_BR } from '../constants';
-import { NotifPrefs, getNotifPrefs, saveNotifPrefs } from '../lib/notifPrefs';
+import { NotifPrefs, getNotifPrefs, saveNotifPrefs, DEFAULT_NOTIF_PREFS } from '../lib/notifPrefs';
 import { scheduleTestNotification, scheduleTestQuoteNotification } from '../lib/notifications';
 import InvitePartner from './InvitePartner';
 import ConectarBanco from './ConectarBanco';
@@ -83,7 +83,7 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
   const [prefs, setPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS);
   const [prefsLoading, setPrefsLoading] = useState(false);
   // Preferências de notificação local (frase, contas, teto, atualização)
-  const [notif, setNotif] = useState<NotifPrefs>(() => user ? getNotifPrefs(user.id) : { weeklyQuote: true, bills: true, tetoAlert: true, tetoPct: 80, updateDays: 0 });
+  const [notif, setNotif] = useState<NotifPrefs>(() => user ? getNotifPrefs(user.id) : { ...DEFAULT_NOTIF_PREFS });
   const updateNotif = (patch: Partial<NotifPrefs>) => {
     if (!user) return;
     const next = { ...notif, ...patch };
@@ -425,10 +425,16 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
               <h3 className="text-white font-black uppercase italic tracking-tight mb-1 flex items-center gap-2">
                 <i className="fas fa-university text-green-400"></i>Bancos conectados
               </h3>
-              <p className="text-zinc-500 text-xs mb-5">Conecte seu banco para importar seus gastos automaticamente.</p>
+              {/* Conectar/gerenciar banco vive no Extrato desde 2026-08-11: é
+                  lá que o cliente já está quando pensa em banco. Aqui fica só o
+                  atalho, para quem procurar em Configurações por hábito. */}
+              <p className="text-zinc-500 text-xs mb-5">
+                Seus bancos ficam na aba <strong className="text-zinc-300">Extrato</strong>, junto das
+                transações que eles trazem.
+              </p>
               <button
                 onClick={() => setShowConectarBanco(true)}
-                className="w-full bg-green-500 hover:bg-green-400 text-black font-black py-3 rounded-2xl transition-all text-sm uppercase tracking-widest flex items-center justify-center gap-2"
+                className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-black py-3 rounded-2xl transition-all text-sm uppercase tracking-widest flex items-center justify-center gap-2"
               >
                 <i className="fas fa-link"></i> Gerenciar bancos
               </button>
@@ -568,6 +574,11 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
                 <i className="fas fa-sign-out-alt text-[10px]"></i> Sair da conta
               </button>
             </div>
+            {/* Carimbo do build: responde "a atualização entrou?" na hora, em
+                vez de depurar lógica nova contra bundle antigo em cache. */}
+            <p className="text-center text-zinc-700 text-[10px] pb-1">
+              versão {typeof __BUILD_STAMP__ !== 'undefined' ? __BUILD_STAMP__ : '—'}
+            </p>
           </>
         )}
 
@@ -619,18 +630,18 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
 
             <ToggleRow
               label="Lembrete de atualização"
-              sublabel="Notificação periódica para você manter os dados em dia"
+              sublabel="Cutucão para lançar os gastos quando você fica dias sem abrir o app"
               value={notif.updateDays > 0}
-              onChange={v => updateNotif({ updateDays: v ? 7 : 0 })}
+              onChange={v => updateNotif({ updateDays: v ? 3 : 0 })}
             />
 
             {notif.updateDays > 0 && (
               <div className="mt-2 mb-2">
                 <label className="text-zinc-500 text-[10px] font-black uppercase tracking-widest block mb-2">
-                  A cada {notif.updateDays} dias
+                  A cada {notif.updateDays} dias sem mexer
                 </label>
                 <div className="flex gap-2">
-                  {[7, 10, 15, 30].map(d => (
+                  {[3, 7, 15, 30].map(d => (
                     <button
                       key={d}
                       onClick={() => updateNotif({ updateDays: d })}
@@ -909,7 +920,7 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
       </div>
     </div>
 
-    {showConectarBanco && (
+    {showConectarBanco && hasOpenFinanceAccess(user) && (
       <ConectarBanco
         householdId={householdId}
         onClose={() => setShowConectarBanco(false)}

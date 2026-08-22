@@ -209,6 +209,30 @@ function buildMonthlyBillReminders(items: FinanceItem[], months: MonthSlot[]): S
   return out;
 }
 
+// Mensagens do lembrete de atualização — giram a cada ocorrência para não
+// repetir e irem "cutucando" com jeito (persistência estilo Duolingo, sem ser
+// chato). A 1ª cai N dias depois da última vez que o cliente mexeu; as
+// seguintes, a cada N dias, enquanto ele não voltar (abrir o app reprograma
+// tudo do zero, então a contagem recomeça).
+const UPDATE_MESSAGES: Array<{ title: string; body: string }> = [
+  {
+    title: 'Kashim · não perca o fio 👀',
+    body: 'Faz uns dias que você não atualiza suas finanças. Lance os gastos de agora para não se perder ao longo da semana.',
+  },
+  {
+    title: 'Kashim · 2 minutinhos ⏱️',
+    body: 'Bora colocar os gastos em dia? Dois minutos hoje evitam a bagunça depois. Abra o Kashim e registre o que rolou.',
+  },
+  {
+    title: 'Kashim · seu plano te espera 💚',
+    body: 'Quanto mais tempo sem lançar, mais difícil lembrar. Abra o Kashim e atualize enquanto está fresco na memória.',
+  },
+  {
+    title: 'Kashim · constância é tudo 🔥',
+    body: 'Rico é quem controla, não quem ganha mais. Mantenha o hábito: registre seus gastos e siga no controle da sua semana.',
+  },
+];
+
 // Lembrete "atualize seus dados" a cada N dias, às 10h.
 function buildUpdateReminders(everyDays: number): ScheduledNotification[] {
   if (everyDays <= 0) return [];
@@ -218,10 +242,11 @@ function buildUpdateReminders(everyDays: number): ScheduledNotification[] {
   cursor.setHours(NOTIF_HOUR_UPDATE, 0, 0, 0);
   cursor.setDate(cursor.getDate() + everyDays);
   for (let i = 0; i < UPDATE_OCCURRENCES; i++) {
+    const msg = UPDATE_MESSAGES[i % UPDATE_MESSAGES.length];
     out.push({
       id: UPDATE_ID_BASE + i,
-      title: 'Kashim · mantenha seu plano em dia',
-      body: 'Não esqueça de atualizar o sistema com seus gastos. Manter a frequência é o que faz o plano funcionar.',
+      title: msg.title,
+      body: msg.body,
       channelId: ANDROID_CHANNEL,
       schedule: { at: new Date(cursor), allowWhileIdle: true },
     });

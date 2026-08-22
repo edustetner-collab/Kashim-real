@@ -188,3 +188,33 @@ Fase 7 — Polish
 4. Testar com perfil de cliente de teste (magic link via CoachDashboard) — não usar
    conta admin (Eduardo) pois admin pula loadData e não vê onboarding
 5. Qualquer ação arriscada: avisar Eduardo antes de executar
+
+---
+
+## Pendente: refazer o tour depois do Open Finance (anotado em 2026-08-12)
+
+**Gatilho:** quando o Open Finance estabilizar (Itaú conectando, fluxo de
+conexão parado de mudar). Antes disso, gravar ou reescrever passo é desperdício
+— só em 12/08 mudaram a ordem da navegação, a tela do Extrato inteira, a lista
+de bancos, o fluxo de categorização e o card de teto.
+
+**Por que o tour atual fica desatualizado:**
+
+- O primeiro passo deixa de ser "lance seu primeiro gasto" e passa a ser
+  "conecte seu banco" — o gasto passa a entrar sozinho.
+- A aba **Extrato** entrou na navegação, entre *Lançar* e *Metas*, e nenhum
+  passo a menciona.
+- Categorizar agora abre o `ExpenseSheet` (mesmo fluxo do botão Lançar), não
+  mais um seletor próprio.
+- Existe lançamento automático por memória e por nomenclatura óbvia — o tour
+  precisa explicar que parte do trabalho não é mais do cliente, e onde corrigir
+  quando o app erra (Gastos → toque no lançamento → Editar).
+- O selo de gasto no Plano virou botão que leva aos lançamentos.
+
+**Decisão registrada:** biblioteca de vídeos no YouTube foi considerada e
+**adiada** — o tour guiado ao vivo tem prioridade. Se os vídeos voltarem à
+mesa, o CSP precisa liberar `frame-src` do YouTube para tocar embutido; abrir
+no app do YouTube não exige mudança nenhuma.
+
+O Eduardo tem outras ideias para esta rodada — conferir com ele antes de
+começar.

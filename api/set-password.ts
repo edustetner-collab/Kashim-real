@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { createClient } from '@supabase/supabase-js';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 // Define a senha do PRÓPRIO usuário autenticado pelo backend do Clerk.
@@ -33,6 +34,32 @@ function verifyAuthToken(authHeader?: string): { sub: string; [k: string]: unkno
   }
 }
 
+const supabase = createClient(
+  process.env.VITE_SUPABASE_URL ?? '',
+  process.env.SUPABASE_SERVICE_KEY ?? ''
+);
+
+// Rate limit via Postgres (embutido: Vercel não empacota import local em api/).
+// FALHA ABERTO: problema no limiter nunca bloqueia quem tem direito. Só protege
+// depois que docs/sql/rate-limiting.sql roda no Supabase.
+async function rateLimitOk(key: string, limit: number, windowSeconds: number): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.rpc('check_rate_limit', {
+      p_key: key, p_limit: limit, p_window_seconds: windowSeconds,
+    });
+    if (error) return true;
+    return data === true;
+  } catch {
+    return true;
+  }
+}
+
+function clientIp(req: VercelRequest): string {
+  const xff = (req.headers['x-forwarded-for'] as string | undefined) ?? '';
+  const first = xff.split(',')[0].trim();
+  return first || (req.headers['x-real-ip'] as string | undefined) || 'sem-ip';
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -40,6 +67,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const claims = verifyAuthToken(req.headers.authorization ?? '');
   if (!claims) return res.status(401).json({ error: 'Unauthorized' });
   if (!CLERK_SECRET_KEY) return res.status(500).json({ error: 'Serviço indisponível.' });
+
+  // Anti-abuso: no máximo 5 trocas de senha a cada 5 min, por conta E por IP.
+  // Trocar senha é operação sensível; 5 é folgado para uso legítimo.
+  const rlKey = `set-password:${claims.sub}:${clientIp(req)}`;
+  if (!(await rateLimitOk(rlKey, 5, 300))) {
+    return res.status(429).json({ error: 'Muitas tentativas. Aguarde alguns minutos e tente de novo.' });
+  }
 
   const { password } = (req.body ?? {}) as { password?: string };
   if (!password || password.length < 8) {

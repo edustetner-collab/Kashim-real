@@ -5,12 +5,15 @@ import { useUser, useAuth } from '@clerk/clerk-react';
 
 interface BankConnection {
   id: string;
+  bankCode: string;
   bankName: string;
   accountType: 'checking' | 'credit_card';
   displayName: string;
-  consentStatus: 'active' | 'expired' | 'revoked';
+  consentStatus: 'pending_authorization' | 'authorized_fetching' | 'active' | 'expired' | 'revoked';
   lastSyncedAt: string | null;
   openFinanceLink: string | null;
+  openFinanceId?: string | null;
+  openfinanceStatus?: string | null;
 }
 
 interface Props {
@@ -122,6 +125,82 @@ function BankAvatar({ bank, size = 44 }: { bank: Bank; size?: number }) {
   );
 }
 
+/** Tenta achar o banco no array BANKS pelo código COMPE e nome da conexão. */
+function findBankForConn(bankCode: string, bankName: string): Bank | null {
+  const lname = bankName.toLowerCase().trim();
+  return (
+    BANKS.find((b) => b.code === bankCode && b.name.toLowerCase() === lname) ??
+    BANKS.find((b) => b.code === bankCode) ??
+    null
+  );
+}
+
+/** Badge de status da conexão bancária. */
+function ConnectionStatusBadge({ status }: { status: string }) {
+  switch (status) {
+    case 'pending_authorization':
+      return (
+        <span className="text-amber-400 text-xs">
+          <i className="fas fa-clock mr-1" />Aguardando autorização
+        </span>
+      );
+    case 'authorized_fetching':
+      return (
+        <span className="text-blue-400 text-xs">
+          <i className="fas fa-arrow-down-to-line mr-1" />Importando histórico
+        </span>
+      );
+    case 'active':
+      return (
+        <span className="text-green-400 text-xs">
+          <i className="fas fa-circle-check mr-1" />Conectado
+        </span>
+      );
+    case 'expired':
+      return (
+        <span className="text-orange-400 text-xs">
+          <i className="fas fa-rotate mr-1" />Autorização expirada
+        </span>
+      );
+    default:
+      return (
+        <span className="text-red-400 text-xs">
+          <i className="fas fa-circle-xmark mr-1" />Desconectado
+        </span>
+      );
+  }
+}
+
+// localStorage: salvar/carregar identidade para evitar redigitar CPF/endereço
+/**
+ * Chave POR USUÁRIO. Antes era uma só: num aparelho compartilhado — o caso do
+ * modo casal — o formulário do segundo vinha preenchido com o CPF do primeiro,
+ * e cadastrava a conta dela sob o CPF dele sem ninguém perceber.
+ */
+const identityKeyFor = (userId: string | undefined) => `kashim_of_identity_${userId ?? 'anon'}`;
+
+interface SavedIdentity {
+  ownerName: string;
+  cpf: string;
+  cep: string;
+  address: { neighborhood: string; city: string; state: string; zipcode: string; street?: string };
+  addressNumber: string;
+  neighborhood: string;
+}
+
+function loadSavedIdentity(userId: string | undefined): SavedIdentity | null {
+  try {
+    const raw = localStorage.getItem(identityKeyFor(userId));
+    return raw ? (JSON.parse(raw) as SavedIdentity) : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistIdentity(userId: string | undefined, data: SavedIdentity) {
+  try { localStorage.setItem(identityKeyFor(userId), JSON.stringify(data)); } catch { /* ignore */ }
+}
+
 /** Remove acento para a busca casar "itau" com "Itaú" */
 function searchable(s: string) {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -198,12 +277,10 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
 
   const [selectedBank, setSelectedBank] = useState<Bank | null>(null);
   const [bankQuery, setBankQuery] = useState('');
-  const [accountType, setAccountType] = useState<'checking' | 'credit_card'>('checking');
   const [agency, setAgency] = useState('');
   const [agencyDigit, setAgencyDigit] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [accountNumberDigit, setAccountNumberDigit] = useState('');
-  const [cardLast4, setCardLast4] = useState('');
 
   const [error, setError] = useState('');
   const [openFinanceLink, setOpenFinanceLink] = useState('');
@@ -211,12 +288,50 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'done'>('idle');
   const [syncedCount, setSyncedCount] = useState(0);
   const [syncError, setSyncError] = useState('');
+  /** A Technospeed respondeu que a autorização ainda não chegou. */
+  const [authPending, setAuthPending] = useState(false);
+  /** id da conexão cujo status está sendo reconsultado na lista */
+  const [rechecking, setRechecking] = useState('');
 
   // ── Load existing connections ───────────────────────────────────────────────
 
   useEffect(() => {
     loadConnections();
   }, [householdId]);
+
+  /** Household com mais de um membro = modo casal ativo. */
+  const [isCouple, setIsCouple] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getToken({ template: 'supabase' });
+        const res = await fetch(`/api/of-connect?householdId=${householdId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const d = await res.json() as { connections?: Array<{ ownerFirstName?: string | null }> };
+        // Dois titulares distintos entre as conexões já indicam conta dividida.
+        const donos = new Set((d.connections ?? []).map((c) => c.ownerFirstName).filter(Boolean));
+        if (!cancelled && donos.size > 1) setIsCouple(true);
+      } catch { /* sem aviso é melhor que aviso errado */ }
+    })();
+    return () => { cancelled = true; };
+  }, [householdId, getToken]);
+
+  // Pré-preencher campos de identidade a partir do localStorage (evita redigitar)
+  useEffect(() => {
+    const saved = loadSavedIdentity(user?.id);
+    if (!saved) return;
+    setOwnerName((v) => v || saved.ownerName);
+    setCpf((v) => v || saved.cpf);
+    if (!cep && saved.cep) {
+      setCep(saved.cep);
+      setAddress(saved.address);
+      setNeighborhood(saved.neighborhood);
+      setAddressNumber(saved.addressNumber);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadConnections() {
     setLoadingList(true);
@@ -271,7 +386,6 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
     if (!selectedBank) { setError('Selecione o banco'); return; }
     if (!agency.trim()) { setError('Informe a agência'); return; }
     if (!accountNumber.trim()) { setError('Informe a conta'); return; }
-    if (accountType === 'credit_card' && cardLast4.length !== 4) { setError('Informe os últimos 4 dígitos do cartão'); return; }
 
     setView('connecting');
     try {
@@ -289,12 +403,24 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
           agencyDigit: agencyDigit.trim() || undefined,
           accountNumber: accountNumber.trim(),
           accountNumberDigit: accountNumberDigit.trim() || undefined,
-          accountType,
-          cardLast4: accountType === 'credit_card' ? cardLast4 : undefined,
+          accountType: 'checking',
         }),
       });
 
       const data = await readJson<{ connectionId: string; openFinanceLink: string }>(res);
+
+      // Salvar identidade para a próxima conexão
+      if (address) {
+        persistIdentity(user?.id, {
+          ownerName: ownerName.trim(),
+          cpf,
+          cep,
+          address,
+          addressNumber: addressNumber.trim(),
+          neighborhood: neighborhood.trim(),
+        });
+      }
+
       setOpenFinanceLink(data.openFinanceLink);
       setNewConnectionId(data.connectionId);
       setView('authorize');
@@ -306,11 +432,33 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
 
   // ── Sync after authorization ───────────────────────────────────────────────
 
-  async function handleSyncAfterAuth() {
+  /**
+   * "Já autorizei" pergunta à Technospeed em vez de acreditar no clique.
+   * Antes daqui saía um `authorized_fetching` gravado na fé — e uma conexão que
+   * nunca concluiu a jornada no banco ficava "Importando histórico" para sempre.
+   */
+  async function handleCheckAuthorization() {
     setSyncStatus('syncing');
+    setAuthPending(false);
     setView('syncing');
     try {
       const token = await getToken({ template: 'supabase' });
+
+      const statusRes = await fetch('/api/of-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ householdId, connectionId: newConnectionId }),
+      });
+      const status = await readJson<{ authorized: boolean; consentStatus: string }>(statusRes);
+
+      // Banco ainda não confirmou: dizer isso, e não fingir que deu certo.
+      if (!status.authorized) {
+        setAuthPending(true);
+        setSyncStatus('done');
+        loadConnections();
+        return;
+      }
+
       const res = await fetch('/api/of-sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -318,14 +466,28 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
       });
       const data = await readJson<{ upserted?: number; status?: string }>(res);
       setSyncedCount(data.upserted ?? 0);
-      // 'processing' e 0 transações são esperados logo após autorizar —
-      // a tela de conclusão já explica a espera de 6 a 24h.
       setSyncError('');
       setSyncStatus('done');
       loadConnections();
     } catch (err: unknown) {
-      setSyncError(err instanceof Error ? err.message : 'Não foi possível importar agora. Tente novamente.');
+      setSyncError(err instanceof Error ? err.message : 'Não foi possível verificar agora. Tente novamente.');
       setSyncStatus('done');
+    }
+  }
+
+  /** Reconsulta o status de uma conexão já existente na lista. */
+  async function handleRecheck(connectionId: string) {
+    setRechecking(connectionId);
+    try {
+      const token = await getToken({ template: 'supabase' });
+      await fetch('/api/of-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ householdId, connectionId }),
+      });
+      await loadConnections();
+    } catch { /* status fica como está */ } finally {
+      setRechecking('');
     }
   }
 
@@ -348,15 +510,10 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
 
   function resetForm() {
     setSelectedBank(null);
-    setAccountType('checking');
     setAgency('');
     setAgencyDigit('');
     setAccountNumber('');
     setAccountNumberDigit('');
-    setCardLast4('');
-    setCpf('');
-    setCep('');
-    setAddress(null);
     setError('');
     setView('list');
   }
@@ -389,27 +546,59 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
             </div>
           ) : (
             <div className="space-y-3 mb-4">
-              {connections.map((conn) => (
-                <div key={conn.id} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-white font-bold text-sm">{conn.displayName}</p>
-                    <p className="text-zinc-500 text-xs mt-0.5">
-                      {conn.consentStatus === 'active' ? (
-                        <span className="text-green-400"><i className="fas fa-circle-check mr-1"></i>Conectado</span>
-                      ) : (
-                        <span className="text-red-400"><i className="fas fa-circle-xmark mr-1"></i>Desconectado</span>
+              {connections.map((conn) => {
+                const bank = findBankForConn(conn.bankCode ?? '', conn.bankName);
+                return (
+                  <div key={conn.id} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex items-center gap-3">
+                    {bank
+                      ? <BankAvatar bank={bank} size={40} />
+                      : (
+                        <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center flex-shrink-0">
+                          <span className="text-zinc-400 font-black text-sm">{conn.bankName.charAt(0)}</span>
+                        </div>
+                      )
+                    }
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white font-bold text-sm truncate">{conn.displayName}</p>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <ConnectionStatusBadge status={conn.consentStatus} />
+                        {conn.lastSyncedAt && (
+                          <span className="text-zinc-600 text-xs">· {formatDate(conn.lastSyncedAt)}</span>
+                        )}
+                      </div>
+                      {(conn.consentStatus === 'pending_authorization' || conn.consentStatus === 'authorized_fetching') && (
+                        <div className="flex items-center gap-3 mt-1.5">
+                          {conn.openFinanceLink && (
+                            <a
+                              href={conn.openFinanceLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-amber-400 text-xs hover:underline"
+                            >
+                              Retomar autorização →
+                            </a>
+                          )}
+                          <button
+                            onClick={() => handleRecheck(conn.id)}
+                            disabled={rechecking === conn.id}
+                            className="text-zinc-500 hover:text-zinc-300 text-xs transition-colors disabled:opacity-50"
+                          >
+                            {rechecking === conn.id
+                              ? <><i className="fas fa-circle-notch animate-spin mr-1"></i>Verificando…</>
+                              : <><i className="fas fa-rotate mr-1"></i>Verificar status</>}
+                          </button>
+                        </div>
                       )}
-                      {conn.lastSyncedAt && <> · Sincronizado em {formatDate(conn.lastSyncedAt)}</>}
-                    </p>
+                    </div>
+                    <button
+                      onClick={() => handleRevoke(conn.id)}
+                      className="text-zinc-700 hover:text-red-400 transition-colors text-sm px-2 py-1 flex-shrink-0"
+                    >
+                      <i className="fas fa-trash-can"></i>
+                    </button>
                   </div>
-                  <button
-                    onClick={() => handleRevoke(conn.id)}
-                    className="text-zinc-600 hover:text-red-400 transition-colors text-sm px-3 py-1"
-                  >
-                    <i className="fas fa-trash-can"></i>
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -525,9 +714,9 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
 
             <button
               onClick={() => {
-                const cpfDigits = stripMask(cpf);
+                const d = stripMask(cpf);
                 if (!ownerName.trim()) { setError('Informe seu nome completo'); return; }
-                if (cpfDigits.length !== 11) { setError('CPF inválido'); return; }
+                if (d.length !== 11) { setError('CPF inválido'); return; }
                 if (!address) { setError('CEP não encontrado'); return; }
                 if (!addressNumber.trim()) { setError('Informe o número do endereço'); return; }
                 if (!neighborhood.trim()) { setError('Informe o bairro'); return; }
@@ -641,22 +830,6 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
               )}
             </div>
 
-            {/* Account type */}
-            <div>
-              <label className="text-zinc-400 text-xs uppercase tracking-widest block mb-2">Tipo</label>
-              <div className="flex gap-2">
-                {(['checking', 'credit_card'] as const).map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => setAccountType(type)}
-                    className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${accountType === type ? 'bg-green-500 text-black' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}`}
-                  >
-                    {type === 'checking' ? '🏦 Conta Corrente' : '💳 Cartão de Crédito'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             {/* Agency + account */}
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -708,22 +881,6 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
               </div>
             </div>
 
-            {/* Card last 4 (credit card only) */}
-            {accountType === 'credit_card' && (
-              <div>
-                <label className="text-zinc-400 text-xs uppercase tracking-widest block mb-1.5">Últimos 4 dígitos do cartão</label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={cardLast4}
-                  onChange={(e) => setCardLast4(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  placeholder="0000"
-                  maxLength={4}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white text-sm placeholder-zinc-600 focus:outline-none focus:border-green-500"
-                />
-              </div>
-            )}
-
             {error && (
               <p className="text-red-400 text-xs"><i className="fas fa-circle-exclamation mr-1"></i>{error}</p>
             )}
@@ -764,10 +921,51 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
           <h2 className="text-2xl font-black uppercase italic tracking-tighter text-white mb-2">
             Autorize no seu banco
           </h2>
-          <p className="text-zinc-400 text-sm mb-6 px-4">
-            Abra o link abaixo, escolha o {selectedBank?.name ?? 'seu banco'} e autorize o
-            compartilhamento. Leva menos de 1 minuto.
+          {/* No modo casal o extrato bruto fica visível para o parceiro — coisa
+              diferente de compartilhar o plano. Quem autorizou na Technospeed
+              autorizou os dados DELE; dividir isso dentro do app é decisão
+              nossa, e precisa ser dita antes, não descoberta depois. */}
+          {isCouple && (
+            <div className="bg-amber-500/10 border border-amber-500/25 rounded-2xl px-4 py-3 mb-4 text-left flex items-start gap-2.5">
+              <i className="fas fa-users text-amber-400 text-sm mt-0.5 flex-shrink-0" />
+              <p className="text-amber-200/90 text-xs leading-relaxed">
+                Sua conta é compartilhada. Os lançamentos deste banco — valores, datas e
+                estabelecimentos — <strong>ficarão visíveis para a outra pessoa</strong> do plano.
+              </p>
+            </div>
+          )}
+
+          {/* Instrução baseada no que REALMENTE funcionou: a única autorização
+              concluída até hoje (Bradesco, 2026-08-11) foi pelo navegador. Pelo
+              app do banco a jornada quebra — o Itaú chega a pedir para instalar
+              um app já instalado. Enquanto a Tecnospeed não resolve, mandamos
+              pelo caminho que fecha. */}
+          <p className="text-zinc-400 text-sm mb-5 px-4">
+            Faça pelo <strong className="text-zinc-200">navegador</strong>, entrando na sua conta pelo
+            site do banco. Pelo aplicativo a autorização costuma travar no meio.
           </p>
+
+          {/* O que esperar — de propósito não pedimos para "marcar conta e
+              cartão": o fluxo do banco não oferece essa escolha, é uma
+              autorização única. Mandar procurar por ela só gera dúvida. */}
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl px-4 py-4 mb-5 text-left">
+            <p className="text-zinc-300 text-xs font-bold uppercase tracking-widest mb-3">
+              O que vai acontecer
+            </p>
+            <div className="space-y-2.5">
+              {[
+                'O banco pede para escolher a instituição de novo — é normal, pode escolher.',
+                'Entre pelo site do banco, não pelo aplicativo.',
+                'Você informa o CPF e confirma o compartilhamento.',
+                'Pronto. Uma autorização já cobre conta e cartão do mesmo banco.',
+              ].map((text, i) => (
+                <div key={i} className="flex items-start gap-2.5">
+                  <span className="w-4 flex-shrink-0 text-green-400 text-xs font-black mt-0.5">{i + 1}</span>
+                  <p className="text-zinc-300 text-sm leading-snug">{text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
 
           <a
             href={openFinanceLink}
@@ -779,13 +977,13 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
           </a>
 
           <button
-            onClick={handleSyncAfterAuth}
+            onClick={handleCheckAuthorization}
             className="w-full py-4 bg-zinc-800 hover:bg-zinc-700 text-white font-black uppercase tracking-widest text-sm rounded-2xl transition-all active:scale-95"
           >
             Já autorizei no banco
           </button>
 
-          <div className="flex items-start gap-2.5 bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3.5 mt-6 text-left">
+          <div className="flex items-start gap-2.5 bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3.5 mt-4 text-left">
             <i className="fas fa-clock text-zinc-500 text-sm mt-0.5"></i>
             <p className="text-zinc-400 text-xs leading-relaxed">
               Depois de autorizar, o banco leva de <strong className="text-zinc-200">6 a 24 horas</strong> para
@@ -808,6 +1006,44 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
               <i className="fas fa-circle-notch animate-spin text-green-400 text-4xl mb-4 block"></i>
               <p className="text-white font-bold">Verificando com o banco…</p>
               <p className="text-zinc-500 text-sm mt-1">Só um instante</p>
+            </>
+          ) : authPending ? (
+            /* A Technospeed diz que o consentimento não existe ainda. Antes
+               daqui saía "Banco conectado" — que era mentira e escondia uma
+               jornada de autorização que tinha quebrado no meio. */
+            <>
+              <div className="text-6xl mb-4">⏳</div>
+              <p className="text-white font-black text-xl mb-2">Ainda não chegou</p>
+              <p className="text-zinc-400 text-sm mb-2 px-2">
+                O banco não confirmou a autorização. Se você acabou de autorizar, aguarde
+                alguns minutos e verifique de novo.
+              </p>
+              <p className="text-zinc-500 text-xs mb-6 px-2">
+                Se a tela do banco não abriu ou deu erro no meio, é só refazer pelo link.
+              </p>
+
+              {openFinanceLink && (
+                <a
+                  href={openFinanceLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block w-full py-4 bg-green-500 hover:bg-green-400 text-black font-black uppercase tracking-widest text-sm rounded-2xl transition-all active:scale-95 mb-3"
+                >
+                  <i className="fas fa-external-link mr-2"></i>Autorizar de novo
+                </a>
+              )}
+              <button
+                onClick={handleCheckAuthorization}
+                className="w-full py-4 bg-zinc-800 hover:bg-zinc-700 text-white font-black uppercase tracking-widest text-sm rounded-2xl transition-all active:scale-95 mb-3"
+              >
+                Verificar de novo
+              </button>
+              <button
+                onClick={() => { setAuthPending(false); resetForm(); }}
+                className="w-full py-3 text-zinc-500 hover:text-zinc-300 text-sm transition-colors"
+              >
+                Deixar para depois
+              </button>
             </>
           ) : (
             <>

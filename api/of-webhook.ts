@@ -45,6 +45,9 @@ interface WebhookBody {
     statement_id?: string;
     transaction_ids?: string[];
     message?: string;
+    payercpfcnpj?: string;
+    accountHash?: string;
+    [key: string]: unknown;
   };
 }
 
@@ -101,6 +104,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (error) throw error;
       return res.status(200).json({ ok: true, scheduled: true });
+    }
+
+    // ── Extrato Open Finance processado: dados do banco chegaram ───────────────
+    // Formato real do corpo ainda não confirmado — tratamos o que sabemos e
+    // marcamos as conexões para o cron reimportar na próxima janela.
+    if (event === 'STATEMENT_OPENFINANCE_PROCESSED' || event === 'STATEMENT_OPENFINANCE') {
+      const payerCpf = data?.payercpfcnpj;
+
+      try {
+        if (typeof payerCpf === 'string' && payerCpf) {
+          await db
+            .from('bank_connections')
+            .update({ consent_status: 'active', needs_resync: true })
+            .eq('payer_cpf', payerCpf)
+            .in('consent_status', ['authorized_fetching', 'pending_authorization']);
+        } else {
+          await db
+            .from('bank_connections')
+            .update({ needs_resync: true })
+            .in('consent_status', ['authorized_fetching', 'pending_authorization']);
+        }
+      } catch { /* log acessório — não derruba o evento */ }
+
+      return res.status(200).json({ ok: true, event });
+    }
+
+    // ── Consentimento revogado pelo banco ou pelo cliente no app do banco ───────
+    if (event === 'STATEMENT_OPENFINANCE_REVOKED') {
+      const payerCpf = data?.payercpfcnpj;
+
+      if (typeof payerCpf === 'string' && payerCpf) {
+        try {
+          await db
+            .from('bank_connections')
+            .update({ consent_status: 'revoked' })
+            .eq('payer_cpf', payerCpf)
+            .neq('consent_status', 'revoked');
+        } catch { /* log acessório */ }
+      }
+
+      return res.status(200).json({ ok: true, event });
     }
 
     // Evento desconhecido: 200 para a Technospeed não ficar reenviando

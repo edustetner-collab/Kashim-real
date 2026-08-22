@@ -16,6 +16,28 @@ interface ClientProfile {
   coachingEndsAt: string;
   status: 'draft' | 'active';
   isPrivate: boolean;
+  /** Primeiro acesso do cliente — é daqui que os 5 meses contam. */
+  firstAccessAt: string | null;
+  /** Reativação manual concedida pelo coach. */
+  accessUntil: string | null;
+  /** Status do vínculo em coach_access ('approved' | 'revoked' | null). */
+  coachStatus: string | null;
+}
+
+/** Meses de acesso a partir do primeiro uso — igual a TRIAL_MONTHS de lib/access.ts. */
+const GRACE_MONTHS = 5;
+
+/**
+ * Cliente cujo prazo de 5 meses já venceu e sem reativação vigente.
+ * É o que joga o perfil no filtro "Antigos" sozinho, sem o coach marcar nada.
+ */
+function isAntigo(c: ClientProfile): boolean {
+  if (c.accessUntil && new Date(c.accessUntil).getTime() > Date.now()) return false;
+  const base = c.firstAccessAt ?? c.createdAt;
+  if (!base) return false;
+  const fim = new Date(base);
+  fim.setMonth(fim.getMonth() + GRACE_MONTHS);
+  return fim.getTime() < Date.now();
 }
 
 interface CoachDashboardProps {
@@ -32,11 +54,16 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
   const [view, setView] = useState<'clients' | 'metrics'>('clients');
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<'all' | 'new'>('all');
+  const [filter, setFilter] = useState<'all' | 'new' | 'antigos'>('all');
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [privacyLoading, setPrivacyLoading] = useState<string | null>(null);
+  const [accessLoading, setAccessLoading] = useState<string | null>(null);
+  const [revokeConfirm, setRevokeConfirm] = useState<string | null>(null);
+  /** Cliente cujo campo de dias extras está aberto */
+  const [reactivateFor, setReactivateFor] = useState<string | null>(null);
+  const [reactivateDays, setReactivateDays] = useState('30');
   const [formText, setFormText] = useState('');
   const [parsedFields, setParsedFields] = useState<ParsedField[]>([]);
   const [clientName, setClientName] = useState('');
@@ -151,6 +178,31 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
     }
   }
 
+  /** Encerra a consultoria ou devolve acesso por um período. */
+  async function callAccess(householdId: string, action: 'revoke' | 'reactivate', days?: number) {
+    setAccessLoading(householdId);
+    try {
+      const token = await getToken({ template: 'supabase' });
+      const res = await fetch('/api/client-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ householdId, action, days }),
+      });
+      if (!res.ok) throw new Error('falhou');
+      await loadClients();
+    } catch {
+      // silencioso: a lista recarrega e mostra o estado real
+    } finally {
+      setAccessLoading(null);
+    }
+  }
+
+  /** Concede N dias de acesso a partir de hoje. */
+  const handleReactivate = (householdId: string, dias: number) => {
+    setReactivateFor(null);
+    return callAccess(householdId, 'reactivate', dias);
+  };
+
   async function handleTogglePrivacy(householdId: string, currentIsPrivate: boolean) {
     setPrivacyLoading(householdId);
     try {
@@ -188,6 +240,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
   }
 
   const draftCount = clients.filter(c => c.status === 'draft').length;
+  const antigosCount = clients.filter(isAntigo).length;
   const activeCount = clients.filter(c => c.status === 'active').length;
 
   return (
@@ -309,6 +362,15 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
               <i className="fas fa-star text-[10px]"></i>
               Novos ({draftCount})
             </button>
+            <button
+              onClick={() => setFilter('antigos')}
+              className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wide transition-all border flex items-center gap-2 ${
+                filter === 'antigos' ? 'bg-zinc-400 text-black border-zinc-400' : 'bg-zinc-900 text-zinc-500 border-zinc-700'
+              }`}
+            >
+              <i className="fas fa-clock-rotate-left text-[10px]"></i>
+              Antigos ({antigosCount})
+            </button>
           </div>
         )}
 
@@ -327,6 +389,11 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
           const q = search.trim().toLowerCase();
           const visible = clients.filter(c => {
             if (filter === 'new' && c.status !== 'draft') return false;
+            // "Antigos" é calculado, não marcado: quem passou dos 5 meses do
+            // primeiro acesso cai aqui sozinho. Nas outras abas ele some, para
+            // a lista do dia a dia mostrar só quem está ativo.
+            if (filter === 'antigos' && !isAntigo(c)) return false;
+            if (filter !== 'antigos' && isAntigo(c)) return false;
             if (!q) return true;
             return (c.clientName ?? '').toLowerCase().includes(q) ||
                    (c.clientEmail ?? '').toLowerCase().includes(q);
@@ -336,7 +403,9 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
               <div className="text-center py-16 text-zinc-600">
                 <i className={`fas ${filter === 'new' ? 'fa-star' : 'fa-user-slash'} text-4xl mb-3 block`}></i>
                 <p className="font-black uppercase text-sm tracking-widest">
-                  {filter === 'new' ? 'Nenhum cliente novo aguardando' : 'Nenhum cliente encontrado'}
+                  {filter === 'new' ? 'Nenhum cliente novo aguardando'
+                    : filter === 'antigos' ? 'Nenhum cliente fora do prazo'
+                    : 'Nenhum cliente encontrado'}
                 </p>
                 <p className="text-xs mt-2">
                   {filter === 'new' ? 'Perfis novos aparecem aqui até você ativar' : 'Tente outro nome ou e-mail'}
@@ -418,6 +487,35 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
                       ))}
 
                       <div className="flex gap-1.5 ml-auto">
+                        {/* Encerrar o vínculo — não existia em lugar nenhum, e
+                            era a única forma de o coach sair da conta de um
+                            cliente que já terminou.
+                            NÃO mexe no prazo do cliente: os 5 meses contam do
+                            primeiro acesso DELE e seguem correndo igual. */}
+                        {!isDraft && client.coachStatus === 'approved' && (
+                          <button
+                            onClick={() => setRevokeConfirm(client.householdId)}
+                            title="Encerrar consultoria deste cliente"
+                            className="w-9 h-9 bg-zinc-800 active:bg-amber-500/20 text-zinc-500 active:text-amber-400 rounded-xl transition-all flex items-center justify-center"
+                          >
+                            <i className="fas fa-user-minus text-xs"></i>
+                          </button>
+                        )}
+                        {/* Dar mais tempo vale para QUALQUER cliente, não só para
+                            quem já venceu. Estava atrás de `isAntigo` e por isso
+                            não aparecia em lugar nenhum: quase ninguém vence. */}
+                        {!isDraft && (
+                          <button
+                            onClick={() => { setReactivateFor(client.householdId); setReactivateDays('150'); }}
+                            disabled={accessLoading === client.householdId}
+                            title="Dar mais tempo de acesso a este cliente"
+                            className="h-9 px-3 bg-green-500/15 active:bg-green-500/30 text-green-400 rounded-xl transition-all flex items-center justify-center gap-1.5 text-[10px] font-black uppercase disabled:opacity-50"
+                          >
+                            {accessLoading === client.householdId
+                              ? <i className="fas fa-circle-notch animate-spin text-xs"></i>
+                              : <><i className="fas fa-rotate-right text-xs"></i> Dar tempo</>}
+                          </button>
+                        )}
                         <button
                           onClick={() => handleTogglePrivacy(client.householdId, client.isPrivate)}
                           disabled={privacyLoading === client.householdId}
@@ -466,6 +564,70 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
                   )}
 
                   {/* Confirmação de exclusão */}
+                  {reactivateFor === client.householdId && (
+                    <div className="mx-1 mb-1 p-3 bg-green-500/10 border border-green-500/20 rounded-xl">
+                      <p className="text-green-400 text-xs font-bold mb-2">
+                        Dar mais quanto tempo para {client.clientName}?
+                      </p>
+                      <div className="flex gap-1.5 mb-2.5 flex-wrap">
+                        {[
+                          { d: 30, rotulo: '1 mês' },
+                          { d: 60, rotulo: '2 meses' },
+                          { d: 90, rotulo: '3 meses' },
+                          { d: 150, rotulo: '5 meses' },
+                        ].map(({ d, rotulo }) => (
+                          <button
+                            key={d}
+                            onClick={() => setReactivateDays(String(d))}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition-all ${
+                              reactivateDays === String(d)
+                                ? 'bg-green-500 text-black'
+                                : 'bg-zinc-800 text-zinc-400'
+                            }`}
+                          >{rotulo}</button>
+                        ))}
+                        <input
+                          type="number"
+                          min={1}
+                          max={730}
+                          value={reactivateDays}
+                          onChange={e => setReactivateDays(e.target.value)}
+                          className="w-16 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 text-white text-[11px] font-black outline-none focus:border-green-500"
+                        />
+                      </div>
+                      <p className="text-zinc-500 text-[10px] mb-2.5">
+                        Contados a partir de hoje, não do vencimento.
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleReactivate(client.householdId, Number(reactivateDays) || 30)}
+                          disabled={accessLoading === client.householdId}
+                          className="bg-green-500 text-black font-black text-xs px-3 py-1.5 rounded-lg uppercase disabled:opacity-50"
+                        >
+                          {accessLoading === client.householdId ? 'Liberando…' : 'Liberar'}
+                        </button>
+                        <button onClick={() => setReactivateFor(null)} className="bg-zinc-700 text-white font-black text-xs px-3 py-1.5 rounded-lg uppercase">Cancelar</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {revokeConfirm === client.householdId && (
+                    <div className="mx-1 mb-1 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+                      <p className="text-amber-400 text-xs font-bold mb-1">Encerrar a consultoria de {client.clientName}?</p>
+                      <p className="text-zinc-400 text-[11px] mb-2.5 leading-snug">
+                        Você sai da conta dele. <strong>O prazo de acesso não muda</strong> — continua
+                        contando 5 meses a partir do primeiro acesso do cliente.
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => { callAccess(client.householdId, 'revoke'); setRevokeConfirm(null); }}
+                          className="bg-amber-500 text-black font-black text-xs px-3 py-1.5 rounded-lg uppercase"
+                        >Encerrar</button>
+                        <button onClick={() => setRevokeConfirm(null)} className="bg-zinc-700 text-white font-black text-xs px-3 py-1.5 rounded-lg uppercase">Cancelar</button>
+                      </div>
+                    </div>
+                  )}
+
                   {deleteConfirm === client.householdId && (
                     <div className="mx-1 mb-1 p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center justify-between">
                       <p className="text-red-400 text-xs font-bold">Excluir {client.clientName}?</p>

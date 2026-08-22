@@ -23,6 +23,14 @@ interface ExpenseSheetProps {
   initialDescription?: string;
   initialInstallments?: number;
   initialCategory?: CategoryType;
+  /**
+   * Forma de pagamento JA conhecida — vem do extrato bancario, onde a origem
+   * nao e duvida: transacao de cartao foi no credito, de conta foi no debito.
+   * Perguntar de novo era ruido, e o cliente reclamou com razao.
+   */
+  knownPayMethod?: 'debit' | 'credit';
+  /** Ultimos 4 digitos do cartao — vindo do extrato, nao ha o que perguntar. */
+  knownCardLast4?: string | null;
   defaultPurchaseDate?: { day: number; month: number; year: number };
   onConfirm: (data: DetectedExpense) => void;
   onClose: () => void;
@@ -72,6 +80,8 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
   open, source, items,
   initialItemId, initialValue, initialDescription, initialInstallments,
   initialCategory,
+  knownPayMethod,
+  knownCardLast4,
   defaultPurchaseDate,
   onConfirm, onClose, onCreateItem,
 }) => {
@@ -116,24 +126,36 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
       setSelectedCardId(matchedItem?.linkedCardId ?? '');
     } else {
       const precat = initialCategory ?? null;
-      if (precat === CategoryType.VARIABLE_EXPENSE) {
+      // Sugestao do Open Finance NUNCA pula a escolha de categoria. Antes,
+      // "Variavel" caia direto em `variable-entry` e o cliente so podia
+      // confirmar — sem caminho para dizer que na verdade era Fixa ou Lazer.
+      // Fixa nao tinha o problema porque ja parava em `category`.
+      if (precat === CategoryType.VARIABLE_EXPENSE && source !== 'manual') {
         setStep('variable-entry');
         setCategory(CategoryType.VARIABLE_EXPENSE);
       } else {
         setStep('category');
-        setCategory(null);
+        setCategory(precat);
       }
       setItemId('');
       setVariableDesc(initialDescription ?? '');
       setValue(initialValue ? String(initialValue) : '');
-      setPayMethod('');
-      setCreditType('');
+      setPayMethod(knownPayMethod ?? '');
+      // Parcelamento vem do extrato: 3/10 é parcelado, sem precisar perguntar.
+      const parcelasConhecidas = Math.max(1, initialInstallments ?? 1);
+      setCreditType(knownPayMethod ? (parcelasConhecidas > 1 ? 'parcelado' : 'avista') : '');
+      // Cartao tambem: se o extrato disse quais os 4 digitos, acha o item
+      // correspondente no plano em vez de pedir para o cliente escolher.
+      const cardDoExtrato = knownCardLast4
+        ? items.find((i) => i.category === CategoryType.CREDIT_CARD && (i.description ?? '').includes(knownCardLast4))
+        : null;
+      if (cardDoExtrato) setSelectedCardId(cardDoExtrato.id);
       setSelectedCardId('');
       setExpenseDesc(initialDescription ?? '');
       const initManual = Math.max(1, initialInstallments ?? 1);
       setInstallCount(initManual > 1 ? String(initManual) : '');
     }
-  }, [open, source, initialItemId, initialValue, initialDescription, initialInstallments, initialCategory, defaultPurchaseDate]);
+  }, [open, source, initialItemId, initialValue, initialDescription, initialInstallments, initialCategory, defaultPurchaseDate, knownPayMethod, knownCardLast4]);
 
   useEffect(() => {
     if (step === 'value-payment' && open && !showItemPicker) {
@@ -154,7 +176,14 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
   // a categoria — esse texto vira o rótulo do gasto em Gastos Frequentes.
   const showDescField = source === 'ai' || category === CategoryType.PERSONAL_LEISURE;
   const hasItem = !!itemId || (category === CategoryType.VARIABLE_EXPENSE && variableDesc.trim().length > 0);
-  const needsCard = isCredit && items.filter(i => i.category === CategoryType.CREDIT_CARD).length > 0;
+  // Exigir cartao escolhido SO quando o seletor esta visivel. Com o extrato
+  // informando o cartao, o seletor fica escondido — e se a pre-selecao nao
+  // achasse o item correspondente no plano, o botao "Lançar" morria sem nada
+  // na tela dizendo o porque. Vincular ao cartao e um detalhe; travar o
+  // lancamento por causa dele nao se justifica.
+  const needsCard = isCredit
+    && !knownCardLast4
+    && items.filter(i => i.category === CategoryType.CREDIT_CARD).length > 0;
   const canConfirm = hasItem && numericValue > 0 && payMethod !== '' && (!needsCard || !!selectedCardId);
 
   const pickerItems = items.filter(i => {
@@ -237,8 +266,11 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
       )}
 
       {/* Value */}
-      <div className="px-4 py-3 bg-zinc-800 rounded-2xl border border-zinc-700 focus-within:border-green-400/40 transition-colors">
-        <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-1">Valor</p>
+      <div className={`px-4 py-3 rounded-2xl border transition-colors ${knownPayMethod ? 'bg-zinc-800/50 border-zinc-700/50' : 'bg-zinc-800 border-zinc-700 focus-within:border-green-400/40'}`}>
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider">Valor</p>
+          {knownPayMethod && <span className="text-[9px] text-zinc-600 font-bold">do banco · não editável</span>}
+        </div>
         <div className="flex items-center gap-2">
           <span className="text-zinc-500 font-mono text-sm">R$</span>
           <input
@@ -247,8 +279,9 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
             inputMode="decimal"
             step="0.01"
             value={value}
-            onChange={e => setValue(e.target.value)}
-            className="flex-1 bg-transparent text-white text-2xl font-black font-mono outline-none"
+            onChange={e => { if (!knownPayMethod) setValue(e.target.value); }}
+            readOnly={!!knownPayMethod}
+            className={`flex-1 bg-transparent text-2xl font-black font-mono outline-none ${knownPayMethod ? 'text-zinc-500 cursor-default' : 'text-white'}`}
             placeholder="0,00"
           />
         </div>
@@ -257,7 +290,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
             {installments}x de {formatCurrency(numericValue)} · total {formatCurrency(numericValue * installments)}
           </p>
         )}
-        {isParcelado && (
+        {isParcelado && !knownPayMethod && (
           <p className="text-zinc-600 text-[9px] mt-0.5">Digite o valor de UMA parcela</p>
         )}
       </div>
@@ -306,8 +339,8 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
         )}
       </div>
 
-      {/* Payment method */}
-      <div data-tour="sheet-payment">
+      {/* Forma de pagamento — escondida quando o extrato ja disse qual foi. */}
+      <div data-tour="sheet-payment" className={knownPayMethod ? 'hidden' : ''}>
         <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-2">Como foi pago?</p>
         <div className="grid grid-cols-2 gap-2">
           <button
@@ -315,7 +348,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
             className={`py-3 rounded-2xl text-sm font-black transition-all active:scale-95 border ${payMethod === 'debit' ? 'bg-zinc-100 text-black border-zinc-100' : 'bg-zinc-800 text-zinc-400 border-zinc-700'}`}
           >
             <i className="fas fa-money-bill-wave mr-2 text-xs" />
-            Débito
+            Débito / Pix
           </button>
           <button
             onClick={() => { setPayMethod('credit'); if (!creditType) setCreditType('avista'); }}
@@ -328,7 +361,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
       </div>
 
       {/* Card picker — required when credit is selected */}
-      {isCredit && creditCards.length > 0 && (
+      {isCredit && creditCards.length > 0 && !knownCardLast4 && (
         <div data-tour="sheet-card">
           <div className="flex items-center justify-between mb-2">
             <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider">Em qual cartão?</p>
@@ -356,8 +389,9 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
         </div>
       )}
 
-      {/* À vista ou parcelado — vale p/ débito E crédito */}
-      {payMethod !== '' && (
+      {/* À vista ou parcelado — escondido quando o extrato ja informou as
+          parcelas. "3/10x" nao deixa duvida sobre ser parcelado. */}
+      {payMethod !== '' && !(knownPayMethod && (initialInstallments ?? 1) > 1) && (
         <div data-tour="sheet-credit-type">
           <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-2">À vista ou parcelado?</p>
           <div className="grid grid-cols-2 gap-2">
@@ -377,8 +411,8 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
         </div>
       )}
 
-      {/* Installment count — chip picker */}
-      {isParcelado && (
+      {/* Installment count — chip picker (escondido quando o banco já informou o total) */}
+      {isParcelado && !(knownPayMethod && (initialInstallments ?? 1) > 1) && (
         <div>
           <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-2">Em quantas vezes?</p>
           <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
@@ -401,6 +435,16 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
               {parseInt(installCount)}x de {formatCurrency(numericValue)} · total {formatCurrency(numericValue * parseInt(installCount))}
             </p>
           )}
+        </div>
+      )}
+      {/* Badge read-only quando o banco informou as parcelas */}
+      {isParcelado && !!knownPayMethod && (initialInstallments ?? 1) > 1 && (
+        <div className="px-4 py-3 bg-zinc-800/50 rounded-2xl border border-zinc-700/50">
+          <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-1">Parcelamento (informado pelo banco)</p>
+          <p className="text-zinc-400 text-sm font-black k-num">
+            {initialInstallments}x de {formatCurrency(numericValue)}
+          </p>
+          <p className="text-zinc-600 text-[9px] mt-0.5">Não editável — veio do extrato bancário</p>
         </div>
       )}
 
@@ -455,7 +499,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center">
+    <div className="fixed inset-0 z-[75] flex items-end justify-center">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-lg bg-[#111] rounded-t-3xl border-t border-zinc-800 shadow-2xl animate-in slide-in-from-bottom duration-300">
         <div className="w-10 h-1 bg-zinc-700 rounded-full mx-auto mt-3 mb-1" />
@@ -468,8 +512,9 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
                 setSearch('');
                 if (showItemPicker) { setShowItemPicker(false); return; }
                 if (step === 'variable-entry') {
-                  if (initialCategory === CategoryType.VARIABLE_EXPENSE) onClose();
-                  else setStep('category');
+                  // Voltar sobe uma etapa, sempre. Fechar a tela deixava o
+                  // cliente preso na categoria que o app escolheu por ele.
+                  setStep('category');
                 } else if (step === 'item-picker') {
                   setStep('category');
                 } else if (step === 'value-payment') {

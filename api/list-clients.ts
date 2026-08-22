@@ -74,7 +74,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const { data: accesses } = await db
       .from('coach_access')
-      .select('household_id, coaching_started_at, coaching_ends_at')
+      .select('household_id, coaching_started_at, coaching_ends_at, status')
       .eq('coach_clerk_user_id', coachId)
       .eq('status', 'approved');
 
@@ -84,7 +84,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     let query = db
       .from('households')
-      .select('id, status, prospect_name, prospect_email, created_at, is_private')
+      .select('id, status, prospect_name, prospect_email, created_at, is_private, first_access_at, access_until')
       .in('id', householdIds);
 
     // Assistente não vê perfis privados
@@ -113,6 +113,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             clientEmail: household.prospect_email ?? '',
             createdAt: household.created_at,
             coachingEndsAt: access?.coaching_ends_at ?? new Date().toISOString(),
+            firstAccessAt: household.first_access_at ?? null,
+            accessUntil: household.access_until ?? null,
+            coachStatus: access?.status ?? null,
             status: 'draft',
             isPrivate: household.is_private ?? false,
           };
@@ -132,6 +135,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           clientEmail: clerkUser?.email_addresses?.[0]?.email_address ?? household.prospect_email ?? '',
           createdAt: member.joined_at,
           coachingEndsAt: access?.coaching_ends_at ?? new Date().toISOString(),
+          firstAccessAt: household.first_access_at ?? member.joined_at ?? null,
+          accessUntil: household.access_until ?? null,
+          coachStatus: access?.status ?? null,
           status: 'active',
           isPrivate: household.is_private ?? false,
         };

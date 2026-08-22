@@ -56,14 +56,38 @@ type OFAccountType = 'credit_card' | 'checking';
 
 // ─── Mapa de categorias (espelha lib/openfinance/categoryMap.ts) ─────────────
 
+/** Nunca é gasto — ver comentário completo em api/of-cron.ts. */
+const IGNORE_CODES = new Set([
+  'CREDITCARDPAYMENT', 'CREDITCARDFEES',
+  'SAMEPERSONTRANSFER', 'SAMEPERSONTRANSFERCASH', 'TEV',
+]);
+const ASK_USER_CODES = new Set(['TRANSFERPIX', 'TRANSFERBANKSLIP', 'TRANSFERTED', 'TRANSFERDOC']);
+
 const CC_CODE_MAP: Record<string, string> = {
+  // Vocabulario REAL do Bradesco, medido no extrato de cartao em 2026-08-14.
+  // Os codigos abaixo cobriam ~100 de 235 transacoes e NENHUM estava mapeado —
+  // caiam todos em "Variavel" por omissao. Era por isso que nada aparecia como
+  // Lazer: os codigos de lazer do nosso mapa (ENTERTAINMENT, BARS, TRAVEL)
+  // nao sao usados por este banco.
+  BOOKSTORE: CAT_LEISURE,            // livraria / Amazon
+  ELECTRONICS: CAT_LEISURE,          // eletronicos
+  SHOPPING: CAT_LEISURE,             // compras em geral
+  KIDSANDTOYS: CAT_LEISURE,          // brinquedos
+  MILEAGEPROGRAMS: CAT_LEISURE,      // programa de milhas
+  EATINGOUT: CAT_VARIABLE,           // comer fora
+  PHARMACY: CAT_VARIABLE,            // farmacia
+  PUBLICTRANSPORTATION: CAT_VARIABLE,
+  DIGITALSERVICES: CAT_LEISURE,      // streaming e apps — estilo de vida, nao conta
   ELECTRICITY: CAT_FIXED, UTILITIES: CAT_FIXED, TELECOM: CAT_FIXED, INTERNET: CAT_FIXED,
+  WATER: CAT_FIXED, TELECOMMUNICATIONS: CAT_FIXED, HOUSING: CAT_FIXED, EDUCATION: CAT_FIXED,
+  TAXES: CAT_FIXED, TAXONFINANCIALOPERATIONS: CAT_FIXED, BANKFEES: CAT_FIXED,
+  GROCERIES: CAT_VARIABLE, OFFICESUPPLIES: CAT_VARIABLE, ONLINEBET: CAT_LEISURE,
   INSURANCE: CAT_FIXED, RENT: CAT_FIXED, MORTGAGE: CAT_FIXED, SCHOOL: CAT_FIXED,
   HEALTH: CAT_FIXED, MEDICALSERVICES: CAT_FIXED, SUBSCRIPTION: CAT_FIXED, WELLNESSANDFITNESS: CAT_FIXED,
   SERVICES: CAT_VARIABLE, VEHICLEMAINTENANCE: CAT_VARIABLE, AUTOMOTIVE: CAT_VARIABLE,
   GASSTATIONS: CAT_VARIABLE, FOOD: CAT_VARIABLE, SUPERMARKET: CAT_VARIABLE, RESTAURANT: CAT_VARIABLE,
   TRANSPORT: CAT_VARIABLE, CLOTHING: CAT_VARIABLE, HOMEIMPROVEMENT: CAT_VARIABLE,
-  DIGITALSERVICES: CAT_VARIABLE, ENTREPRENEURIALACTIVITIES: CAT_VARIABLE,
+  ENTREPRENEURIALACTIVITIES: CAT_VARIABLE,
   LATEPAYMENTANDOVERDRAFTCOSTS: CAT_VARIABLE,
   ENTERTAINMENT: CAT_LEISURE, RECREATION: CAT_LEISURE, PERSONALCARE: CAT_LEISURE,
   TRAVEL: CAT_LEISURE, BARS: CAT_LEISURE,
@@ -107,8 +131,8 @@ function suggestCategory(params: {
 }): CategorySuggestion {
   const { accountType, rawDirection, code, ofCategory } = params;
 
-  if (code === 'CREDITCARDPAYMENT') return { category: null, direction: 'ignore', confidence: 'high' };
-  if (code === 'TEV') return { category: null, direction: 'ignore', confidence: 'high' };
+  const upperCode = (code ?? '').toUpperCase();
+  if (IGNORE_CODES.has(upperCode)) return { category: null, direction: 'ignore', confidence: 'high' };
 
   const normalizedLabel = ofCategory ? normalizeLabel(ofCategory) : '';
 
@@ -124,10 +148,16 @@ function suggestCategory(params: {
       return { category: CAT_INCOME, direction: 'income', confidence: 'low' };
     }
 
+    // PIX/TED para terceiros: sem sugestão, o cliente decide.
+    if (ASK_USER_CODES.has(upperCode)) return { category: null, direction: 'expense', confidence: 'low' };
+
     if (normalizedLabel) {
       const cat = LABEL_CATEGORY_MAP[normalizedLabel];
       if (cat) return { category: cat, direction: 'expense', confidence: 'high' };
     }
+    // O código vale para conta corrente também — sem isto tudo virava Variável.
+    const codeCat = CC_CODE_MAP[upperCode];
+    if (codeCat) return { category: codeCat, direction: 'expense', confidence: 'medium' };
     return { category: CAT_VARIABLE, direction: 'expense', confidence: 'low' };
   }
 

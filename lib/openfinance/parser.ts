@@ -32,6 +32,44 @@ function parseAmount(raw: string | undefined | null): number {
   return parseFloat(raw) || 0;
 }
 
+/** Deixa "EDP SAO PAULO DISTRIBUICAO DE ENERGIA S.A." legível numa linha. */
+function tidyMerchant(s: string): string {
+  const clean = s.trim().replace(/\s+/g, ' ');
+  // Só reformata quando vem TUDO EM CAIXA ALTA, que é o padrão dos bancos.
+  if (clean !== clean.toUpperCase()) return clean;
+  const minor = new Set(['de', 'da', 'do', 'das', 'dos', 'e']);
+  return clean
+    .toLowerCase()
+    .split(' ')
+    .map((w, i) => {
+      if (i > 0 && minor.has(w)) return w;
+      if (/^(s\.?a\.?|ltda\.?|me|epp|eireli)$/i.test(w)) return w.toUpperCase();
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    })
+    .join(' ');
+}
+
+/**
+ * Nome que o cliente reconhece.
+ *
+ * Ordem: contraparte estruturada → trecho depois de "DES:" na descrição →
+ * nada. O campo `name` NÃO entra: no extrato real ele é o titular da conta em
+ * 110 de 110 transações, então usá-lo mostraria o nome do próprio cliente em
+ * cada linha.
+ */
+function extractMerchant(raw: OFRawTransaction): string | null {
+  // Numa saída interessa quem recebeu; numa entrada, quem pagou.
+  const party = raw.transactionType === 'debit' ? raw.participantReceiver : raw.participantPayer;
+  const partyName = party?.name?.trim();
+  if (partyName) return tidyMerchant(fixMojibake(partyName));
+
+  // "PIX ENVIADO - DES  JAIME DE SIQUEIRA SIL 0" → "Jaime de Siqueira Sil"
+  const m = (raw.description ?? '').match(/-\s*DES:?\s+(.+?)\s*\d*$/i);
+  if (m?.[1] && m[1].trim().length > 2) return tidyMerchant(fixMojibake(m[1]));
+
+  return null;
+}
+
 /** Detect "NN/NN" installment suffix in description */
 function detectInstallment(desc: string) {
   const match = desc.match(/\s(\d{2})\/(\d{2})$/);
@@ -81,6 +119,7 @@ function normalizeTx(
     amount: Math.abs(parseAmount(raw.amount)),
     date: raw.date,
     description: desc,
+    merchant: extractMerchant(raw),
     ofCode: raw.code,
     ofCategory,
     paymentMethod: raw.paymentMethod ?? null,

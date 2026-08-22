@@ -140,19 +140,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const now = Date.now();
     const hhById = new Map((households ?? []).map(h => [h.id, h]));
-    const hhByUser = new Map<string, string>();
-    for (const m of members ?? []) hhByUser.set(m.clerk_user_id, m.household_id);
 
     const coachByHh = new Map<string, { isCoachClient: boolean; coachActive: boolean }>();
     for (const c of coachRows ?? []) {
-      if (c.status !== 'approved') continue;
-      const ends = c.expires_at ?? c.coaching_ends_at;
-      const active = !ends || new Date(ends).getTime() > now;
+      // coaching_ends_at é gravado uma vez na criação e nunca atualizado (CLAUDE.md):
+      // não serve para determinar se o vínculo está ativo. Só status importa.
+      const isApproved = c.status === 'approved';
       const prev = coachByHh.get(c.household_id);
       coachByHh.set(c.household_id, {
         isCoachClient: true,
-        coachActive: (prev?.coachActive ?? false) || active,
+        coachActive: isApproved || (prev?.coachActive ?? false),
       });
+    }
+
+    // Um cliente pode estar ligado a MAIS DE UM household: o perfil que o coach
+    // criou (com coach_access) e outro nascido do cadastro espontâneo dele. Um
+    // Map simples guardava o último da lista — arbitrário — e quando o sorteado
+    // era o household sem consultoria o cliente virava "cadastro espontâneo",
+    // caindo no relógio de 30 dias em vez dos 5 meses. Aqui a escolha é
+    // deliberada: o household da consultoria sempre ganha.
+    const hhIdsByUser = new Map<string, string[]>();
+    for (const m of members ?? []) {
+      const list = hhIdsByUser.get(m.clerk_user_id);
+      if (list) list.push(m.household_id);
+      else hhIdsByUser.set(m.clerk_user_id, [m.household_id]);
+    }
+    function pickHouseholdId(userId: string): string | undefined {
+      const ids = hhIdsByUser.get(userId);
+      if (!ids?.length) return undefined;
+      return ids.find(id => coachByHh.get(id)?.coachActive)
+        ?? ids.find(id => coachByHh.has(id))
+        ?? ids[0];
+    }
+
+    // Rede de segurança para quem se cadastrou sozinho e ganhou um household
+    // novo, desligado do perfil que o coach criou: casa pelo e-mail que o coach
+    // cadastrou em prospect_email. Não pega login com relay da Apple, que
+    // esconde o e-mail real — esses precisam de conserto no vínculo.
+    const coachHhByEmail = new Map<string, string>();
+    for (const h of households ?? []) {
+      const email = (h.prospect_email ?? '').trim().toLowerCase();
+      if (email && coachByHh.get(h.id)?.coachActive) coachHhByEmail.set(email, h.id);
     }
 
     type Status = 'coach' | 'pagante' | 'trial' | 'expirado' | 'sem_conta';
@@ -182,26 +210,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!isHidden && last && now - last <= D7) active7d++;
       if (!isHidden && last && now - last <= D30) active30d++;
 
-      const hhId = hhByUser.get(u.id);
+      const emailKey = (primary?.email_address ?? '').trim().toLowerCase();
+      const hhId = pickHouseholdId(u.id) ?? (emailKey ? coachHhByEmail.get(emailKey) : undefined);
       const hh = hhId ? hhById.get(hhId) : undefined;
+      // Cliente cujo household sorteado não tem consultoria, mas cujo e-mail
+      // bate com um perfil que o coach criou: vale o vínculo da consultoria.
+      const coachHhByEmailId = emailKey ? coachHhByEmail.get(emailKey) : undefined;
 
       let status: Status = 'sem_conta';
       let trialDaysLeft: number | null = null;
       let isAnnual = false;
 
       if (hh) {
-        const coach = coachByHh.get(hh.id);
+        const coach = coachByHh.get(hh.id)
+          ?? (coachHhByEmailId ? coachByHh.get(coachHhByEmailId) : undefined);
         const subActive = hh.subscription_status === 'active' &&
           (!hh.subscription_expires_at || new Date(hh.subscription_expires_at).getTime() > now);
+        // Consultoria vem primeiro: é o vínculo, não um prazo. Quem tem
+        // coach_access aprovado é "Consultoria" mesmo que também tenha
+        // reativação manual vigente.
         if (coach?.coachActive) {
           status = 'coach';
           if (!isHidden) coachActive++;
-          // Consultoria também tem relógio: dias até o fim dos 5 meses grátis
-          // (= quando começa a pagar), mesmo cálculo do trial de coach-client.
-          if (hh.created_at) {
-            const trialEnd = addMonths(new Date(hh.created_at), TRIAL_MONTHS_COACH_CLIENT);
+          // Relógio de 5 meses conta do primeiro acesso, não da criação do perfil
+          const baseDate = hh.first_access_at ?? hh.created_at;
+          if (baseDate) {
+            const trialEnd = addMonths(new Date(baseDate), TRIAL_MONTHS_COACH_CLIENT);
             trialDaysLeft = Math.max(0, Math.ceil((trialEnd.getTime() - now) / (24 * 60 * 60 * 1000)));
           }
+        } else if (hh.access_until && new Date(hh.access_until).getTime() > now) {
+          // Prazo concedido pelo coach vence o cálculo por data. Conta como
+          // Consultoria, não como Trial: quem recebeu prazo dele é cliente
+          // dele — "trial" é só quem chegou sozinho e ninguém acompanha.
+          status = 'coach';
+          trialDaysLeft = Math.max(0, Math.ceil((new Date(hh.access_until).getTime() - now) / (24 * 60 * 60 * 1000)));
+          if (!isHidden) coachActive++;
         } else if (subActive) {
           status = 'pagante';
           if (!isHidden) paying++;
@@ -211,15 +254,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             isAnnual = span > 6 * 30 * 24 * 60 * 60 * 1000;
             if (isAnnual && !isHidden) payingAnnual++;
           }
-        } else if (hh.created_at) {
-          const trialEnd = trialEndOf(hh.created_at, coach?.isCoachClient ?? false);
-          if (trialEnd.getTime() > now) {
+        } else {
+          // Espelho de lib/access.ts: cliente da consultoria conta 5 meses do
+          // PRIMEIRO ACESSO (created_at só como último recurso); self-signup
+          // conta 30 dias do cadastro.
+          const isCoachClient = coach?.isCoachClient ?? false;
+          const baseDate = isCoachClient
+            ? (hh.first_access_at ?? hh.created_at)
+            : hh.created_at;
+          if (baseDate) {
+            const trialEnd = trialEndOf(baseDate, isCoachClient);
+            if (trialEnd.getTime() > now) {
+              status = 'trial';
+              trialDaysLeft = Math.max(0, Math.ceil((trialEnd.getTime() - now) / (24 * 60 * 60 * 1000)));
+              if (!isHidden) inTrial++;
+            } else {
+              status = 'expirado';
+              if (!isHidden) expired++;
+            }
+          } else if (isCoachClient) {
+            // Sem nenhuma data o relógio não começou — libera, igual lib/access.ts
             status = 'trial';
-            trialDaysLeft = Math.max(0, Math.ceil((trialEnd.getTime() - now) / (24 * 60 * 60 * 1000)));
             if (!isHidden) inTrial++;
-          } else {
-            status = 'expirado';
-            if (!isHidden) expired++;
           }
         }
       }
@@ -243,8 +299,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         coachActive,
         expired,
         mrr: Math.round(mrr * 100) / 100,
-        // se todo mundo em trial virasse pagante mensal
-        potentialMrr: Math.round((mrr + inTrial * PRICE_MONTHLY) * 100) / 100,
+        // se todo mundo com acesso (consultoria + trial) virasse pagante mensal
+        potentialMrr: Math.round((mrr + (inTrial + coachActive) * PRICE_MONTHLY) * 100) / 100,
       },
       clients: rows,
       prices: { monthly: PRICE_MONTHLY, annual: PRICE_ANNUAL },
