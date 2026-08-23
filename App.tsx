@@ -269,6 +269,8 @@ const App: React.FC = () => {
   const [categorizeCount, setCategorizeCount] = useState(0);
   const [showCategorizePopup, setShowCategorizePopup] = useState(false);
   const categorizeCheckedRef = useRef(false);
+  /** Pop-up do diagnóstico no CELULAR (na web fica inline). */
+  const [showDiagnosis, setShowDiagnosis] = useState(false);
   /** Transações do Extrato já lançadas nesta sessão — sai da lista sem recarregar. */
   const [ofCategorized, setOfCategorized] = useState<string[]>([]);
   /** Item cujo card deve receber o foco ao abrir Gastos (vindo do Plano). */
@@ -2207,7 +2209,55 @@ const App: React.FC = () => {
         ) : activeTab === 'plan' ? (
           <>
             <div id="stets"><AICoach summary={monthlySummaries[mobileMonthIdx]} items={items} monthName={months[mobileMonthIdx].monthName} onExpenseDetected={handleExpenseDetected} tetoColumns={tetoColumns} /></div>
-            <div id="diagnosis" className="hidden lg:block"><Diagnosis summary={monthlySummaries[mobileMonthIdx]} items={items} monthIdx={mobileMonthIdx} monthName={months[mobileMonthIdx].monthName} isCurrentMonth={months[mobileMonthIdx].index === currentActualMonth && months[mobileMonthIdx].year === currentActualYear} /></div>
+            {/* Web: diagnóstico inline (tem espaço). Celular: botão que abre em
+                pop-up, para não empurrar as contas do mês pra baixo. */}
+            <div id="diagnosis" className="hidden lg:block">
+              <Diagnosis summary={monthlySummaries[mobileMonthIdx]} items={items} monthIdx={mobileMonthIdx} monthName={months[mobileMonthIdx].monthName} isCurrentMonth={months[mobileMonthIdx].index === currentActualMonth && months[mobileMonthIdx].year === currentActualYear} />
+            </div>
+
+            <div className="lg:hidden px-1 mb-3 -mt-5">
+              <button
+                onClick={() => setShowDiagnosis(true)}
+                className="group w-full flex items-center gap-3 rounded-2xl px-5 py-4 text-left active:scale-[.99] transition-all"
+                style={{ background: 'linear-gradient(135deg,#2f6d1a 0%,#5aa515 45%,#7cc11a 100%)', boxShadow: '0 8px 22px -8px rgba(124,193,26,.6)' }}
+              >
+                <span className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
+                  <i className="fas fa-heart-pulse text-white text-xl"></i>
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-white font-black text-[15px] leading-tight uppercase italic tracking-tight">Ver meu diagnóstico do mês</span>
+                  <span className="block text-white/85 text-[12px] font-semibold mt-0.5">Toque para o raio-X das suas finanças</span>
+                </span>
+                <i className="fas fa-arrow-right text-white text-lg group-active:translate-x-0.5 transition-transform"></i>
+              </button>
+            </div>
+
+            {showDiagnosis && (
+              <div className="lg:hidden fixed inset-0 z-[300] bg-black/60 backdrop-blur-sm flex flex-col">
+                {/* Header escuro temático — combina com o hero do próprio Diagnosis */}
+                <div className="flex items-center justify-between px-5 py-4 shrink-0"
+                  style={{ background: 'linear-gradient(160deg,#0d1f07 0%,#152f0a 100%)', borderBottom: '1px solid rgba(255,255,255,.08)' }}>
+                  <div className="flex items-center gap-3">
+                    <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                      style={{ background: 'rgba(74,222,128,.15)' }}>
+                      <i className="fas fa-heart-pulse text-green-400 text-[15px]"></i>
+                    </span>
+                    <div>
+                      <div className="font-black uppercase text-[13px] tracking-widest text-white leading-none">Diagnóstico</div>
+                      <div className="text-[10px] font-semibold tracking-wide mt-0.5" style={{ color: 'rgba(74,222,128,.7)' }}>metodologia Kashim</div>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowDiagnosis(false)}
+                    className="w-9 h-9 rounded-full flex items-center justify-center active:scale-90 transition-transform"
+                    style={{ background: 'rgba(255,255,255,.1)', color: 'rgba(255,255,255,.75)' }}>
+                    <i className="fas fa-times text-sm"></i>
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-3 bg-zinc-50">
+                  <Diagnosis summary={monthlySummaries[mobileMonthIdx]} items={items} monthIdx={mobileMonthIdx} monthName={months[mobileMonthIdx].monthName} isCurrentMonth={months[mobileMonthIdx].index === currentActualMonth && months[mobileMonthIdx].year === currentActualYear} />
+                </div>
+              </div>
+            )}
 
             {/* ── MOBILE SUMMARY CARDS ──────────────────────────────── */}
             {/* Hero dark card — Acumulado */}

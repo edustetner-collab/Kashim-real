@@ -94,47 +94,76 @@ function mixHex(a: string, b: string, t: number): string {
   return `rgb(${c[0]},${c[1]},${c[2]})`;
 }
 
+type StatusKey = 'ok' | 'warn' | 'over';
+const STATUS_META: Record<StatusKey, { bg: string; icon: string; card: string }> = {
+  ok:   { bg: '#16a34a', icon: 'fa-check',       card: 'bg-green-50/70 border-green-200' },
+  warn: { bg: '#f59e0b', icon: 'fa-exclamation', card: 'bg-amber-50/70 border-amber-200' },
+  over: { bg: '#ef4444', icon: 'fa-xmark',       card: 'bg-red-50/70 border-red-200' },
+};
+
+/** Selo de status circular (ícone vetorial, não emoji). */
+const StatusBadge: React.FC<{ status: StatusKey }> = ({ status }) => {
+  const m = STATUS_META[status];
+  return (
+    <span className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-white text-[11px]"
+      style={{ background: m.bg, boxShadow: `0 0 8px ${m.bg}66` }}>
+      <i className={`fas ${m.icon}`}></i>
+    </span>
+  );
+};
+
 const PillarBar: React.FC<{ name: string; value: number; realPct: number; idealPct: number; color: string; dir: Dir }>
   = ({ name, value, realPct, idealPct, color, dir }) => {
+  const noData = dir === 'cost' && value <= 0;
   const fillW = Math.max(0, Math.min(100, realPct * 100));
   const idealLeft = Math.min(100, Math.max(0, idealPct * 100));
 
-  // 'save' (Para juntar) é a única variável BOA: nunca fica vermelha se guarda
-  // algo positivo. Vermelho só se não guardou nada / negativo. Do contrário,
-  // degradê verde escuro → verde limão conforme se aproxima da meta (20%).
-  let barColor: string;
-  let textRed: boolean;
-  if (dir === 'save') {
-    if (realPct <= 0) { barColor = '#ef4444'; textRed = true; }
-    else { barColor = mixHex('#166534', '#84cc16', realPct / idealPct); textRed = false; }
-  } else {
-    const onTarget = realPct <= idealPct;
-    barColor = onTarget ? color : '#ef4444';
-    textRed = !onTarget;
-  }
+  let status: StatusKey;
+  if (dir === 'save') status = realPct <= 0 ? 'over' : realPct < 0.10 ? 'warn' : 'ok';
+  else status = noData ? 'warn' : realPct <= idealPct ? 'ok' : 'over';
+
+  const barColor = dir === 'save'
+    ? (realPct <= 0 ? '#ef4444' : mixHex('#166534', '#84cc16', realPct / idealPct))
+    : (status === 'over' ? '#ef4444' : color);
+  const textRed = status === 'over';
+
   return (
-    <div className="flex items-center gap-4 pt-6 pb-3">
-      <div className="w-36 shrink-0">
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: color }}></span>
-          <span className="font-black text-[12px] uppercase tracking-wide text-zinc-800 truncate">{name}</span>
-        </div>
-        <div className="text-[11px] text-zinc-400 font-semibold ml-[18px]">{formatCurrency(value)}</div>
-      </div>
+    <div className={`flex items-center gap-2.5 sm:gap-3 rounded-2xl border px-3.5 py-3 ${STATUS_META[status].card}`}>
+      {/* Acento lateral — cor do status */}
+      <div className="w-1 self-stretch rounded-full shrink-0" style={{ background: STATUS_META[status].bg, opacity: 0.7 }} />
 
-      <div className="flex-1 relative h-5 rounded-full bg-zinc-100">
-        <div className="h-full rounded-full" style={{ width: `${fillW}%`, background: barColor, transition: 'width .6s cubic-bezier(.16,1,.3,1)' }}></div>
-        {/* Marca do ideal — linha + etiqueta bem visível */}
-        <div className="absolute -top-6 -bottom-1.5" style={{ left: `${idealLeft}%`, transform: 'translateX(-50%)' }}>
-          <span className="absolute -top-0 left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] font-black uppercase tracking-wide text-zinc-500 bg-white px-1">ideal {asPct(idealPct)}</span>
-          <div className="w-[2px] h-full mx-auto mt-4 bg-zinc-800 rounded"></div>
+      {/* Nome + valor */}
+      <div className="w-[78px] sm:w-28 shrink-0">
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-sm shrink-0" style={{ background: color }}></span>
+          <span className="font-black text-[11px] sm:text-[12px] uppercase tracking-wide text-zinc-800 truncate">{name}</span>
+        </div>
+        <div className="text-[10px] text-zinc-400 font-semibold ml-[14px] mt-0.5 truncate">
+          {noData ? 'sem dados' : formatCurrency(value)}
         </div>
       </div>
 
-      <div className="w-16 shrink-0 text-right">
-        <div className={`font-black text-lg tabular-nums leading-none ${textRed ? 'text-red-500' : 'text-zinc-900'}`}>{asPct(realPct)}</div>
-        <div className="text-[9px] font-black uppercase tracking-wide text-zinc-400 mt-0.5">você</div>
+      {/* Barra + labels em fluxo (sem posicionamento absoluto fora do card) */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[9px] font-black uppercase tracking-wide text-zinc-400">ideal {asPct(idealPct)}</span>
+          <span className={`text-[11px] font-black tabular-nums leading-none ${textRed ? 'text-red-500' : 'text-zinc-700'}`}>
+            {noData ? '—' : asPct(realPct)}<span className="text-[9px] font-bold text-zinc-400 ml-0.5">você</span>
+          </span>
+        </div>
+        <div className="relative h-3 sm:h-3.5 rounded-full bg-zinc-200/70">
+          <div className="h-full rounded-full" style={{
+            width: `${fillW}%`, background: barColor,
+            boxShadow: fillW > 0 ? `0 0 8px ${barColor}88` : 'none',
+            transition: 'width .6s cubic-bezier(.16,1,.3,1)',
+          }} />
+          <div className="absolute inset-y-0 w-0.5 bg-zinc-700/70 rounded z-10"
+            style={{ left: `${idealLeft}%`, transform: 'translateX(-50%)' }} />
+        </div>
       </div>
+
+      {/* Badge de status — canto direito */}
+      <StatusBadge status={status} />
     </div>
   );
 };
@@ -247,7 +276,7 @@ const Diagnosis: React.FC<DiagnosisProps> = ({ summary, items, monthIdx, monthNa
           Onde vai o seu salário <span className="text-zinc-400 normal-case font-semibold tracking-normal">· real vs. ideal</span>
         </h4>
       </div>
-      <div className="divide-y divide-zinc-100">
+      <div className="flex flex-col gap-2 mt-3">
         <PillarBar name="Conta fixa" value={t.fixedCore} realPct={fixedPct} idealPct={IDEAL_LIMITS.FIXED} color="#16a34a" dir="cost" />
         <PillarBar name="Educação" value={t.education} realPct={eduPct} idealPct={IDEAL_LIMITS.EDUCATION} color="#2563eb" dir="cost" />
         <PillarBar name="Lazer / Pessoal" value={t.leisure} realPct={leisurePct} idealPct={IDEAL_LIMITS.LEISURE} color="#9333ea" dir="cost" />
@@ -259,11 +288,13 @@ const Diagnosis: React.FC<DiagnosisProps> = ({ summary, items, monthIdx, monthNa
         <div>
           <div className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Sobra do mês · o que vai para juntar</div>
           <div className="text-[12px] text-zinc-600 font-semibold mt-0.5 max-w-md">
-            {balOk
-              ? (saveOk
-                  ? `Você guarda ${asPct(savePct)} da renda — acima da meta de ${asPct(IDEAL_LIMITS.SAVINGS)}. Excelente, é assim que se constrói patrimônio.`
-                  : `Você já guarda ${asPct(savePct)} da renda — bom começo! A meta é ${asPct(IDEAL_LIMITS.SAVINGS)}; reduzindo custos você chega lá.`)
-              : 'Você fecha no vermelho — não sobra para juntar. Reduzir a conta fixa é o caminho mais rápido para virar o jogo.'}
+            {!balOk
+              ? 'Você fecha no vermelho — não sobra para juntar. Reduzir a conta fixa é o caminho mais rápido para virar o jogo.'
+              : saveOk
+                ? `Você guarda ${asPct(savePct)} da renda — você está fora da curva! Menos de 1% das pessoas chega aqui. Patrimônio garantido.`
+                : savePct >= 0.10
+                  ? `Você guarda ${asPct(savePct)} da renda — isso é muito bom! Você já está bem à frente da maioria. Rumo aos ${asPct(IDEAL_LIMITS.SAVINGS)}.`
+                  : `Você já fecha no positivo, guardando ${asPct(savePct)}. Ótimo — continue e vá crescendo rumo aos ${asPct(IDEAL_LIMITS.SAVINGS)}.`}
           </div>
         </div>
         <div className={`font-black text-xl tabular-nums shrink-0 ${balOk ? 'text-green-700' : 'text-red-600'}`}>{formatCurrency(summary.balance)}</div>
