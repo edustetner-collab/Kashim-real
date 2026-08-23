@@ -95,75 +95,123 @@ function mixHex(a: string, b: string, t: number): string {
 }
 
 type StatusKey = 'ok' | 'warn' | 'over';
-const STATUS_META: Record<StatusKey, { bg: string; icon: string; card: string }> = {
-  ok:   { bg: '#16a34a', icon: 'fa-check',       card: 'bg-green-50/70 border-green-200' },
-  warn: { bg: '#f59e0b', icon: 'fa-exclamation', card: 'bg-amber-50/70 border-amber-200' },
-  over: { bg: '#ef4444', icon: 'fa-xmark',       card: 'bg-red-50/70 border-red-200' },
+
+/** Paleta dos selos — tons Apple-like (fundo pastel, traço saturado). */
+const BADGE: Record<StatusKey, { bg: string; border: string; ink: string }> = {
+  ok:   { bg: '#f2fbdd', border: 'rgba(122,184,0,0.3)',  ink: '#5f9000' },
+  warn: { bg: '#fff8e6', border: 'rgba(224,155,0,0.28)', ink: '#e09b00' },
+  over: { bg: '#fff1f0', border: 'rgba(255,69,58,0.26)', ink: '#d92b1f' },
 };
 
-/** Selo de status circular (ícone vetorial, não emoji). */
+/** Selo circular 30px com ícone SVG traçado (check / alerta / xis). */
 const StatusBadge: React.FC<{ status: StatusKey }> = ({ status }) => {
-  const m = STATUS_META[status];
+  const b = BADGE[status];
   return (
-    <span className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-white text-[11px]"
-      style={{ background: m.bg, boxShadow: `0 0 8px ${m.bg}66` }}>
-      <i className={`fas ${m.icon}`}></i>
+    <span className="w-[30px] h-[30px] rounded-full flex items-center justify-center shrink-0"
+      style={{ background: b.bg, border: `1px solid ${b.border}`, boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+      <svg viewBox="0 0 24 24" style={{ width: 15, height: 15, display: 'block' }}>
+        {status === 'ok' && (
+          <path d="M5.5 12.6 L10 17 L18.5 7.6" fill="none" stroke={b.ink} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+        )}
+        {status === 'warn' && (
+          <>
+            <path d="M12 5.6 V13.4" fill="none" stroke={b.ink} strokeWidth="2.6" strokeLinecap="round" />
+            <circle cx="12" cy="18.2" r="1.5" fill={b.ink} />
+          </>
+        )}
+        {status === 'over' && (
+          <path d="M6.6 6.6 L17.4 17.4 M17.4 6.6 L6.6 17.4" fill="none" stroke={b.ink} strokeWidth="2.6" strokeLinecap="round" />
+        )}
+      </svg>
     </span>
   );
 };
 
-const PillarBar: React.FC<{ name: string; value: number; realPct: number; idealPct: number; color: string; dir: Dir }>
-  = ({ name, value, realPct, idealPct, color, dir }) => {
-  const noData = dir === 'cost' && value <= 0;
-  const fillW = Math.max(0, Math.min(100, realPct * 100));
-  const idealLeft = Math.min(100, Math.max(0, idealPct * 100));
+interface PillarBarProps {
+  name: string; value: number; realPct: number; idealPct: number;
+  color: string; glow: string; dir: Dir;
+}
 
+const PillarBar: React.FC<PillarBarProps> = ({ name, value, realPct, idealPct, color, glow, dir }) => {
+  const noData = value <= 0;
+
+  // 'save' (Para juntar) é a variável BOA: guardar qualquer coisa positiva já
+  // conta. Nos pilares de custo, passar do ideal é que é ruim.
   let status: StatusKey;
-  if (dir === 'save') status = realPct <= 0 ? 'over' : realPct < 0.10 ? 'warn' : 'ok';
-  else status = noData ? 'warn' : realPct <= idealPct ? 'ok' : 'over';
+  if (dir === 'save') status = realPct <= 0 ? 'over' : realPct < IDEAL_LIMITS.SAVINGS / 2 ? 'warn' : 'ok';
+  else status = noData ? 'warn' : realPct > idealPct + 0.005 ? 'over' : 'ok';
 
-  const barColor = dir === 'save'
-    ? (realPct <= 0 ? '#ef4444' : mixHex('#166534', '#84cc16', realPct / idealPct))
-    : (status === 'over' ? '#ef4444' : color);
-  const textRed = status === 'over';
+  const barColor = noData ? '#d2d2d7'
+    : dir === 'save' ? mixHex('#166534', '#84cc16', realPct / idealPct)
+    : color;
+  const barGlow = noData ? 'rgba(0,0,0,0)' : glow;
+  const pctInk = noData ? '#c7c7cc' : status === 'over' ? '#d92b1f' : '#1d1d1f';
+  const rowBg = noData ? '#fcfcfd' : status === 'over' ? '#fff6f5' : '#fafafb';
+  const rowBorder = noData ? '#f0f0f3' : status === 'over' ? 'rgba(255,69,58,0.18)' : '#ececf0';
+
+  const fillW = `${Math.min(100, Math.max(0, realPct * 100))}%`;
+  const idealLeft = `${Math.min(100, Math.max(0, idealPct * 100))}%`;
+  const valueLabel = noData ? 'sem lançamentos' : formatCurrency(value);
+  const pctLabel = noData ? '—' : asPct(realPct);
+
+  /** Trilho: preenchimento + marca vertical do ideal. */
+  const rail = (
+    <div className="relative h-[14px] rounded-full" style={{ background: '#ececf0', overflow: 'visible' }}>
+      <div className="absolute left-0 top-0 bottom-0 rounded-full" style={{
+        width: fillW, background: barColor,
+        boxShadow: `0 1px 0 rgba(255,255,255,0.5) inset, 0 2px 8px ${barGlow}`,
+        transition: 'width .6s cubic-bezier(.16,1,.3,1)',
+      }} />
+      <div className="absolute rounded-sm" style={{
+        top: -5, bottom: -5, width: 2, left: idealLeft,
+        transform: 'translateX(-50%)', background: 'rgba(29,29,31,0.42)',
+      }} />
+    </div>
+  );
+
+  const idealTag = (
+    <span className="text-[9px] font-black uppercase whitespace-nowrap" style={{ letterSpacing: '.1em', color: '#aeaeb2' }}>
+      ideal {asPct(idealPct)}
+    </span>
+  );
+
+  const swatch = <span className="shrink-0" style={{ width: 10, height: 10, borderRadius: 3, background: color }} />;
 
   return (
-    <div className={`flex items-center gap-2.5 sm:gap-3 rounded-2xl border px-3.5 py-3 ${STATUS_META[status].card}`}>
-      {/* Acento lateral — cor do status */}
-      <div className="w-1 self-stretch rounded-full shrink-0" style={{ background: STATUS_META[status].bg, opacity: 0.7 }} />
-
-      {/* Nome + valor */}
-      <div className="w-[78px] sm:w-28 shrink-0">
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-sm shrink-0" style={{ background: color }}></span>
-          <span className="font-black text-[11px] sm:text-[12px] uppercase tracking-wide text-zinc-800 truncate">{name}</span>
+    <div className="rounded-2xl" style={{ background: rowBg, border: `1px solid ${rowBorder}` }}>
+      {/* ── DESKTOP: grid de 4 colunas, título com espaço de sobra ── */}
+      <div className="hidden sm:grid items-center" style={{ gridTemplateColumns: '30px 158px 1fr 92px', gap: 16, padding: '13px 16px' }}>
+        <StatusBadge status={status} />
+        <div className="flex items-center gap-2.5 min-w-0">
+          {swatch}
+          <div className="flex flex-col gap-px min-w-0">
+            <span className="text-[12px] font-extrabold uppercase whitespace-nowrap" style={{ letterSpacing: '.04em', color: '#1d1d1f' }}>{name}</span>
+            <span className="text-[11px] font-semibold tabular-nums" style={{ color: '#8e8e93' }}>{valueLabel}</span>
+          </div>
         </div>
-        <div className="text-[10px] text-zinc-400 font-semibold ml-[14px] mt-0.5 truncate">
-          {noData ? 'sem dados' : formatCurrency(value)}
+        <div className="relative" style={{ paddingTop: 20 }}>
+          <div className="absolute top-0" style={{ left: idealLeft, transform: 'translateX(-50%)' }}>{idealTag}</div>
+          {rail}
         </div>
-      </div>
-
-      {/* Barra + labels em fluxo (sem posicionamento absoluto fora do card) */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[9px] font-black uppercase tracking-wide text-zinc-400">ideal {asPct(idealPct)}</span>
-          <span className={`text-[11px] font-black tabular-nums leading-none ${textRed ? 'text-red-500' : 'text-zinc-700'}`}>
-            {noData ? '—' : asPct(realPct)}<span className="text-[9px] font-bold text-zinc-400 ml-0.5">você</span>
-          </span>
-        </div>
-        <div className="relative h-3 sm:h-3.5 rounded-full bg-zinc-200/70">
-          <div className="h-full rounded-full" style={{
-            width: `${fillW}%`, background: barColor,
-            boxShadow: fillW > 0 ? `0 0 8px ${barColor}88` : 'none',
-            transition: 'width .6s cubic-bezier(.16,1,.3,1)',
-          }} />
-          <div className="absolute inset-y-0 w-0.5 bg-zinc-700/70 rounded z-10"
-            style={{ left: `${idealLeft}%`, transform: 'translateX(-50%)' }} />
+        <div className="flex justify-end">
+          <span className="text-[20px] font-black tabular-nums" style={{ letterSpacing: '-.02em', color: pctInk }}>{pctLabel}</span>
         </div>
       </div>
 
-      {/* Badge de status — canto direito */}
-      <StatusBadge status={status} />
+      {/* ── CELULAR: título em linha própria (não trunca), barra abaixo ── */}
+      <div className="sm:hidden flex flex-col gap-2.5" style={{ padding: '13px 14px' }}>
+        <div className="flex items-center gap-2.5">
+          <StatusBadge status={status} />
+          {swatch}
+          <span className="flex-1 min-w-0 text-[12px] font-extrabold uppercase leading-tight" style={{ letterSpacing: '.03em', color: '#1d1d1f' }}>{name}</span>
+          <span className="text-[20px] font-black tabular-nums shrink-0" style={{ letterSpacing: '-.02em', color: pctInk }}>{pctLabel}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-semibold tabular-nums" style={{ color: '#8e8e93' }}>{valueLabel}</span>
+          {idealTag}
+        </div>
+        {rail}
+      </div>
     </div>
   );
 };
@@ -271,16 +319,15 @@ const Diagnosis: React.FC<DiagnosisProps> = ({ summary, items, monthIdx, monthNa
       </div>
 
       {/* Onde vai o seu salário — real vs ideal */}
-      <div className="mb-1">
-        <h4 className="text-[13px] font-black text-zinc-900 uppercase tracking-wider">
-          Onde vai o seu salário <span className="text-zinc-400 normal-case font-semibold tracking-normal">· real vs. ideal</span>
-        </h4>
+      <div className="flex items-baseline gap-2.5 flex-wrap mb-1">
+        <h4 className="text-[12px] font-black uppercase" style={{ letterSpacing: '.16em', color: '#1d1d1f' }}>Onde vai o seu salário</h4>
+        <span className="text-[12px] font-semibold" style={{ color: '#aeaeb2' }}>real vs. ideal Kashim</span>
       </div>
-      <div className="flex flex-col gap-2 mt-3">
-        <PillarBar name="Conta fixa" value={t.fixedCore} realPct={fixedPct} idealPct={IDEAL_LIMITS.FIXED} color="#16a34a" dir="cost" />
-        <PillarBar name="Educação" value={t.education} realPct={eduPct} idealPct={IDEAL_LIMITS.EDUCATION} color="#2563eb" dir="cost" />
-        <PillarBar name="Lazer / Pessoal" value={t.leisure} realPct={leisurePct} idealPct={IDEAL_LIMITS.LEISURE} color="#9333ea" dir="cost" />
-        <PillarBar name="Para juntar" value={Math.max(0, summary.balance)} realPct={savePct} idealPct={IDEAL_LIMITS.SAVINGS} color="#22c55e" dir="save" />
+      <div className="grid gap-2.5 mt-3">
+        <PillarBar name="Conta fixa" value={t.fixedCore} realPct={fixedPct} idealPct={IDEAL_LIMITS.FIXED} color={tier.color} glow={tier.glow} dir="cost" />
+        <PillarBar name="Educação" value={t.education} realPct={eduPct} idealPct={IDEAL_LIMITS.EDUCATION} color="#007aff" glow="rgba(0,122,255,0.28)" dir="cost" />
+        <PillarBar name="Lazer / Pessoal" value={t.leisure} realPct={leisurePct} idealPct={IDEAL_LIMITS.LEISURE} color="#7c3aed" glow="rgba(124,58,237,0.28)" dir="cost" />
+        <PillarBar name="Para juntar" value={Math.max(0, summary.balance)} realPct={savePct} idealPct={IDEAL_LIMITS.SAVINGS} color="#00b8a9" glow="rgba(0,184,169,0.28)" dir="save" />
       </div>
 
       {/* Sobra do mês */}
