@@ -9,8 +9,23 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 
-// Bump quando os termos mudarem de versão → todos aceitam de novo.
-// Deve casar com a versão declarada em public/termos.html.
+// Bump quando os termos mudarem de forma MATERIAL → todos aceitam de novo.
+//
+// Não basta o texto mudar: bumpar aqui põe o TermsGate na frente de TODO
+// cliente na próxima abertura. E o item 2.9 dos próprios termos promete aviso
+// por e-mail com 15 dias de antecedência para alteração relevante — forçar o
+// aceite sem esse aviso descumpre o que assinamos.
+//
+// Regra: bumpar quando a mudança RESTRINGE direito do usuário, cria obrigação
+// nova ou muda base legal de tratamento (LGPD). Não bumpar quando só esclarece,
+// amplia direito, ou alinha o texto ao que o app já fazia.
+//
+// A v1.1 do HTML (ago/2026) ficou de fora do bump de propósito: ela acrescentou
+// o direito de arrependimento de 7 dias (art. 49 CDC), detalhou o cancelamento
+// e documentou o plano Open Finance, que o checkout JÁ vendia — ou seja,
+// corrigiu documentação atrasada e ampliou direitos. Nada que restrinja o
+// usuário. Se um dia o Eduardo quiser o aceite renovado, o caminho é: e-mail
+// aos clientes → esperar 15 dias → bumpar para '1.1'.
 export const TERMS_VERSION = '1.0';
 
 const TABLE = 'terms_acceptances';
