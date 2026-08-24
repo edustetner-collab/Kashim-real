@@ -47,7 +47,7 @@ const CategorizePopup: React.FC<CategorizePopupProps> = ({ count, onCategorize, 
 
   return (
     <div
-      className="fixed inset-0 z-[300] flex items-end justify-center bg-black/75 backdrop-blur-sm"
+      className="fixed inset-0 z-[300] flex items-center justify-center overflow-y-auto bg-black/75 p-4 backdrop-blur-sm"
       onClick={onDismiss}
       role="dialog"
       aria-modal="true"
@@ -60,7 +60,7 @@ const CategorizePopup: React.FC<CategorizePopupProps> = ({ count, onCategorize, 
           opacity: shown ? 1 : 0,
           transition: 'transform .5s cubic-bezier(.16,1,.3,1), opacity .5s cubic-bezier(.16,1,.3,1)',
         }}
-        className="w-full max-w-md m-2.5 rounded-[30px] border border-white/15 bg-gradient-to-b from-zinc-800 to-zinc-900 p-6 pt-5 shadow-2xl"
+        className="w-full max-w-md my-auto rounded-[30px] border border-white/15 bg-gradient-to-b from-zinc-800 to-zinc-900 p-6 pt-5 shadow-2xl"
       >
         <div className="w-9 h-1 rounded-full bg-white/15 mx-auto mb-5" />
 
@@ -80,7 +80,7 @@ const CategorizePopup: React.FC<CategorizePopupProps> = ({ count, onCategorize, 
         </p>
         <p
           className="text-center text-white font-black italic tabular-nums leading-none"
-          style={{ fontSize: 96, letterSpacing: '-0.04em', textShadow: '0 0 40px rgba(34,197,94,.28)' }}
+          style={{ fontSize: 'clamp(64px, 22vw, 96px)', letterSpacing: '-0.04em', textShadow: '0 0 40px rgba(34,197,94,.28)' }}
         >
           {display}
         </p>

@@ -94,6 +94,18 @@ function mixHex(a: string, b: string, t: number): string {
   return `rgb(${c[0]},${c[1]},${c[2]})`;
 }
 
+/**
+ * Comparação de pilar contra o ideal, na MESMA escala que o cliente vê.
+ *
+ * Regra do Eduardo (2026-08-24): bater o limite não é erro — quem fecha a conta
+ * fixa em 56% com ideal de 55% cumpriu o que planejou. Só passar do limite é
+ * problema. Por isso a comparação é feita nos pontos percentuais arredondados,
+ * com 1 ponto de folga: 56% contra 55% é "no limite", 57% é que estoura.
+ */
+const pp = (v: number) => Math.round(v * 100);
+const isOver = (real: number, ideal: number) => pp(real) > pp(ideal) + 1;
+const atLimit = (real: number, ideal: number) => pp(real) > pp(ideal);
+
 type StatusKey = 'ok' | 'warn' | 'over';
 
 /** Paleta dos selos — tons Apple-like (fundo pastel, traço saturado). */
@@ -133,13 +145,17 @@ interface PillarBarProps {
 }
 
 const PillarBar: React.FC<PillarBarProps> = ({ name, value, realPct, idealPct, color, glow, dir }) => {
-  const noData = value <= 0;
+  // Só pilar de CUSTO fica "sem lançamentos". Em "Para juntar" um valor
+  // negativo é informação real (o mês fechou no vermelho), não ausência de dado.
+  const noData = dir === 'cost' && value <= 0;
 
   // 'save' (Para juntar) é a variável BOA: guardar qualquer coisa positiva já
-  // conta. Nos pilares de custo, passar do ideal é que é ruim.
+  // conta. Nos pilares de custo, BATER o limite não é erro — só PASSAR dele é
+  // (regra do Eduardo: quem fecha em 56% com ideal 55% cumpriu o plano).
   let status: StatusKey;
-  if (dir === 'save') status = realPct <= 0 ? 'over' : realPct < IDEAL_LIMITS.SAVINGS / 2 ? 'warn' : 'ok';
-  else status = noData ? 'warn' : realPct > idealPct + 0.005 ? 'over' : 'ok';
+  if (dir === 'save') status = realPct <= 0 ? 'over' : realPct >= idealPct ? 'ok' : 'warn';
+  else if (noData) status = 'warn';
+  else status = isOver(realPct, idealPct) ? 'over' : atLimit(realPct, idealPct) ? 'warn' : 'ok';
 
   const barColor = noData ? '#d2d2d7'
     : dir === 'save' ? mixHex('#166534', '#84cc16', realPct / idealPct)
@@ -180,7 +196,7 @@ const PillarBar: React.FC<PillarBarProps> = ({ name, value, realPct, idealPct, c
   return (
     <div className="rounded-2xl" style={{ background: rowBg, border: `1px solid ${rowBorder}` }}>
       {/* ── DESKTOP: grid de 4 colunas, título com espaço de sobra ── */}
-      <div className="hidden sm:grid items-center" style={{ gridTemplateColumns: '30px 158px 1fr 92px', gap: 16, padding: '13px 16px' }}>
+      <div className="hidden lg:grid items-center" style={{ gridTemplateColumns: '30px 158px 1fr 92px', gap: 16, padding: '13px 16px' }}>
         <StatusBadge status={status} />
         <div className="flex items-center gap-2.5 min-w-0">
           {swatch}
@@ -199,7 +215,7 @@ const PillarBar: React.FC<PillarBarProps> = ({ name, value, realPct, idealPct, c
       </div>
 
       {/* ── CELULAR: título em linha própria (não trunca), barra abaixo ── */}
-      <div className="sm:hidden flex flex-col gap-2.5" style={{ padding: '13px 14px' }}>
+      <div className="lg:hidden flex flex-col gap-2.5" style={{ padding: '13px 14px' }}>
         <div className="flex items-center gap-2.5">
           <StatusBadge status={status} />
           {swatch}
@@ -216,6 +232,76 @@ const PillarBar: React.FC<PillarBarProps> = ({ name, value, realPct, idealPct, c
   );
 };
 
+interface Verdict { titulo: string; texto: string; acao: string; }
+
+/**
+ * O veredito do mês — quem é o culpado de verdade.
+ *
+ * Antes daqui, fechar no vermelho sempre imprimia "reduza a conta fixa". Isso
+ * mente quando a conta fixa está dentro do plano: em 2026-08-24 o Eduardo viu
+ * conta fixa 56% (ideal 55%), educação 0% e lazer 15% — os três pilares em dia —
+ * e mesmo assim o app mandava cortar conta fixa. O buraco estava FORA dos
+ * pilares: variáveis, fatura de cartão e gasto ainda não categorizado.
+ *
+ * A ordem da acusação é a mesma que o consultor usa: primeiro o pilar que
+ * ESTOUROU (não o que apenas bateu o limite); se nenhum estourou, o vazamento
+ * está no que não entra nos pilares.
+ */
+function buildVerdict(a: {
+  income: number; balance: number;
+  fixedPct: number; eduPct: number; leisurePct: number; savePct: number;
+  variable: number; fora: number;
+}): Verdict {
+  const { balance, fixedPct, eduPct, leisurePct, savePct, variable, fora } = a;
+
+  if (balance >= 0) {
+    if (savePct >= IDEAL_LIMITS.SAVINGS) return {
+      titulo: 'Mês fechado como manda o plano.',
+      texto: `Você guarda ${asPct(savePct)} da renda — acima da meta de ${asPct(IDEAL_LIMITS.SAVINGS)}. É assim que se constrói patrimônio.`,
+      acao: 'Mantenha o ritmo e direcione a sobra para as suas metas.',
+    };
+    return {
+      titulo: 'Você fecha no positivo.',
+      texto: `Sobram ${asPct(savePct)} da renda para juntar. A meta é ${asPct(IDEAL_LIMITS.SAVINGS)} — falta pouco.`,
+      acao: 'Ataque o maior gasto que não é essencial e leve essa diferença para a meta.',
+    };
+  }
+
+  // Fechou no vermelho. Quem passou do limite? (`de` já vem contraído para não
+  // ter que adivinhar gênero na hora de montar a frase)
+  const estourados = ([
+    { nome: 'conta fixa', de: 'da conta fixa', ela: 'A conta fixa', pct: fixedPct, ideal: IDEAL_LIMITS.FIXED,
+      acao: 'Reduzir conta fixa é o caminho mais rápido: renegocie ou corte o que não é essencial.' },
+    { nome: 'lazer / pessoal', de: 'do lazer', ela: 'O lazer / pessoal', pct: leisurePct, ideal: IDEAL_LIMITS.LEISURE,
+      acao: 'Segurar o lazer neste mês é o ajuste mais rápido para virar o jogo.' },
+    { nome: 'educação', de: 'da educação', ela: 'A educação', pct: eduPct, ideal: IDEAL_LIMITS.EDUCATION,
+      acao: 'A educação passou do teto de 10%. É dívida boa, mas precisa caber no plano.' },
+  ] as const)
+    .filter(p => isOver(p.pct, p.ideal))
+    .sort((x, y) => (y.pct - y.ideal) - (x.pct - x.ideal));
+
+  if (estourados.length > 0) {
+    const p = estourados[0];
+    const outros = estourados.slice(1).map(o => o.nome).join(' e ');
+    return {
+      titulo: `O mês fecha no vermelho por causa ${p.de}.`,
+      texto: `${p.ela} está em ${asPct(p.pct)}, acima do ideal de ${asPct(p.ideal)}`
+        + (outros ? `, e ${outros} também passou do limite.` : '.'),
+      acao: p.acao,
+    };
+  }
+
+  // Nenhum pilar estourou — o dinheiro está indo para fora deles.
+  return {
+    titulo: 'Seus pilares estão em dia. O vazamento está fora deles.',
+    texto: `Conta fixa, educação e lazer estão dentro do plano — o problema não está aí. `
+      + `${fora > 0 ? `São ${formatCurrency(fora)} em ` : 'O buraco está em '}`
+      + `gastos variáveis, fatura de cartão e lançamentos ainda não categorizados`
+      + `${variable > 0 ? ` (só as variáveis já somam ${formatCurrency(variable)})` : ''}. É aí que precisa olhar.`,
+    acao: 'Abra Gastos e confira as variáveis e a fatura do cartão — é onde o dinheiro está saindo.',
+  };
+}
+
 const Diagnosis: React.FC<DiagnosisProps> = ({ summary, items, monthIdx, monthName, isCurrentMonth }) => {
   const income = summary.totalIncome;
   const t = getPlanTotals(items, monthIdx);
@@ -228,7 +314,16 @@ const Diagnosis: React.FC<DiagnosisProps> = ({ summary, items, monthIdx, monthNa
   const tier = contaFixaTier(fixedPct);
   const metaValor = income * IDEAL_LIMITS.FIXED;
   const balOk = summary.balance >= 0;
-  const saveOk = savePct >= IDEAL_LIMITS.SAVINGS;
+
+  // Quanto saiu ALÉM dos pilares (variáveis, fatura de cartão, não categorizado).
+  // É a diferença entre o que deveria sobrar olhando só os pilares e o que de
+  // fato sobrou — o número que explica um vermelho com os pilares em dia.
+  const fora = Math.max(0, (income - t.fixedCore - t.education - t.leisure) - summary.balance);
+  const verdict = buildVerdict({
+    income, balance: summary.balance,
+    fixedPct, eduPct, leisurePct, savePct,
+    variable: t.variable, fora,
+  });
 
   const TIERS: { k: TierKey; label: string }[] = [
     { k: 'bom', label: 'Saudável' }, { k: 'limite', label: 'No limite' },
@@ -283,14 +378,17 @@ const Diagnosis: React.FC<DiagnosisProps> = ({ summary, items, monthIdx, monthNa
               style={{ background: `${tier.color}22`, color: tier.color }}>
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: tier.color }}></span>{tier.badge}
             </span>
-            <h4 className="text-white font-black text-2xl md:text-3xl leading-tight tracking-tight" style={{ textWrap: 'balance' }}>{tier.headline}</h4>
-            <p className="text-zinc-400 text-sm leading-relaxed mt-2 max-w-xl mx-auto md:mx-0">{tier.msg}</p>
+            {/* Manchete e ação vêm do veredito do MÊS (olha os quatro pilares),
+                não só da faixa de conta fixa — senão o app manda cortar conta
+                fixa que já está dentro do plano. */}
+            <h4 className="text-white font-black text-2xl md:text-3xl leading-tight tracking-tight" style={{ textWrap: 'balance' }}>{verdict.titulo}</h4>
+            <p className="text-zinc-400 text-sm leading-relaxed mt-2 max-w-xl mx-auto md:mx-0">{verdict.texto}</p>
 
             <div className="mt-4 rounded-2xl bg-white/5 border border-white/10 p-3.5 flex items-start gap-3 text-left">
               <i className="fas fa-circle-check mt-0.5" style={{ color: tier.color }}></i>
               <div>
                 <div className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-0.5">O que fazer agora</div>
-                <div className="text-zinc-100 text-sm font-semibold leading-snug">{tier.acao}</div>
+                <div className="text-zinc-100 text-sm font-semibold leading-snug">{verdict.acao}</div>
               </div>
             </div>
 
@@ -327,22 +425,16 @@ const Diagnosis: React.FC<DiagnosisProps> = ({ summary, items, monthIdx, monthNa
         <PillarBar name="Conta fixa" value={t.fixedCore} realPct={fixedPct} idealPct={IDEAL_LIMITS.FIXED} color={tier.color} glow={tier.glow} dir="cost" />
         <PillarBar name="Educação" value={t.education} realPct={eduPct} idealPct={IDEAL_LIMITS.EDUCATION} color="#007aff" glow="rgba(0,122,255,0.28)" dir="cost" />
         <PillarBar name="Lazer / Pessoal" value={t.leisure} realPct={leisurePct} idealPct={IDEAL_LIMITS.LEISURE} color="#7c3aed" glow="rgba(124,58,237,0.28)" dir="cost" />
-        <PillarBar name="Para juntar" value={Math.max(0, summary.balance)} realPct={savePct} idealPct={IDEAL_LIMITS.SAVINGS} color="#00b8a9" glow="rgba(0,184,169,0.28)" dir="save" />
+        {/* Valor REAL (pode ser negativo) — mostrar R$ 0,00 ao lado de -229%
+            fazia o cliente duvidar do número. */}
+        <PillarBar name="Para juntar" value={summary.balance} realPct={savePct} idealPct={IDEAL_LIMITS.SAVINGS} color="#00b8a9" glow="rgba(0,184,169,0.28)" dir="save" />
       </div>
 
-      {/* Sobra do mês */}
-      <div className={`mt-5 rounded-2xl border p-4 flex items-center justify-between gap-3 ${balOk ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-        <div>
+      {/* Sobra do mês — mesmo veredito do topo, sem repetir palavra por palavra */}
+      <div className={`mt-5 rounded-2xl border p-4 flex items-center justify-between gap-3 flex-wrap ${balOk ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+        <div className="min-w-0 flex-1">
           <div className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Sobra do mês · o que vai para juntar</div>
-          <div className="text-[12px] text-zinc-600 font-semibold mt-0.5 max-w-md">
-            {!balOk
-              ? 'Você fecha no vermelho — não sobra para juntar. Reduzir a conta fixa é o caminho mais rápido para virar o jogo.'
-              : saveOk
-                ? `Você guarda ${asPct(savePct)} da renda — você está fora da curva! Menos de 1% das pessoas chega aqui. Patrimônio garantido.`
-                : savePct >= 0.10
-                  ? `Você guarda ${asPct(savePct)} da renda — isso é muito bom! Você já está bem à frente da maioria. Rumo aos ${asPct(IDEAL_LIMITS.SAVINGS)}.`
-                  : `Você já fecha no positivo, guardando ${asPct(savePct)}. Ótimo — continue e vá crescendo rumo aos ${asPct(IDEAL_LIMITS.SAVINGS)}.`}
-          </div>
+          <div className="text-[12px] text-zinc-600 font-semibold mt-0.5 max-w-md">{verdict.texto}</div>
         </div>
         <div className={`font-black text-xl tabular-nums shrink-0 ${balOk ? 'text-green-700' : 'text-red-600'}`}>{formatCurrency(summary.balance)}</div>
       </div>

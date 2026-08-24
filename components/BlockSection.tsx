@@ -903,11 +903,15 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                 type SrcRow = { key: string; label: string; total: number; isCredit: boolean };
                 const srcMap = new Map<string, SrcRow>();
                 for (const p of partials) {
-                  const key = (p as any).paymentSource === 'credit' ? `credit_${(p as any).cardLast4 ?? ''}` : 'debit';
-                  if (!srcMap.has(key)) {
-                    srcMap.set(key, { key, label: (p as any).paymentSource === 'credit' ? `Cartão ••${(p as any).cardLast4 ?? '?'}` : 'Débito / Pix', total: 0, isCredit: (p as any).paymentSource === 'credit' });
+                  // getSourceInfo (e não `paymentSource === 'credit'` solto): sem
+                  // esse campo, o lançamento herda o cartão declarado na LINHA.
+                  // Era por isso que gasto antigo do Mercado, todo no cartão
+                  // Latam, aparecia aqui como "Débito / Pix".
+                  const src = getSourceInfo(p, item, allCards);
+                  if (!srcMap.has(src.key)) {
+                    srcMap.set(src.key, { key: src.key, label: src.label, total: 0, isCredit: src.isCredit });
                   }
-                  srcMap.get(key)!.total += (p as any).value;
+                  srcMap.get(src.key)!.total += (p as any).value;
                 }
                 const rows = Array.from(srcMap.values());
                 const totalSpent = rows.reduce((sum, r) => sum + r.total, 0);
