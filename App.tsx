@@ -1518,6 +1518,27 @@ const App: React.FC = () => {
     const creditCardItems = items.filter(i => i.category === CategoryType.CREDIT_CARD);
     let accumulated = 0;
 
+    /**
+     * O mês que o cliente está GERENCIANDO — não necessariamente o mês do
+     * calendário. É dele que sai a regra "o que está no cartão sai daqui e vira
+     * fatura no mês seguinte".
+     *
+     * Antes daqui a referência era só `new Date()`. Quando o plano começa depois
+     * do mês real (a família planeja setembro ainda em agosto), a PRIMEIRA
+     * coluna caía como "mês futuro" e somava a despesa de cartão que só vai
+     * sair na fatura do mês seguinte. Em 2026-08-24 isso inflou a conta fixa do
+     * Carol e Alex em R$ 2.100 (mercado 1.400 + transporte 600 + streaming 100)
+     * na frente do cliente.
+     *
+     * Por isso a referência é o mais TARDE entre hoje e o início do plano:
+     * assim a primeira coluna é sempre o mês corrente, e só o que vem depois
+     * dela conta a conta fixa cheia (Opção B — ver conta-fixa-futura).
+     */
+    const absMonth = (year: number, monthIndex: number) => year * 12 + monthIndex;
+    const hojeAbs = absMonth(currentActualYear, currentActualMonth);
+    const inicioPlanoAbs = months[0] ? absMonth(months[0].year, months[0].index) : hojeAbs;
+    const mesCorrenteAbs = Math.max(hojeAbs, inicioPlanoAbs);
+
     for (let m = 0; m < 12; m++) {
       const monthData = months[m];
       const monthKey = monthData ? `${monthData.year}-${monthData.index}` : '';
@@ -1537,12 +1558,10 @@ const App: React.FC = () => {
        * — a menos que o item esteja declarado como cartao, caso em que a sobra
        * tambem cairia na fatura.
        */
-      // Mês estritamente depois do mês real de hoje. O diagnóstico do cliente é
-      // lido nos meses futuros ("planejamento"); o mês corrente é o "real".
-      const isMesFuturo = !!monthData && (
-        monthData.year > currentActualYear ||
-        (monthData.year === currentActualYear && monthData.index > currentActualMonth)
-      );
+      // Mês estritamente depois do mês corrente do plano. O diagnóstico do
+      // cliente é lido nos meses futuros ("planejamento"); o mês corrente é o
+      // "real", e nele o que está no cartão já virou fatura.
+      const isMesFuturo = !!monthData && absMonth(monthData.year, monthData.index) > mesCorrenteAbs;
 
       const desembolsoDoItem = (item: FinanceItem): number => {
         const partials = (item.partialExpenses?.[monthKey] || []) as PartialExpense[];
