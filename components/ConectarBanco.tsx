@@ -258,6 +258,56 @@ async function readJson<T>(res: Response): Promise<T> {
 
 // ─── Sub-views ────────────────────────────────────────────────────────────────
 
+/**
+ * Copia o link de autorização para colar no navegador de verdade.
+ *
+ * Existe por causa de uma armadilha do Open Finance no celular: abrir o link
+ * de dentro do app cai numa janela EMBUTIDA do navegador, e universal link não
+ * dispara de lá. O banco tenta abrir o app dele, não consegue, e conclui que a
+ * pessoa não o tem instalado — a tela do Itaú chega a dizer "você não é
+ * correntista, baixe o aplicativo" para quem está logado no app do Itaú.
+ * Colando o link no Safari/Chrome aberto pela tela inicial, o handoff funciona.
+ */
+const CopyLinkButton: React.FC<{ link: string }> = ({ link }) => {
+  const [copied, setCopied] = React.useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+    } catch {
+      // clipboard bloqueado (contexto inseguro / permissão): seleciona por
+      // textarea temporária, que funciona sem permissão nenhuma.
+      const ta = document.createElement('textarea');
+      ta.value = link;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch { /* sem saída: o texto fica visível abaixo */ }
+      document.body.removeChild(ta);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
+
+  return (
+    <div className="mb-3">
+      <button
+        onClick={copy}
+        className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 font-bold text-xs uppercase tracking-widest rounded-2xl transition-all active:scale-95"
+      >
+        <i className={`fas ${copied ? 'fa-check text-green-400' : 'fa-copy'} mr-2`}></i>
+        {copied ? 'Link copiado' : 'Copiar link da autorização'}
+      </button>
+      <p className="text-zinc-500 text-[11px] leading-snug mt-2 px-1">
+        O banco disse que você <b className="text-zinc-400">não tem o app instalado</b>, mesmo tendo?
+        Copie o link, abra o Safari ou o Chrome pela tela inicial do celular e cole lá.
+        Pela janela que abre de dentro do Kashim, alguns bancos não reconhecem o app.
+      </p>
+    </div>
+  );
+};
+
 type View = 'list' | 'step-identity' | 'step-bank' | 'connecting' | 'authorize' | 'syncing';
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -576,14 +626,24 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
                       {(conn.consentStatus === 'pending_authorization' || conn.consentStatus === 'authorized_fetching') && (
                         <div className="flex items-center gap-3 mt-1.5">
                           {conn.openFinanceLink && (
-                            <a
-                              href={conn.openFinanceLink}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-amber-400 text-xs hover:underline"
-                            >
-                              Retomar autorização →
-                            </a>
+                            <>
+                              <a
+                                href={conn.openFinanceLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-amber-400 text-xs hover:underline"
+                              >
+                                Retomar autorização →
+                              </a>
+                              {/* Mesma saída da tela de autorizar: ver CopyLinkButton */}
+                              <button
+                                onClick={() => { navigator.clipboard?.writeText(conn.openFinanceLink!).catch(() => {}); }}
+                                className="text-zinc-500 hover:text-zinc-300 text-xs transition-colors"
+                                title="Copiar para colar no navegador do celular"
+                              >
+                                <i className="fas fa-copy mr-1"></i>Copiar link
+                              </button>
+                            </>
                           )}
                           <button
                             onClick={() => handleRecheck(conn.id)}
@@ -982,6 +1042,15 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
           >
             <i className="fas fa-external-link mr-2"></i>Abrir autorização do banco
           </a>
+
+          {/* Saída para quando o banco não reconhece o app instalado.
+              `target="_blank"` dentro do app abre uma janela EMBUTIDA (parece
+              Safari, mas não é o app Safari). Bancos como o Itaú tentam abrir o
+              app pelo universal link, e universal link não dispara de dentro de
+              janela embutida — o banco conclui que o app não existe e manda
+              "baixe o aplicativo", mesmo com ele instalado e logado.
+              Colar o link no navegador de verdade contorna isso. */}
+          <CopyLinkButton link={openFinanceLink} />
 
           <button
             onClick={handleCheckAuthorization}
