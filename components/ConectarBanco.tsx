@@ -566,13 +566,33 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
   // ── Renders ────────────────────────────────────────────────────────────────
 
   function resetForm() {
+    clearAccountFields();
+    setView('list');
+  }
+
+  /**
+   * Limpa banco/agência/conta — SEM mexer na view.
+   *
+   * Precisa existir separado do `resetForm` porque conectar um segundo banco
+   * mantinha na tela a agência e a conta do banco anterior. O cliente escolhia
+   * o novo banco, os campos já vinham preenchidos com os dados do antigo e ele
+   * seguia sem notar.
+   *
+   * Foi assim que nasceu a conta `GYH7xSpwEn`: Itaú (341) gravado com agência
+   * 1667 e conta 1877-5, que são as do Bradesco. Como a Technospeed compara
+   * esses dados com o que o banco devolve no Open Finance Brasil, o Itaú não
+   * encontrava o correntista e respondia "você não é correntista, baixe o
+   * aplicativo" — mensagem que mandava investigar o app instalado, quando o
+   * problema era o cadastro.
+   */
+  function clearAccountFields() {
     setSelectedBank(null);
+    setBankQuery('');
     setAgency('');
     setAgencyDigit('');
     setAccountNumber('');
     setAccountNumberDigit('');
     setError('');
-    setView('list');
   }
 
   // ─── View: list ────────────────────────────────────────────────────────────
@@ -670,7 +690,9 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
           )}
 
           <button
-            onClick={() => setView('step-identity')}
+            // Limpa antes de entrar: sem isso o segundo banco herdava a agência
+            // e a conta do primeiro (ver clearAccountFields).
+            onClick={() => { clearAccountFields(); setView('step-identity'); }}
             className="w-full py-4 bg-green-500 hover:bg-green-400 text-black font-black uppercase tracking-widest text-sm rounded-2xl transition-all active:scale-95"
           >
             <i className="fas fa-plus mr-2"></i>Conectar banco
@@ -869,7 +891,15 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
                     return (
                       <button
                         key={bank.id}
-                        onClick={() => setSelectedBank(bank)}
+                        // Trocar de banco zera agência/conta: os dados são de
+                        // UMA conta específica e não se aproveitam entre bancos.
+                        onClick={() => {
+                          if (selectedBank?.id !== bank.id) {
+                            setAgency(''); setAgencyDigit('');
+                            setAccountNumber(''); setAccountNumberDigit('');
+                          }
+                          setSelectedBank(bank);
+                        }}
                         className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${active ? 'bg-green-500/15' : 'hover:bg-zinc-800/70'}`}
                       >
                         <BankAvatar bank={bank} />
