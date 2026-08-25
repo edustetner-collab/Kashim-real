@@ -442,18 +442,40 @@ reaproveita o protocolo dentro da janela de 6h (`last_protocol_id` /
 
 ---
 
-## Dúvida de desenho ainda aberta
+## Dúvida de desenho — RESPONDIDA pela Technospeed (chamado #884775, 2026-08-21)
 
-A tela pede banco, agência e conta. Mas o artigo "Criar Pagador e Conta" e o
-vídeo de lançamento dizem que **o cliente escolhe o banco dentro do conector da
-Technospeed** — ou seja, ele escolheria duas vezes.
+Era: a tela deve continuar pedindo banco, agência e conta, se o conector da
+Technospeed já deixa o cliente escolher o banco? E por que o enum de `bankCode`
+do `POST /account` só tem 18 códigos, sem Nubank?
 
-Pior: o enum de `bankCode` do `POST /account` aceita só 18 códigos corporativos e
-**não inclui Nubank (260)**, embora o Open Finance suporte 47 instituições.
+**Respostas oficiais (Matheus Caccia Ribeiro):**
 
-Se a resposta do chamado for "o `bankCode` é apenas formal", a tela simplifica
-muito: cliente informa só o CPF e vai direto para a autorização, e o seletor de
-bancos sai inteiro. **Por isso não vale mexer na tela antes da resposta.**
+| # | Pergunta | Resposta |
+|---|---|---|
+| a | `bankCode` para PF do Nubank | Enviar **`statementActived: true`**. Com a flag, valem os bancos do artigo de Extrato; sem ela a API trata o cadastro como API de Pagamentos, que homologa menos bancos. **É isso que explica o enum de 18.** |
+| b | O `bankCode` precisa bater com o banco escolhido depois? | **Sim, e é validado.** "Como a conexão é realizada e comparado os dados entre o que está na API para o que o banco está mandando no Open Finance Brasil, se tiver alguma divergência, não irá conseguir realizar a conexão." |
+| c | Pode enviar qualquer COMPE, inclusive `000`? | **Não existe `000`.** É COMPE real de 3 dígitos: InfinitePay 777/778, Méliuz 720. |
+| d | Dá para simplificar a tela e mandar dados genéricos? | **Não.** "Deverá solicitar os dados devido a conexão necessitar dos dados reais da conta." |
+| e | Endpoint do webhook | `POST /api/v1/notification` — [createNotification](https://docs.pagamentobancario.com.br/#tag/notification/operation/createNotification) |
+| f | Webhook é por SH ou por pagador? | **Por pagador.** "Para cada pagador, deverá ser realizado o cadastro dos WH." |
+| g | Dá para autenticar a chamada deles? | Sim, pelo campo `headers` do cadastro. |
+| h | Limite de 6h é por conta ou por SH? | **Por `accountHash`.** Cada conta consulta a cada 6h. |
+
+**Consequências já aplicadas:**
+
+- A tela **continua pedindo** banco/agência/conta. Dúvida encerrada — não
+  simplificar. O `statementActived: true` já era enviado no `createAccount`.
+- **9 bancos tinham `bankCode` errado e nunca conectariam** (item "b" é
+  validação dura, não formalidade): Neon 536→426, XP 348→102, Porto Bank
+  724→306, RecargaPay 301→767, Méliuz/InfinitePay/Rede Celcoin/PagueVeloz/Midway
+  saíram do `000` inventado para 720/777/509/814/358. Banco Paulista saiu da
+  tela — não consta na lista de Extrato.
+- Isso também explica o Itaú `zy2Z3xmvyg`: cadastrado com agência **1667** sendo
+  a real **7440**. Divergência = não conecta. Não era problema do banco.
+
+**Ainda pendente:** cadastrar o webhook por pagador dentro do `ensurePayer`
+(hoje `api/of-webhook.ts` recebe evento, mas nada registra a URL na Technospeed —
+então os eventos nunca chegam).
 
 ---
 

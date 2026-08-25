@@ -26,8 +26,8 @@ Tecnospeed.
 
 | Item | Situação |
 |---|---|
-| Itaú | `zy2Z3xmvyg` deu `FALHA` com `openfinanceId` `6c6fe044-…`; as de agência 7440 seguem `PENDENTE_ATIVACAO`. Chamado aberto. |
-| Webhook | Cadastro é **por pagador** (`payercpfcnpj` obrigatório). Nunca cadastrado — precisa ir dentro do `ensurePayer`. |
+| Itaú | `zy2Z3xmvyg` foi cadastrado com agência **1667** sendo a real **7440**. A Technospeed confirmou (#884775) que dado divergente **não conecta** — era erro nosso de cadastro, não do banco. Recadastrar com os dados corretos. |
+| Webhook | **Confirmado por eles: cadastro é por PAGADOR**, em `POST /api/v1/notification`, com o segredo no campo `headers`. Nunca cadastrado — precisa ir dentro do `ensurePayer`. Enquanto não for, `of-webhook.ts` nunca recebe nada. |
 | Programa de Incentivo | Comprovante pronto: protocolo `ETnif0f_tI-ys4` (produção, com transações). Falta abrir o ticket. |
 
 ## Migrações — TODAS já rodadas, menos uma

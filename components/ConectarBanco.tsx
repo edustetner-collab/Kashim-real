@@ -29,8 +29,16 @@ interface Props {
  * Fonte: artigo "Bancos Disponíveis para Extratos Open Finance" (rev. 2026-07-28).
  *
  * Atenção: este NÃO é o enum `bankCode` de POST /api/v1/account — aquele é do
- * produto de pagamentos (CNAB) e tem só 18 códigos corporativos. O Open Finance
- * usa esta lista, que inclui código '000' para carteiras sem COMPE próprio.
+ * produto de pagamentos (CNAB) e tem só 18 códigos corporativos. O que decide
+ * qual lista vale é `statementActived: true` no cadastro da conta (confirmado
+ * pela Technospeed no chamado #884775, 2026-08-21): com a flag, valem os
+ * bancos deste artigo; sem ela, a API trata como cadastro de pagamentos.
+ *
+ * O `code` PRECISA ser o COMPE real da instituição. Não existe código '000'
+ * genérico — isso era invenção nossa e travava a conexão de 9 bancos, porque
+ * a Technospeed compara banco/agência/conta com o que o banco devolve no Open
+ * Finance Brasil e recusa qualquer divergência (mesma resposta, item "b").
+ * Ao acrescentar banco novo, conferir o código no artigo — nunca deduzir.
  */
 interface Bank {
   /** identificador único — `code` se repete (Bradesco e Next são ambos 237) */
@@ -60,8 +68,8 @@ const BANKS: Bank[] = [
   { id: 'picpay',      code: '380', name: 'PicPay' },
   { id: 'mercadopago', code: '323', name: 'Mercado Pago',      alias: 'mp meli' },
   { id: 'pagbank',     code: '290', name: 'PagBank',           alias: 'pagseguro' },
-  { id: 'neon',        code: '536', name: 'Neon' },
-  { id: 'xp',          code: '348', name: 'XP Banking',        alias: 'xp investimentos' },
+  { id: 'neon',        code: '426', name: 'Neon' },
+  { id: 'xp',          code: '102', name: 'XP Banking',        alias: 'xp investimentos' },
   { id: 'sicredi',     code: '748', name: 'Sicredi' },
   { id: 'sicoob',      code: '756', name: 'Sicoob' },
   { id: 'next',        code: '237', name: 'Next',              alias: 'bradesco digital', logo: 'bradesco' },
@@ -78,19 +86,18 @@ const BANKS: Bank[] = [
   { id: 'bnb',         code: '004', name: 'Banco do Nordeste', alias: 'bnb' },
   { id: 'mercantil',   code: '389', name: 'Banco Mercantil' },
   { id: 'sofisa',      code: '637', name: 'Banco Sofisa',      alias: 'sofisa direto' },
-  { id: 'paulista',    code: '611', name: 'Banco Paulista' },
-  { id: 'portobank',   code: '724', name: 'Porto Bank',        alias: 'porto seguro' },
+  { id: 'portobank',   code: '306', name: 'Porto Bank',        alias: 'porto seguro' },
   { id: 'stone',       code: '197', name: 'Stone Pagamentos',  alias: 'stone' },
-  { id: 'recargapay',  code: '301', name: 'RecargaPay' },
+  { id: 'recargapay',  code: '767', name: 'RecargaPay' },
   { id: 'necton',      code: '208', name: 'Necton',            alias: 'corretora btg' },
   { id: 'woop',        code: '748', name: 'Woop',              alias: 'woop sicredi' },
   { id: 'caixatem',    code: '104', name: 'Caixa Tem',         alias: 'poupanca digital caixa' },
   { id: 'uberconta',   code: '335', name: 'Uber Conta',        alias: 'uber digio' },
-  { id: 'meliuz',      code: '000', name: 'Méliuz' },
-  { id: 'infinitepay', code: '000', name: 'InfinitePay' },
-  { id: 'celcoin',     code: '000', name: 'Rede Celcoin',      alias: 'celcoin' },
-  { id: 'pagueveloz',  code: '000', name: 'PagueVeloz',        alias: 'serasa' },
-  { id: 'midway',      code: '000', name: 'Midway',            alias: 'riachuelo' },
+  { id: 'meliuz',      code: '720', name: 'Méliuz' },
+  { id: 'infinitepay', code: '777', name: 'InfinitePay' },
+  { id: 'celcoin',     code: '509', name: 'Rede Celcoin',      alias: 'celcoin' },
+  { id: 'pagueveloz',  code: '814', name: 'PagueVeloz',        alias: 'serasa pague veloz' },
+  { id: 'midway',      code: '358', name: 'Midway',            alias: 'riachuelo' },
 ];
 
 /** Círculo com o logo do banco em alto relevo */
