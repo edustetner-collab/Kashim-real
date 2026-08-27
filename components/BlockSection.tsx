@@ -498,13 +498,17 @@ const BlockSection: React.FC<BlockSectionProps> = ({
         return (
           <div className="bg-[#fff8e6] border-b border-[rgba(224,155,0,0.22)] px-4 py-2.5 flex items-start gap-2.5">
             <i className="fas fa-lightbulb text-[#e09b00] text-[11px] mt-[2px] shrink-0"></i>
+            {/* Texto escrito pelo Eduardo (2026-08-27). O que ele marcou em
+                vermelho fica em vermelho; o resto mantém o tom do aviso. */}
             <p className="text-[10.5px] text-[#8a6100] leading-snug">
-              <b className="font-black">
-                {semForma === 1 ? 'Falta dizer como você paga 1 conta.' : `Faltam ${semForma} contas sem forma de pagamento.`}
-              </b>{' '}
-              Escolha uma forma para cada conta e mantenha — alternar entre débito e cartão
-              no mesmo gasto faz o dinheiro sair em meses diferentes e o seu caixa balançar
-              sem motivo.
+              <b className="font-black text-[#e01b00]">
+                {semForma === 1
+                  ? 'Falta 1 conta sem forma de pagamento definida'
+                  : `Faltam ${semForma} contas sem forma de pagamento definida`}
+              </b>
+              {' – '}Escolha uma forma de pagamento específica para cada uma delas{' '}
+              <span className="text-[#e01b00]">e não fique mudando (parte no pix, parte no crédito)</span>,
+              pois isso gera desequilíbrio nos meses futuros e prejudica sua organização financeira.
             </p>
           </div>
         );
@@ -872,6 +876,11 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                     ) : (
                       <div className="flex flex-col gap-1.5 bg-[#f5f5f7] border border-[#e8e8ed] rounded-xl p-2.5">
                         <div className="text-[8px] font-black text-[#aeaeb2] uppercase tracking-widest">Forma de pagamento</div>
+                        {/* Reforço na hora da escolha — texto do Eduardo (2026-08-27). */}
+                        <p className="text-[9.5px] leading-snug text-[#6e6e73]">
+                          <span className="text-[#e01b00]">Escolha uma forma específica de pagamento e não fique alternando,</span>{' '}
+                          isso vai te ajudar a se manter organizado/a.
+                        </p>
                         {/* Row 1: Débito | Cartão | ✕ */}
                         <div className="flex items-center gap-2">
                           <button
@@ -1152,7 +1161,13 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           <i className="fas fa-pen text-[7px] ml-0.5 opacity-50"></i>
                         </button>
                         {isOpen && (
-                        <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                        <div className="flex flex-col gap-1 mt-0.5">
+                        {/* Mesmo reforço da versão desktop — texto do Eduardo. */}
+                        <p className="text-[9px] leading-snug text-[#6e6e73]">
+                          <span className="text-[#e01b00]">Escolha uma forma específica de pagamento e não fique alternando,</span>{' '}
+                          isso vai te ajudar a se manter organizado/a.
+                        </p>
+                        <div className="flex items-center gap-1 flex-wrap">
                           <button
                             onClick={() => { onLinkCard(item.id, '', LinkType.DEBIT); setOpenPaymentItemId(null); }}
                             className="px-2 py-0.5 rounded text-[9px] font-black bg-zinc-100 hover:bg-zinc-200 text-zinc-700 border border-zinc-300 transition-all"
@@ -1191,6 +1206,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           <button onClick={() => setOpenPaymentItemId(null)} className="text-zinc-400 hover:text-zinc-700 p-0.5">
                             <i className="fas fa-times text-[9px]"></i>
                           </button>
+                        </div>
                         </div>
                         )}
                       </div>
