@@ -1534,8 +1534,6 @@ const App: React.FC = () => {
     for (let m = 0; m < 12; m++) {
       const monthData = months[m];
       const monthKey = monthData ? `${monthData.year}-${monthData.index}` : '';
-      const prevMonthData = m > 0 ? months[m - 1] : null;
-      const prevMonthKey = prevMonthData ? `${prevMonthData.year}-${prevMonthData.index}` : null;
 
       const totalIncome = items
         .filter(i => i.category === CategoryType.INCOME)
@@ -1593,47 +1591,26 @@ const App: React.FC = () => {
       const totalVariable = somaDesembolso(CategoryType.VARIABLE_EXPENSE);
       const totalLeisure = somaDesembolso(CategoryType.PERSONAL_LEISURE);
 
-      // Fatura do mes.
-      //
-      // MES CORRENTE E PASSADOS: o valor informado manda sozinho e substitui
-      // qualquer projecao (decisao do Eduardo, 2026-08-25). A fatura ja fechou e
-      // o cliente a atualizou com o numero real; somar previsao duplicaria.
-      //
-      // O valor informado MANDA e substitui a projecao, em qualquer mes. Somar
-      // previsao a ele duplica: a fatura informada dos meses distantes ja contem
-      // as parcelas conhecidas, e somar de novo inflou outubro em R$ 414,73 no
-      // caso real (2026-08-25). A projecao so entra quando nao ha valor
-      // informado nenhum.
+      /**
+       * Fatura do mes = a SOMA DAS FATURAS INFORMADAS nos cartoes. Nada mais.
+       *
+       * A Compilacao tem que bater com o "Total Faturas" da tela de cartoes,
+       * sempre. Se la mostra R$ 13,00, aqui e R$ 13,00.
+       *
+       * NAO REINTRODUZIR PROJECAO AQUI. Ja existiu, e em 2026-08-27 um cliente
+       * (Diego Costa) tinha R$ 13,00 de fatura informada em dezembro e a
+       * Compilacao mostrava R$ 2.657,64 — a diferenca era conta fixa declarada
+       * no cartao sendo "projetada" para uma fatura que o cliente ja tinha
+       * informado como zero. Numero inventado, sem origem visivel em tela
+       * nenhuma, e impossivel de explicar para o cliente.
+       *
+       * Se um dia a previsao de fatura voltar a ser desejada, ela precisa
+       * aparecer numa LINHA PROPRIA — nunca somada silenciosamente a um valor
+       * que o cliente digitou.
+       */
       const totalCreditCard = items
         .filter(i => i.category === CategoryType.CREDIT_CARD)
-        .reduce((sum, card) => {
-          const enteredFatura = card.values[m] || 0;
-          if (enteredFatura) return sum + enteredFatura;
-          if (!prevMonthKey || m === 0) return sum;
-          const last4 = card.description.match(/••(\d{4})/)?.[1];
-          const projetado = items
-            .filter(i => i.category !== CategoryType.CREDIT_CARD)
-            .reduce((acc, i) => {
-              const partials = (i.partialExpenses?.[prevMonthKey] || []) as PartialExpense[];
-              const lancadoNoCartao = partials.reduce((ps, p) => {
-                const src = getSourceInfo(p, i, creditCardItems);
-                if (!src.isCredit) return ps;
-                // Casa pelo final do cartao; sem o numero, vale o vinculo da linha.
-                if (src.cardLast4 && last4) return src.cardLast4 === last4 ? ps + p.value : ps;
-                return i.linkedCardId === card.id ? ps + p.value : ps;
-              }, 0);
-
-              // Planejado do mes anterior que ainda nao virou lancamento.
-              const declaradoNesteCartao = i.linkedCardId === card.id && i.linkType !== LinkType.DEBIT;
-              const gastoRealPrev = partials.reduce((s, p) => s + p.value, 0);
-              const planejadoRestantePrev = declaradoNesteCartao
-                ? Math.max(0, (i.values[m - 1] || 0) - gastoRealPrev)
-                : 0;
-
-              return acc + lancadoNoCartao + planejadoRestantePrev;
-            }, 0);
-          return sum + projetado;
-        }, 0);
+        .reduce((sum, card) => sum + (card.values[m] || 0), 0);
 
       const totalCost = totalCreditCard + totalFixed + totalVariable + totalLeisure;
       const balance = totalIncome - totalCost;
