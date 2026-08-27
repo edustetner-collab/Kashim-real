@@ -486,8 +486,13 @@ const BlockSection: React.FC<BlockSectionProps> = ({
           Eduardo sempre ensinou na consultoria, virando produto.
           Só aparece quando há conta sem forma definida — some sozinho depois. */}
       {(category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE) && (() => {
-        // Só onde existe forma de pagamento para escolher. Renda e cartão não
-        // têm, e sem este filtro todo item deles caía como "sem forma".
+        // APENAS conta fixa e lazer. Não incluir os outros blocos:
+        //   Renda e Cartão de Crédito não têm forma de pagamento nenhuma — sem
+        //     este filtro todo item deles caía na contagem de "sem forma".
+        //   VARIÁVEIS ficam de fora DE PROPÓSITO (Eduardo, 2026-08-27):
+        //     variável é imprevisto, então não tem — nem deve ter — forma
+        //     definida de antemão. Cobrar isso ali contraria a natureza da
+        //     categoria e só geraria ruído.
         const semForma = items.filter(i => !i.linkedCardId && i.linkType !== LinkType.DEBIT).length;
         if (semForma === 0) return null;
         return (
