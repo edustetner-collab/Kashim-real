@@ -2319,6 +2319,38 @@ const App: React.FC = () => {
                   <div className="text-white/30 text-[11px] mt-2">
                     {months[mobileMonthIdx].monthName} {months[mobileMonthIdx].year}
                   </div>
+
+                  {/* De onde vem o acumulado.
+                      Sem isto a tela mostra dois negativos diferentes — o card
+                      diz -600,97 e o Sobra/Falta diz -4.101,08 — e o que
+                      explica a diferença (o guardado dos meses anteriores) não
+                      aparece em lugar nenhum. Só na web dava para deduzir. */}
+                  {(() => {
+                    const s = monthlySummaries[mobileMonthIdx];
+                    const anterior = s.accumulated - s.balance;
+                    if (Math.abs(anterior) < 0.01) return null;
+                    const salvou = anterior > 0 && s.balance < 0;
+                    return (
+                      <div className="mt-3 pt-3 border-t border-white/10 flex items-center gap-2 flex-wrap text-[11px]">
+                        <span className="text-white/45">
+                          {anterior > 0 ? 'Guardado até aqui' : 'Vinha devendo'}
+                        </span>
+                        <span className={`k-num font-bold ${anterior > 0 ? 'text-[#a8e716]' : 'text-[#ff6b6b]'}`}>
+                          {formatCurrency(anterior)}
+                        </span>
+                        <span className="text-white/25">·</span>
+                        <span className="text-white/45">{s.balance >= 0 ? 'sobrou este mês' : 'faltou este mês'}</span>
+                        <span className={`k-num font-bold ${s.balance >= 0 ? 'text-[#a8e716]' : 'text-[#ff6b6b]'}`}>
+                          {formatCurrency(Math.abs(s.balance))}
+                        </span>
+                        {salvou && (
+                          <span className="w-full text-white/50 mt-1 leading-snug">
+                            O que você guardou antes está segurando o mês.
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>

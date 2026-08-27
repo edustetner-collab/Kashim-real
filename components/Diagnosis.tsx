@@ -438,6 +438,39 @@ const Diagnosis: React.FC<DiagnosisProps> = ({ summary, items, monthIdx, monthNa
         </div>
         <div className={`font-black text-xl tabular-nums shrink-0 ${balOk ? 'text-green-700' : 'text-red-600'}`}>{formatCurrency(summary.balance)}</div>
       </div>
+
+      {/* Onde o mês REALMENTE termina.
+          Os pilares acima medem só este mês contra o salário — e não mudam,
+          de propósito: é a régua do diagnóstico. Mas quem guardou nos meses
+          anteriores fecha em outro lugar, e sem esta linha a tela mostrava dois
+          negativos diferentes sem explicar a diferença (o Hugo via -R$ 4.101
+          aqui e -R$ 601 no card do acumulado). */}
+      {Math.abs(summary.accumulated - summary.balance) >= 0.01 && (() => {
+        const anterior = summary.accumulated - summary.balance;
+        const fechaOk = summary.accumulated >= 0;
+        const salvou = anterior > 0 && !balOk;
+        return (
+          <div className={`mt-2.5 rounded-2xl border p-4 ${fechaOk ? 'bg-green-50/70 border-green-200' : 'bg-zinc-50 border-zinc-200'}`}>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                  Onde {monthName} termina de verdade
+                </div>
+                <div className="text-[12px] text-zinc-600 font-semibold mt-0.5 max-w-md leading-snug">
+                  {salvou
+                    ? `Você fecha ${monthName} em ${formatCurrency(summary.balance)}, mas tinha ${formatCurrency(anterior)} guardado dos meses anteriores. É esse dinheiro que segura o mês.`
+                    : anterior > 0
+                      ? `Somando ${formatCurrency(anterior)} que você já tinha guardado, seu caixa chega em ${formatCurrency(summary.accumulated)}.`
+                      : `Você vinha devendo ${formatCurrency(Math.abs(anterior))} dos meses anteriores, e isso entra na conta.`}
+                </div>
+              </div>
+              <div className={`font-black text-xl tabular-nums shrink-0 ${fechaOk ? 'text-green-700' : 'text-red-600'}`}>
+                {formatCurrency(summary.accumulated)}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
