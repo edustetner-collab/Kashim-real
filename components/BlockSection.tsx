@@ -485,7 +485,9 @@ const BlockSection: React.FC<BlockSectionProps> = ({
           num mês paga o débito E a fatura do mês anterior. É a regra que o
           Eduardo sempre ensinou na consultoria, virando produto.
           Só aparece quando há conta sem forma definida — some sozinho depois. */}
-      {(() => {
+      {(category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE) && (() => {
+        // Só onde existe forma de pagamento para escolher. Renda e cartão não
+        // têm, e sem este filtro todo item deles caía como "sem forma".
         const semForma = items.filter(i => !i.linkedCardId && i.linkType !== LinkType.DEBIT).length;
         if (semForma === 0) return null;
         return (
