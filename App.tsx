@@ -1553,22 +1553,25 @@ const App: React.FC = () => {
       /**
        * O que sai da conta por causa deste item, NESTE mês.
        *
-       * Despesa declarada no cartão não sai daqui em mês nenhum — ela vira
-       * fatura no mês seguinte (ver `projetadoDoCartao` abaixo, que a recebe do
-       * outro lado). Vale para TODOS os meses, não só o corrente.
+       * Despesa declarada no cartão sai daqui no mês corrente E no mês seguinte
+       * — nos dois a fatura correspondente já foi informada pelo cliente, então
+       * contar de novo aqui duplicaria. Do segundo mês em diante ela continua
+       * contando (Opção B, 2026-08-20): é a previsão de quanto o cliente vai
+       * gastar, e é o que sustenta o planejamento.
        *
-       * Isto revisa a "Opção B" de 2026-08-20, que mandava o mês futuro contar a
-       * conta fixa cheia. O efeito colateral era grave na Compilação: o mês
-       * futuro somava a conta fixa cheia MAIS a fatura, misturando o que se
-       * gasta com o que sai da conta, e o acumulado nascia num vermelho que se
-       * desfazia sozinho na virada do mês. O cliente do Eduardo via -R$ 2.594
-       * em setembro para um mês que fecharia em -R$ 344, e ele precisava
-       * explicar isso em toda reunião.
+       * Estender do mês corrente para o SEGUINTE foi o que resolveu o problema
+       * que o Eduardo levava para toda reunião: o acumulado nascia num vermelho
+       * que se desfazia sozinho na virada do mês, e ele tinha que explicar isso
+       * ao cliente. Agora o mês seguinte já mostra o número que vai valer.
        *
-       * A leitura de "quanto a conta fixa pesa no salário" — que era o motivo da
-       * Opção B — não se perde: ela vive no Diagnóstico, que lê os valores
-       * brutos por `getPlanTotals` e não passa por aqui.
+       * Não estender para além disso é deliberado. A fatura dos meses distantes
+       * já contém as parcelas conhecidas; excluir o custo lá e somar a previsão
+       * na fatura duplicava esses valores — verificado no caso real em
+       * 2026-08-25, com R$ 414,73 a mais em outubro.
        */
+      // 0 = mês corrente · 1 = mês seguinte · negativo = passado.
+      const mesesAdiante = monthData ? absMonth(monthData.year, monthData.index) - hojeAbs : m;
+
       const desembolsoDoItem = (item: FinanceItem): number => {
         const partials = (item.partialExpenses?.[monthKey] || []) as PartialExpense[];
         const gastoReal = partials.reduce((sum, p) => sum + p.value, 0);
@@ -1578,7 +1581,8 @@ const App: React.FC = () => {
         const noDebito = gastoReal - noCartao;
         const declaradoCartao = !!item.linkedCardId && item.linkType !== LinkType.DEBIT;
         const planejadoRestante = Math.max(0, (item.values[m] || 0) - gastoReal);
-        return noDebito + (declaradoCartao ? 0 : planejadoRestante);
+        const jaEstaNaFatura = declaradoCartao && mesesAdiante <= 1;
+        return noDebito + (jaEstaNaFatura ? 0 : planejadoRestante);
       };
 
       const somaDesembolso = (category: CategoryType) => items
@@ -1595,30 +1599,17 @@ const App: React.FC = () => {
       // qualquer projecao (decisao do Eduardo, 2026-08-25). A fatura ja fechou e
       // o cliente a atualizou com o numero real; somar previsao duplicaria.
       //
-      // MES SEGUINTE ao corrente: tambem substitui. E a fatura que o cliente
-      // esta atualizando AGORA, conforme passa no cartao durante o mes corrente
-      // — quando ele informa, ja informa incluindo esses gastos. Somar previsao
-      // aqui duplicaria (no caso real de 2026-08-25, jogaria setembro de
-      // -R$ 344 de volta para -R$ 2.594).
-      //
-      // DO SEGUNDO MES EM DIANTE: o informado e apenas a BASE — as parcelas que
-      // o cliente ja sabe que vencem la (financiamento, compra parcelada). Ele
-      // ainda nao inclui o que vai passar no cartao, porque isso nao aconteceu.
-      // Entao a previsao SOMA a ele. Sem isso o dinheiro evapora: sai do custo
-      // fixo e nao chega em fatura nenhuma, deixando o acumulado otimista.
-      //
-      // E o mesmo movimento da planilha que o Eduardo usa ha anos: a fatura do
-      // mes que vem comeca com as parcelas conhecidas e ele soma o que passa.
-      const mesesAdiante = monthData
-        ? absMonth(monthData.year, monthData.index) - hojeAbs
-        : m;
-
+      // O valor informado MANDA e substitui a projecao, em qualquer mes. Somar
+      // previsao a ele duplica: a fatura informada dos meses distantes ja contem
+      // as parcelas conhecidas, e somar de novo inflou outubro em R$ 414,73 no
+      // caso real (2026-08-25). A projecao so entra quando nao ha valor
+      // informado nenhum.
       const totalCreditCard = items
         .filter(i => i.category === CategoryType.CREDIT_CARD)
         .reduce((sum, card) => {
           const enteredFatura = card.values[m] || 0;
-          if (mesesAdiante < 2) return sum + enteredFatura;
-          if (!prevMonthKey || m === 0) return sum + enteredFatura;
+          if (enteredFatura) return sum + enteredFatura;
+          if (!prevMonthKey || m === 0) return sum;
           const last4 = card.description.match(/••(\d{4})/)?.[1];
           const projetado = items
             .filter(i => i.category !== CategoryType.CREDIT_CARD)
@@ -1641,8 +1632,7 @@ const App: React.FC = () => {
 
               return acc + lancadoNoCartao + planejadoRestantePrev;
             }, 0);
-          // Futuro: parcelas ja conhecidas (informado) + o que vai passar (projetado).
-          return sum + enteredFatura + projetado;
+          return sum + projetado;
         }, 0);
 
       const totalCost = totalCreditCard + totalFixed + totalVariable + totalLeisure;
