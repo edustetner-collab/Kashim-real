@@ -39,6 +39,8 @@ import TermsGate from './components/TermsGate';
 import { hasAcceptedTerms, recordTermsAcceptance } from './lib/terms';
 import ExtratoBancario from './components/ExtratoBancario';
 import CategorizePopup from './components/CategorizePopup';
+import FechamentoMes from './components/FechamentoMes';
+import { montarFechamento, aplicarFechamento, contarAcumulo, monthKeyOf, DecisaoFechamento } from './lib/fechamentoMes';
 import { hasOpenFinanceAccess } from './lib/ofAccess';
 import { fillVariableValuesFromPartials } from './lib/fillFromPartials';
 import { getSourceInfo } from './lib/paymentSource';
@@ -1182,6 +1184,68 @@ const App: React.FC = () => {
     setItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
   };
 
+  // ── Fechamento do mês ──────────────────────────────────────────────────────
+  // Na virada, perguntar o que ficou sem pagar em vez de adivinhar. Desenho
+  // validado com o Eduardo em 2026-08-27 (ver lib/fechamentoMes.ts).
+  const [fechamentoAdiado, setFechamentoAdiado] = useState(0);
+
+  /** Índice, dentro de `months`, do mês anterior ao corrente real. */
+  const idxMesAFechar = useMemo(() => {
+    const atual = months.findIndex(mm => mm.index === currentActualMonth && mm.year === currentActualYear);
+    return atual > 0 ? atual - 1 : -1;
+  }, [months, currentActualMonth, currentActualYear]);
+
+  /** Chave de controle: por household e por mês, sobrevive ao refresh. */
+  const fechamentoKey = useMemo(() => {
+    if (idxMesAFechar < 0 || !householdId) return null;
+    const mm = months[idxMesAFechar];
+    return `kashim_fechou_${householdId}_${mm.year}-${mm.index}`;
+  }, [idxMesAFechar, householdId, months]);
+
+  const fechamento = useMemo(() => {
+    if (!fechamentoKey || idxMesAFechar < 0) return null;
+    // Modo coach fica de fora: quem abre dez clientes veria dez pop-ups.
+    if (coachViewClientName) return null;
+    if (dbLoading || items.length === 0) return null;
+    try { if (localStorage.getItem(fechamentoKey) === 'done') return null; } catch { /* segue */ }
+    // Três recusas: para de abrir pop-up (a regra de não ser excessivo).
+    if (fechamentoAdiado >= 3) return null;
+
+    const mm = months[idxMesAFechar];
+    const mk = monthKeyOf(mm.year, mm.index);
+    const resumo = montarFechamento(items, idxMesAFechar, mk);
+    if (resumo.vazio) return null;
+
+    const acumulo: Record<string, number> = {};
+    for (const c of [...resumo.semLancamento, ...resumo.divergentes]) {
+      const item = items.find(i => i.id === c.itemId);
+      if (item) acumulo[c.itemId] = contarAcumulo(item, idxMesAFechar, months);
+    }
+    return { mesNome: mm.monthName, resumo, acumulo };
+  }, [fechamentoKey, idxMesAFechar, items, months, coachViewClientName, dbLoading, fechamentoAdiado]);
+
+  const handleConcluirFechamento = (decisoes: DecisaoFechamento[]) => {
+    setItems(prev => aplicarFechamento(prev, decisoes, idxMesAFechar));
+    try { if (fechamentoKey) localStorage.setItem(fechamentoKey, 'done'); } catch { /* segue */ }
+  };
+
+  const handleAdiarFechamento = () => setFechamentoAdiado(n => n + 1);
+
+  /** "Sim, negociei" → cadastra o acordo como VARIÁVEL, não como conta fixa:
+   *  assim o acordo consome a sobra sem inflar o pilar de conta fixa sobre o
+   *  salário, e o diagnóstico continua medindo a estrutura de vida do cliente. */
+  const handleCadastrarAcordo = (descricao: string, valor: number) => {
+    setItems(prev => [...prev, {
+      id: crypto.randomUUID(),
+      description: descricao,
+      category: CategoryType.VARIABLE_EXPENSE,
+      values: new Array(12).fill(0),
+      paidStatus: new Array(12).fill(false),
+    }]);
+    // A confirmação para o cliente é dada pela própria tela do fechamento —
+    // não existe toast global no App e criar um só para isto seria exagero.
+  };
+
   // Ferramenta do coach (só web): remove de uma vez todas as contas fixas
   // Snapshot autocontido do raio-X — o mesmo formato serve para o PDF avulso
   // e para o registro imutável da consultoria (consultation_records).
@@ -1578,7 +1642,19 @@ const App: React.FC = () => {
           .reduce((sum, p) => sum + p.value, 0);
         const noDebito = gastoReal - noCartao;
         const declaradoCartao = !!item.linkedCardId && item.linkType !== LinkType.DEBIT;
-        const planejadoRestante = Math.max(0, (item.values[m] || 0) - gastoReal);
+
+        /**
+         * Conta marcada como PAGA e com lançamento fecha no valor real: o que
+         * sobrou do previsto não vai mais acontecer. Sem a marca, vale o
+         * previsto — o cliente ainda pode gastar até o teto.
+         *
+         * A marca sozinha não basta: quem marca "paguei" sem lançar nada não
+         * está dizendo que gastou zero. Nesse caso vale o previsto, senão a
+         * conta sumiria do mês.
+         */
+        const fechadaNoReal = item.paidStatus?.[m] === true && partials.length > 0;
+        const planejadoRestante = fechadaNoReal ? 0 : Math.max(0, (item.values[m] || 0) - gastoReal);
+
         const jaEstaNaFatura = declaradoCartao && mesesAdiante <= 1;
         return noDebito + (jaEstaNaFatura ? 0 : planejadoRestante);
       };
@@ -2870,6 +2946,19 @@ const App: React.FC = () => {
           count={categorizeCount}
           onCategorize={() => { setShowCategorizePopup(false); handleOpenExtrato(); }}
           onDismiss={() => setShowCategorizePopup(false)}
+        />
+      )}
+
+      {/* Fechamento do mês — pergunta o que ficou sem pagar no mês que passou.
+          Só abre quando há algo a perguntar e o cliente não adiou 3 vezes. */}
+      {fechamento && (
+        <FechamentoMes
+          mesNome={fechamento.mesNome}
+          resumo={fechamento.resumo}
+          acumuloPorItem={fechamento.acumulo}
+          onConcluir={handleConcluirFechamento}
+          onAdiar={handleAdiarFechamento}
+          onCadastrarAcordo={handleCadastrarAcordo}
         />
       )}
 
