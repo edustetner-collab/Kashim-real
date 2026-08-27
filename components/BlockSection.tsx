@@ -478,6 +478,31 @@ const BlockSection: React.FC<BlockSectionProps> = ({
         </div>
       </div>
 
+      {/* Por que vale fixar a forma de pagamento.
+          Não é preferência de organização: alternar débito e cartão na mesma
+          conta faz o caixa oscilar de verdade. Um gasto constante de R$ 1.500
+          pago ora no débito ora no cartão vira 1.500 → 0 → 3.000 → 0, porque
+          num mês paga o débito E a fatura do mês anterior. É a regra que o
+          Eduardo sempre ensinou na consultoria, virando produto.
+          Só aparece quando há conta sem forma definida — some sozinho depois. */}
+      {(() => {
+        const semForma = items.filter(i => !i.linkedCardId && i.linkType !== LinkType.DEBIT).length;
+        if (semForma === 0) return null;
+        return (
+          <div className="bg-[#fff8e6] border-b border-[rgba(224,155,0,0.22)] px-4 py-2.5 flex items-start gap-2.5">
+            <i className="fas fa-lightbulb text-[#e09b00] text-[11px] mt-[2px] shrink-0"></i>
+            <p className="text-[10.5px] text-[#8a6100] leading-snug">
+              <b className="font-black">
+                {semForma === 1 ? 'Falta dizer como você paga 1 conta.' : `Faltam ${semForma} contas sem forma de pagamento.`}
+              </b>{' '}
+              Escolha uma forma para cada conta e mantenha — alternar entre débito e cartão
+              no mesmo gasto faz o dinheiro sair em meses diferentes e o seu caixa balançar
+              sem motivo.
+            </p>
+          </div>
+        );
+      })()}
+
       {/* Progress bars: Ideal / Realizado */}
       {(category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE) && totalIncome > 0 && (() => {
         const toBarPct = (v: number) => Math.min(100, (v / totalIncome) * 100);
@@ -787,11 +812,12 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[9px] font-black uppercase transition-all active:scale-95 ${
                             hasPayment
                               ? 'bg-[#f0fad0] border border-[rgba(122,184,0,0.25)] text-[#7ab800]'
-                              : 'bg-[#fff0f0] border border-[rgba(255,59,48,0.2)] text-[#ff3b30]'
+                              // Campo em branco não é erro: âmbar convida, vermelho acusa.
+                              : 'bg-[#fff8e6] border border-[rgba(224,155,0,0.28)] text-[#b07500]'
                           }`}
                         >
-                          <i className={`fas ${hasPayment ? 'fa-check-circle' : 'fa-exclamation-circle'} text-[10px]`}></i>
-                          {hasPayment ? paymentLabel : 'Forma de pagamento pendente'}
+                          <i className={`fas ${hasPayment ? 'fa-check-circle' : 'fa-circle-question'} text-[10px]`}></i>
+                          {hasPayment ? paymentLabel : 'Paga de que forma?'}
                           <i className="fas fa-chevron-down text-[8px] opacity-50 ml-0.5"></i>
                         </button>
                         {category === CategoryType.VARIABLE_EXPENSE && (() => {
@@ -1111,11 +1137,11 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           className={`flex items-center gap-1 px-2 py-0.5 rounded text-[8px] font-black uppercase w-fit transition-all ${
                             hasPayment
                               ? 'bg-green-50 text-green-700 border border-green-200'
-                              : 'bg-red-50 text-red-500 border border-red-200'
+                              : 'bg-amber-50 text-amber-700 border border-amber-200'
                           }`}
                         >
-                          <i className={`fas ${hasPayment ? 'fa-check-circle' : 'fa-exclamation-circle'} text-[8px]`}></i>
-                          {hasPayment ? paymentLabel : 'Pagamento pendente'}
+                          <i className={`fas ${hasPayment ? 'fa-check-circle' : 'fa-circle-question'} text-[8px]`}></i>
+                          {hasPayment ? paymentLabel : 'Paga de que forma?'}
                           <i className="fas fa-pen text-[7px] ml-0.5 opacity-50"></i>
                         </button>
                         {isOpen && (
