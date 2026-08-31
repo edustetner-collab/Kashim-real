@@ -43,9 +43,12 @@ function isAntigo(c: ClientProfile): boolean {
 interface CoachDashboardProps {
   onEnterClient: (householdId: string, clientName: string) => void;
   isSuperAdmin: boolean;
+  /** Chamados de suporte em aberto — acende o sino no header. */
+  chamadosAbertos?: number;
+  onAbrirChamados?: () => void;
 }
 
-const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperAdmin }) => {
+const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperAdmin, chamadosAbertos = 0, onAbrirChamados }) => {
   const { getToken } = useAuth();
   const { user } = useUser();
   const { signOut } = useClerk();
@@ -264,6 +267,25 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
                 <img src={user.imageUrl} className="w-7 h-7 rounded-full border border-green-400/30" alt="Avatar" />
                 <span className="text-[10px] font-black uppercase text-zinc-400">{user.firstName || user.emailAddresses[0]?.emailAddress.split('@')[0]}</span>
               </div>
+            )}
+            {/* Sino de chamados — este é o header em que o Eduardo fica o dia
+                todo. Vermelho com a contagem enquanto houver chamado aberto. */}
+            {isSuperAdmin && onAbrirChamados && (
+              <button
+                onClick={onAbrirChamados}
+                className="relative px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl transition-all"
+                title={chamadosAbertos > 0 ? `${chamadosAbertos} chamado(s) em aberto` : 'Chamados de suporte'}
+              >
+                <i className={`fas fa-bell ${chamadosAbertos > 0 ? 'text-red-500' : 'text-zinc-500'}`}></i>
+                {chamadosAbertos > 0 && (
+                  <span
+                    className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-black flex items-center justify-center border-2 border-zinc-900"
+                    style={{ animation: 'kashimPulse 2s ease-in-out infinite' }}
+                  >
+                    {chamadosAbertos > 9 ? '9+' : chamadosAbertos}
+                  </span>
+                )}
+              </button>
             )}
             <button onClick={() => setShowSettings(true)} className="flex items-center gap-2 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-zinc-300 hover:text-white transition-all text-xs font-black uppercase">
               <i className="fas fa-cog"></i>

@@ -1941,13 +1941,23 @@ const App: React.FC = () => {
   // Coach/assistente sem cliente selecionado → Dashboard
   if (isLoaded && isSignedIn && isAdmin && !coachViewHouseholdId) {
     return (
-      <CoachDashboard
-        onEnterClient={(hId, name) => {
-          setCoachViewHouseholdId(hId);
-          setCoachViewClientName(name);
-        }}
-        isSuperAdmin={ADMIN_IDS.includes(user?.id ?? '')}
-      />
+      <>
+        <CoachDashboard
+          onEnterClient={(hId, name) => {
+            setCoachViewHouseholdId(hId);
+            setCoachViewClientName(name);
+          }}
+          isSuperAdmin={ADMIN_IDS.includes(user?.id ?? '')}
+          chamadosAbertos={chamadosAbertos}
+          onAbrirChamados={() => setShowSuporteAdmin(true)}
+        />
+        {/* O painel precisa ser renderizado AQUI: este return acontece antes
+            dos overlays do fim do App, então o que estivesse só lá embaixo
+            nunca apareceria para quem está no dashboard do consultor. */}
+        {showSuporteAdmin && (
+          <SuporteAdmin onClose={() => setShowSuporteAdmin(false)} onMudou={carregarChamadosAbertos} />
+        )}
+      </>
     );
   }
 
