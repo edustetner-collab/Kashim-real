@@ -1575,15 +1575,33 @@ const App: React.FC = () => {
     setItems(prev => prev.map(i => i.id === id ? { ...i, values: i.values.map((v, idx) => idx >= monthIdx ? i.values[monthIdx] : v) } : i));
   };
 
+  /**
+   * Sobe ou desce um item na ordem — sempre DENTRO da própria categoria.
+   *
+   * Troca com o vizinho da MESMA categoria, pulando o que houver entre eles no
+   * array. Antes trocava com o vizinho imediato e desistia se ele fosse de
+   * outra categoria: como cada bloco recebe `items.filter(...)`, dois itens
+   * vizinhos na tela podiam estar separados por linhas de outros blocos no
+   * array, e a seta não fazia nada sem dizer por quê.
+   *
+   * Mudar de categoria continua impossível, agora por construção: o swap só
+   * acontece entre itens que já têm a mesma categoria.
+   */
   const handleMoveItem = (id: string, direction: 'up' | 'down') => {
     setItems(prev => {
       const idx = prev.findIndex(i => i.id === id);
       if (idx === -1) return prev;
+      const categoria = prev[idx].category;
+
+      let swapIdx = -1;
+      if (direction === 'up') {
+        for (let k = idx - 1; k >= 0; k--) if (prev[k].category === categoria) { swapIdx = k; break; }
+      } else {
+        for (let k = idx + 1; k < prev.length; k++) if (prev[k].category === categoria) { swapIdx = k; break; }
+      }
+      if (swapIdx === -1) return prev; // já é o primeiro ou o último do bloco
+
       const next = [...prev];
-      const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
-      if (swapIdx < 0 || swapIdx >= next.length) return prev;
-      // Só move dentro da mesma categoria
-      if (next[idx].category !== next[swapIdx].category) return prev;
       [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
       return next;
     });
