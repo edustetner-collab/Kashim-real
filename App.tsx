@@ -1184,6 +1184,17 @@ const App: React.FC = () => {
     setItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
   };
 
+  /**
+   * Tooltip da Compilação. Não usa o `title` do navegador: ele é lento, sem
+   * estilo e não cabe uma explicação de duas linhas. Renderiza `fixed` fora da
+   * tabela porque a Compilação rola na horizontal e cortaria um absolute.
+   */
+  const [tip, setTip] = useState<{ titulo: string; texto: string; valor?: string; x: number; y: number } | null>(null);
+  const abrirTip = (e: React.MouseEvent, titulo: string, texto: string, valor?: string) => {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setTip({ titulo, texto, valor, x: r.left + r.width / 2, y: r.bottom + 8 });
+  };
+
   // ── Fechamento do mês ──────────────────────────────────────────────────────
   // Na virada, perguntar o que ficou sem pagar em vez de adivinhar. Desenho
   // validado com o Eduardo em 2026-08-27 (ver lib/fechamentoMes.ts).
@@ -1655,9 +1666,16 @@ const App: React.FC = () => {
         const fechadaNoReal = item.paidStatus?.[m] === true && partials.length > 0;
         const planejadoRestante = fechadaNoReal ? 0 : Math.max(0, (item.values[m] || 0) - gastoReal);
 
-        // Valor CHEIO, sempre. A despesa que está no cartão não sai daqui —
-        // ela é abatida uma vez só, no total, por `jaNaFatura` abaixo.
-        return noDebito + planejadoRestante;
+        // Valor CHEIO do mês: o que já foi gasto (em qualquer forma) mais o que
+        // ainda está previsto. O que está no cartão continua aqui — sai uma vez
+        // só, no abatimento `jaNaFatura` abaixo.
+        //
+        // `noDebito` fica sem uso aqui de propósito: somar só o débito faria a
+        // linha "cheia" perder o que já foi lançado no cartão. Era assim até
+        // 2026-08-27 e fazia o mercado do Hugo aparecer como R$ 1.243,17 numa
+        // linha rotulada "valor cheio", quando o previsto era R$ 1.500.
+        void noDebito;
+        return gastoReal + planejadoRestante;
       };
 
       /**
@@ -1671,12 +1689,22 @@ const App: React.FC = () => {
        * criar a pergunta "por que a soma não bate?".
        */
       const jaNaFaturaDoItem = (item: FinanceItem): number => {
-        const declaradoCartao = !!item.linkedCardId && item.linkType !== LinkType.DEBIT;
-        if (!declaradoCartao || mesesAdiante > 1) return 0;
+        if (mesesAdiante > 1) return 0;
         const partials = (item.partialExpenses?.[monthKey] || []) as PartialExpense[];
         const gastoReal = partials.reduce((sum, p) => sum + p.value, 0);
+
+        // O que JÁ foi lançado no cartão — vale mesmo sem a linha declarar
+        // cartão, porque no Open Finance a forma de pagamento vem do lançamento.
+        const lancadoNoCartao = partials
+          .filter(p => getSourceInfo(p, item, creditCardItems).isCredit)
+          .reduce((sum, p) => sum + p.value, 0);
+
+        // E o que ainda vai passar, quando a linha inteira é declarada no cartão.
+        const declaradoCartao = !!item.linkedCardId && item.linkType !== LinkType.DEBIT;
         const fechadaNoReal = item.paidStatus?.[m] === true && partials.length > 0;
-        return fechadaNoReal ? 0 : Math.max(0, (item.values[m] || 0) - gastoReal);
+        const planejadoRestante = fechadaNoReal ? 0 : Math.max(0, (item.values[m] || 0) - gastoReal);
+
+        return lancadoNoCartao + (declaradoCartao ? planejadoRestante : 0);
       };
 
       const somaDesembolso = (category: CategoryType) => items
@@ -2757,10 +2785,18 @@ const App: React.FC = () => {
                         <span className="block text-[10px] font-normal text-zinc-500 normal-case">valor cheio que vence no mês</span>
                       </td>
                       {monthlySummaries.map((s, i) => (
-                        <td key={i} className="p-4 text-center text-orange-400 font-mono"
-                          title={s.jaNaFatura > 0 ? `Dentro desta fatura há ${formatCurrency(s.jaNaFatura)} de contas fixas que você paga no cartão.` : undefined}>
-                          {formatCurrency(s.totalCreditCard)}
-                          {s.jaNaFatura > 0 && <i className="fas fa-circle-info text-[9px] text-zinc-500 ml-1.5 align-middle" />}
+                        <td key={i} className="p-4 text-center text-orange-400 font-mono">
+                          <span
+                            className={s.jaNaFatura > 0 ? 'cursor-help border-b border-dashed border-zinc-600 pb-0.5' : undefined}
+                            onMouseEnter={s.jaNaFatura > 0 ? e => abrirTip(e,
+                              'O que forma esta fatura',
+                              'Além das compras do mês, esta fatura carrega as contas fixas que você optou por pagar no cartão. Elas foram gastas no mês anterior e vencem agora.',
+                              formatCurrency(s.jaNaFatura)) : undefined}
+                            onMouseLeave={() => setTip(null)}
+                          >
+                            {formatCurrency(s.totalCreditCard)}
+                            {s.jaNaFatura > 0 && <i className="fas fa-circle-info text-[9px] text-sky-400/70 ml-1.5 align-middle" />}
+                          </span>
                         </td>
                       ))}
                     </tr>
@@ -2770,10 +2806,18 @@ const App: React.FC = () => {
                         <span className="block text-[10px] font-normal text-zinc-500 normal-case">valor cheio do mês</span>
                       </td>
                       {monthlySummaries.map((s, i) => (
-                        <td key={i} className="p-4 text-center text-orange-400 font-mono"
-                          title={s.jaNaFatura > 0 ? `Deste valor, ${formatCurrency(s.jaNaFatura)} você paga no cartão — já está na fatura acima e por isso é abatido na linha seguinte.` : undefined}>
-                          {formatCurrency(s.totalFixed)}
-                          {s.jaNaFatura > 0 && <i className="fas fa-circle-info text-[9px] text-zinc-500 ml-1.5 align-middle" />}
+                        <td key={i} className="p-4 text-center text-orange-400 font-mono">
+                          <span
+                            className={s.jaNaFatura > 0 ? 'cursor-help border-b border-dashed border-zinc-600 pb-0.5' : undefined}
+                            onMouseEnter={s.jaNaFatura > 0 ? e => abrirTip(e,
+                              'Sua conta fixa completa',
+                              'Este é o total das suas contas fixas do mês, independente de como você paga cada uma. É o número que o Diagnóstico usa para medir o peso sobre o seu salário. A parte que vai no cartão é abatida logo abaixo, para não ser contada duas vezes.',
+                              `${formatCurrency(s.jaNaFatura)} no cartão`) : undefined}
+                            onMouseLeave={() => setTip(null)}
+                          >
+                            {formatCurrency(s.totalFixed)}
+                            {s.jaNaFatura > 0 && <i className="fas fa-circle-info text-[9px] text-sky-400/70 ml-1.5 align-middle" />}
+                          </span>
                         </td>
                       ))}
                     </tr>
@@ -2792,9 +2836,17 @@ const App: React.FC = () => {
                           <span className="block text-[10px] font-normal text-zinc-500 normal-case">conta fixa paga no cartão — não conta duas vezes</span>
                         </td>
                         {monthlySummaries.map((s, i) => (
-                          <td key={i} className="p-4 text-center font-mono text-sky-300/90"
-                            title={s.jaNaFatura > 0 ? 'Abatimento: este valor aparece na conta fixa acima e também dentro da fatura. Descontamos uma vez para o total fechar.' : undefined}>
-                            {s.jaNaFatura > 0 ? `− ${formatCurrency(s.jaNaFatura)}` : '—'}
+                          <td key={i} className="p-4 text-center font-mono text-sky-300/90">
+                            <span
+                              className={s.jaNaFatura > 0 ? 'cursor-help border-b border-dashed border-sky-500/40 pb-0.5' : undefined}
+                              onMouseEnter={s.jaNaFatura > 0 ? e => abrirTip(e,
+                                'Por que descontamos',
+                                'Este valor aparece duas vezes acima: uma na sua conta fixa e outra dentro da fatura do cartão. Como o dinheiro sai da sua conta uma vez só, descontamos aqui para o total ficar correto.',
+                                formatCurrency(s.jaNaFatura)) : undefined}
+                              onMouseLeave={() => setTip(null)}
+                            >
+                              {s.jaNaFatura > 0 ? `− ${formatCurrency(s.jaNaFatura)}` : '—'}
+                            </span>
                           </td>
                         ))}
                       </tr>
@@ -2802,9 +2854,17 @@ const App: React.FC = () => {
                     <tr className="border-b border-zinc-800 bg-zinc-800/20">
                       <td className="p-4 font-black text-zinc-200 uppercase italic">Total de Custos</td>
                       {monthlySummaries.map((s, i) => (
-                        <td key={i} className="p-4 text-center text-orange-400 font-mono font-black whitespace-nowrap"
-                          title={s.jaNaFatura > 0 ? `Fatura + conta fixa + variáveis + lazer − ${formatCurrency(s.jaNaFatura)} que já estava na fatura.` : undefined}>
-                          {formatCurrency(s.totalCost)}
+                        <td key={i} className="p-4 text-center text-orange-400 font-mono font-black whitespace-nowrap">
+                          <span
+                            className={s.jaNaFatura > 0 ? 'cursor-help border-b border-dashed border-zinc-600 pb-0.5' : undefined}
+                            onMouseEnter={s.jaNaFatura > 0 ? e => abrirTip(e,
+                              'Como chegamos neste total',
+                              `Fatura ${formatCurrency(s.totalCreditCard)} + conta fixa ${formatCurrency(s.totalFixed)}${s.totalVariable > 0 ? ` + variáveis ${formatCurrency(s.totalVariable)}` : ''} + lazer ${formatCurrency(s.totalLeisure)}, menos ${formatCurrency(s.jaNaFatura)} que já estavam contados dentro da fatura.`,
+                              formatCurrency(s.totalCost)) : undefined}
+                            onMouseLeave={() => setTip(null)}
+                          >
+                            {formatCurrency(s.totalCost)}
+                          </span>
                         </td>
                       ))}
                     </tr>
@@ -3012,6 +3072,28 @@ const App: React.FC = () => {
           onCategorize={() => { setShowCategorizePopup(false); handleOpenExtrato(); }}
           onDismiss={() => setShowCategorizePopup(false)}
         />
+      )}
+
+      {/* Tooltip da Compilação. `fixed` porque a tabela rola na horizontal e
+          cortaria um absolute; `pointer-events-none` para não roubar o hover
+          da célula que o abriu. */}
+      {tip && (
+        <div
+          className="fixed z-[400] pointer-events-none"
+          style={{ left: tip.x, top: tip.y, transform: 'translateX(-50%)' }}
+        >
+          <div className="w-[300px] rounded-2xl border border-zinc-700 bg-[#17181a] shadow-2xl overflow-hidden">
+            {/* Seta apontando para a célula */}
+            <div className="absolute -top-[6px] left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 bg-[#17181a] border-l border-t border-zinc-700" />
+            <div className="relative px-4 pt-3.5 pb-3">
+              <div className="flex items-baseline justify-between gap-3 mb-1.5">
+                <span className="text-[10px] font-black uppercase tracking-[0.14em] text-sky-400">{tip.titulo}</span>
+                {tip.valor && <span className="font-mono text-[13px] font-bold text-white tabular-nums whitespace-nowrap">{tip.valor}</span>}
+              </div>
+              <p className="text-[12.5px] leading-relaxed text-zinc-300">{tip.texto}</p>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Fechamento do mês — pergunta o que ficou sem pagar no mês que passou.
