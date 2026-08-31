@@ -84,6 +84,16 @@ export interface SummaryData {
   totalFixed: number;
   totalVariable: number;
   totalLeisure: number;
+  /**
+   * Quanto dos custos acima JÁ está dentro da fatura do mês — despesa
+   * declarada no cartão cuja fatura o cliente já informou.
+   *
+   * As linhas de custo mostram o valor CHEIO (é o que o cliente reconhece e o
+   * que sustenta o diagnóstico); este campo é o abatimento que faz a soma
+   * fechar sem contar o mesmo gasto duas vezes. Aparece na Compilação como
+   * uma linha "(−) já incluído na fatura".
+   */
+  jaNaFatura: number;
   totalCost: number;
   balance: number;
   accumulated: number;

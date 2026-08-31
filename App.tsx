@@ -1655,8 +1655,28 @@ const App: React.FC = () => {
         const fechadaNoReal = item.paidStatus?.[m] === true && partials.length > 0;
         const planejadoRestante = fechadaNoReal ? 0 : Math.max(0, (item.values[m] || 0) - gastoReal);
 
-        const jaEstaNaFatura = declaradoCartao && mesesAdiante <= 1;
-        return noDebito + (jaEstaNaFatura ? 0 : planejadoRestante);
+        // Valor CHEIO, sempre. A despesa que está no cartão não sai daqui —
+        // ela é abatida uma vez só, no total, por `jaNaFatura` abaixo.
+        return noDebito + planejadoRestante;
+      };
+
+      /**
+       * Quanto dos custos deste mês JÁ está dentro da fatura informada.
+       *
+       * Só existe no mês corrente e no seguinte: neles a fatura já foi
+       * informada pelo cliente contendo esses gastos, então somar a linha de
+       * custo cheia MAIS a fatura contaria duas vezes. O abatimento aparece na
+       * tela como "(−) já incluído na fatura", com sinal, para a soma fechar na
+       * vertical — foi a saída para mostrar a conta fixa cheia e estável sem
+       * criar a pergunta "por que a soma não bate?".
+       */
+      const jaNaFaturaDoItem = (item: FinanceItem): number => {
+        const declaradoCartao = !!item.linkedCardId && item.linkType !== LinkType.DEBIT;
+        if (!declaradoCartao || mesesAdiante > 1) return 0;
+        const partials = (item.partialExpenses?.[monthKey] || []) as PartialExpense[];
+        const gastoReal = partials.reduce((sum, p) => sum + p.value, 0);
+        const fechadaNoReal = item.paidStatus?.[m] === true && partials.length > 0;
+        return fechadaNoReal ? 0 : Math.max(0, (item.values[m] || 0) - gastoReal);
       };
 
       const somaDesembolso = (category: CategoryType) => items
@@ -1688,11 +1708,15 @@ const App: React.FC = () => {
         .filter(i => i.category === CategoryType.CREDIT_CARD)
         .reduce((sum, card) => sum + (card.values[m] || 0), 0);
 
-      const totalCost = totalCreditCard + totalFixed + totalVariable + totalLeisure;
+      // Abatimento: o que já está na fatura não pode ser contado de novo.
+      const jaNaFatura = [CategoryType.FIXED_EXPENSE, CategoryType.VARIABLE_EXPENSE, CategoryType.PERSONAL_LEISURE]
+        .reduce((sum, cat) => sum + items.filter(i => i.category === cat).reduce((s, i) => s + jaNaFaturaDoItem(i), 0), 0);
+
+      const totalCost = totalCreditCard + totalFixed + totalVariable + totalLeisure - jaNaFatura;
       const balance = totalIncome - totalCost;
       accumulated += balance;
 
-      summaries.push({ totalIncome, totalCreditCard, totalFixed, totalVariable, totalLeisure, totalCost, balance, accumulated });
+      summaries.push({ totalIncome, totalCreditCard, totalFixed, totalVariable, totalLeisure, jaNaFatura, totalCost, balance, accumulated });
     }
     return summaries;
   }, [items, months, currentActualMonth, currentActualYear]);
@@ -2723,13 +2747,35 @@ const App: React.FC = () => {
                       <td className="p-4 font-bold text-zinc-300">Total de Entradas</td>
                       {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-green-500 font-mono font-bold">{formatCurrency(s.totalIncome)}</td>)}
                     </tr>
+                    {/* As linhas de custo mostram o valor CHEIO — é o que o cliente
+                        reconhece e o que sustenta o diagnóstico. O que está no cartão
+                        é abatido UMA vez, na linha com sinal (−) logo abaixo, para a
+                        soma fechar na vertical sem contar o mesmo gasto duas vezes. */}
                     <tr className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
-                      <td className="p-4 font-bold text-zinc-300">Faturas de Cartão<span className="block text-[10px] font-normal text-zinc-500 normal-case">valor cheio que vence no mês</span></td>
-                      {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-orange-400 font-mono">{formatCurrency(s.totalCreditCard)}</td>)}
+                      <td className="p-4 font-bold text-zinc-300">
+                        Faturas de Cartão
+                        <span className="block text-[10px] font-normal text-zinc-500 normal-case">valor cheio que vence no mês</span>
+                      </td>
+                      {monthlySummaries.map((s, i) => (
+                        <td key={i} className="p-4 text-center text-orange-400 font-mono"
+                          title={s.jaNaFatura > 0 ? `Dentro desta fatura há ${formatCurrency(s.jaNaFatura)} de contas fixas que você paga no cartão.` : undefined}>
+                          {formatCurrency(s.totalCreditCard)}
+                          {s.jaNaFatura > 0 && <i className="fas fa-circle-info text-[9px] text-zinc-500 ml-1.5 align-middle" />}
+                        </td>
+                      ))}
                     </tr>
                     <tr className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
-                      <td className="p-4 font-bold text-zinc-300">Custos Fixos<span className="block text-[10px] font-normal text-zinc-500 normal-case">fora do cartão</span></td>
-                      {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-orange-400 font-mono">{formatCurrency(s.totalFixed)}</td>)}
+                      <td className="p-4 font-bold text-zinc-300">
+                        Custos Fixos
+                        <span className="block text-[10px] font-normal text-zinc-500 normal-case">valor cheio do mês</span>
+                      </td>
+                      {monthlySummaries.map((s, i) => (
+                        <td key={i} className="p-4 text-center text-orange-400 font-mono"
+                          title={s.jaNaFatura > 0 ? `Deste valor, ${formatCurrency(s.jaNaFatura)} você paga no cartão — já está na fatura acima e por isso é abatido na linha seguinte.` : undefined}>
+                          {formatCurrency(s.totalFixed)}
+                          {s.jaNaFatura > 0 && <i className="fas fa-circle-info text-[9px] text-zinc-500 ml-1.5 align-middle" />}
+                        </td>
+                      ))}
                     </tr>
                     <tr className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
                       <td className="p-4 font-bold text-zinc-300">Custos Variáveis<span className="block text-[10px] font-normal text-zinc-500 normal-case">fora do cartão</span></td>
@@ -2739,9 +2785,28 @@ const App: React.FC = () => {
                       <td className="p-4 font-bold text-zinc-300">Gastos Pessoais e Lazer<span className="block text-[10px] font-normal text-zinc-500 normal-case">fora do cartão</span></td>
                       {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-orange-400 font-mono">{formatCurrency(s.totalLeisure)}</td>)}
                     </tr>
+                    {monthlySummaries.some(s => s.jaNaFatura > 0) && (
+                      <tr className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+                        <td className="p-4 font-bold text-sky-300/90">
+                          (−) Já incluído na fatura
+                          <span className="block text-[10px] font-normal text-zinc-500 normal-case">conta fixa paga no cartão — não conta duas vezes</span>
+                        </td>
+                        {monthlySummaries.map((s, i) => (
+                          <td key={i} className="p-4 text-center font-mono text-sky-300/90"
+                            title={s.jaNaFatura > 0 ? 'Abatimento: este valor aparece na conta fixa acima e também dentro da fatura. Descontamos uma vez para o total fechar.' : undefined}>
+                            {s.jaNaFatura > 0 ? `− ${formatCurrency(s.jaNaFatura)}` : '—'}
+                          </td>
+                        ))}
+                      </tr>
+                    )}
                     <tr className="border-b border-zinc-800 bg-zinc-800/20">
                       <td className="p-4 font-black text-zinc-200 uppercase italic">Total de Custos</td>
-                      {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-orange-400 font-mono font-black whitespace-nowrap">{formatCurrency(s.totalCost)}</td>)}
+                      {monthlySummaries.map((s, i) => (
+                        <td key={i} className="p-4 text-center text-orange-400 font-mono font-black whitespace-nowrap"
+                          title={s.jaNaFatura > 0 ? `Fatura + conta fixa + variáveis + lazer − ${formatCurrency(s.jaNaFatura)} que já estava na fatura.` : undefined}>
+                          {formatCurrency(s.totalCost)}
+                        </td>
+                      ))}
                     </tr>
                     <tr className="border-b-2 border-zinc-800 bg-zinc-950/20">
                       <td className="p-4 font-black text-white uppercase italic">Sobras / Faltas</td>
