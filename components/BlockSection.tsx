@@ -485,7 +485,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
           num mês paga o débito E a fatura do mês anterior. É a regra que o
           Eduardo sempre ensinou na consultoria, virando produto.
           Só aparece quando há conta sem forma definida — some sozinho depois. */}
-      {(category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE) && (() => {
+      {(category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE) && !hasOpenFinance && (() => {
         // APENAS conta fixa e lazer. Não incluir os outros blocos:
         //   Renda e Cartão de Crédito não têm forma de pagamento nenhuma — sem
         //     este filtro todo item deles caía na contagem de "sem forma".
@@ -493,7 +493,20 @@ const BlockSection: React.FC<BlockSectionProps> = ({
         //     variável é imprevisto, então não tem — nem deve ter — forma
         //     definida de antemão. Cobrar isso ali contraria a natureza da
         //     categoria e só geraria ruído.
-        const semForma = items.filter(i => !i.linkedCardId && i.linkType !== LinkType.DEBIT).length;
+        //
+        // No OPEN FINANCE o aviso não aparece: lá a forma de pagamento vem do
+        // extrato e o seletor está oculto, então cobrar "defina a forma" seria
+        // pedir uma ação que não existe na tela.
+        //
+        // Conta só o que o cliente REALMENTE VÊ e pode preencher:
+        //   - itens ocultos ficam de fora (não há onde clicar);
+        //   - no LAZER a tela renderiza uma linha consolidada (só o primeiro
+        //     item; ver `firstLeisureId` abaixo), então contar item a item dizia
+        //     "faltam 4 contas" com uma linha na tela.
+        const candidatos = isLeisureBlock
+          ? items.filter(i => i.id === firstLeisureId)
+          : items.filter(i => !hiddenItemIds.has(i.id));
+        const semForma = candidatos.filter(i => !i.linkedCardId && i.linkType !== LinkType.DEBIT).length;
         if (semForma === 0) return null;
         return (
           <div className="bg-[#fff8e6] border-b border-[rgba(224,155,0,0.22)] px-4 py-2.5 flex items-start gap-2.5">
