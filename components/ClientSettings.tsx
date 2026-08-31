@@ -21,6 +21,8 @@ interface ClientSettingsProps {
   subscriptionStatus?: string | null;
   // Avisa o App que as preferências de notificação mudaram (reprograma agenda)
   onNotifPrefsChange?: () => void;
+  /** Abre a tela de suporte (fica no App, junto dos outros overlays). */
+  onAbrirSuporte?: () => void;
 }
 
 type PasswordView = 'idle' | 'set' | 'change';
@@ -35,7 +37,7 @@ const DEFAULT_PREFS: NotificationPrefs = {
 
 const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
 
-const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClose, summary, currentMonthIdx, currentYear, subscriptionStatus, onNotifPrefsChange }) => {
+const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClose, summary, currentMonthIdx, currentYear, subscriptionStatus, onNotifPrefsChange, onAbrirSuporte }) => {
   const { user } = useUser();
   const { signOut } = useClerk();
   const { signIn, setActive } = useSignIn();
@@ -567,6 +569,24 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
                 </div>
               )}
             </div>
+
+            {/* Suporte — canal para o cliente relatar erro com print. Fica
+                acima do "sair" porque é ação útil, não saída. */}
+            {onAbrirSuporte && (
+              <button
+                onClick={onAbrirSuporte}
+                className="w-full flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/60 hover:border-zinc-700 px-4 py-3.5 text-left transition-colors active:scale-[.99]"
+              >
+                <span className="w-9 h-9 rounded-xl bg-green-500/10 border border-green-500/25 flex items-center justify-center shrink-0">
+                  <i className="fas fa-life-ring text-green-400 text-sm" />
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-white font-bold text-sm">Precisa de ajuda?</span>
+                  <span className="block text-zinc-500 text-xs mt-0.5">Relate um erro ou tire uma dúvida</span>
+                </span>
+                <i className="fas fa-chevron-right text-zinc-600 text-xs" />
+              </button>
+            )}
 
             {/* Sign out — kept small and discreet at the bottom */}
             <div className="flex justify-center pt-2 pb-1">

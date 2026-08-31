@@ -39,6 +39,7 @@ import TermsGate from './components/TermsGate';
 import { hasAcceptedTerms, recordTermsAcceptance } from './lib/terms';
 import ExtratoBancario from './components/ExtratoBancario';
 import CategorizePopup from './components/CategorizePopup';
+import Suporte from './components/Suporte';
 import FechamentoMes from './components/FechamentoMes';
 import { montarFechamento, aplicarFechamento, contarAcumulo, monthKeyOf, DecisaoFechamento } from './lib/fechamentoMes';
 import { hasOpenFinanceAccess } from './lib/ofAccess';
@@ -187,6 +188,7 @@ const App: React.FC = () => {
   const [dbLoading, setDbLoading] = useState(false);
   const [showInvitePanel, setShowInvitePanel] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showSuporte, setShowSuporte] = useState(false);
   const [coachViewHouseholdId, setCoachViewHouseholdId] = useState<string | null>(null);
   const [coachViewClientName, setCoachViewClientName] = useState<string>('');
   // Registros da consultoria (raio-X imutável) do cliente em visão de coach
@@ -2120,6 +2122,7 @@ const App: React.FC = () => {
           currentYear={months[mobileMonthIdx].year}
           subscriptionStatus={subscriptionStatus}
           onNotifPrefsChange={() => setNotifPrefsVersion(v => v + 1)}
+          onAbrirSuporte={() => { setShowSettings(false); setShowSuporte(true); }}
         />
       ) : showSettings && dbLoading ? (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowSettings(false)}>
@@ -3110,6 +3113,8 @@ const App: React.FC = () => {
           onDismiss={() => setShowCategorizePopup(false)}
         />
       )}
+
+      {showSuporte && <Suporte onClose={() => setShowSuporte(false)} telaAtual={activeTab} />}
 
       {/* Tooltip da Compilação. `fixed` porque a tabela rola na horizontal e
           cortaria um absolute; `pointer-events-none` para não roubar o hover
