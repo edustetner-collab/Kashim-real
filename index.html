@@ -186,6 +186,16 @@
       }
       @keyframes k-sweep { to { transform: translateX(120%); } }
 
+      /* Badge do sino de chamados (admin). Pulsa por box-shadow, sem escalar
+         o elemento — o mesmo cuidado do k-halo, para não criar overflow. */
+      @keyframes kashimPulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55); }
+        50%      { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        [style*="kashimPulse"] { animation: none !important; }
+      }
+
       /* ---- Glowing halo (LANÇAR button) ----
          Pulses via box-shadow only — no scaled pseudo-elements, so it never
          adds layout/scroll overflow to the horizontally-scrolling tab bar. ---- */

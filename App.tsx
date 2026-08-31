@@ -40,6 +40,7 @@ import { hasAcceptedTerms, recordTermsAcceptance } from './lib/terms';
 import ExtratoBancario from './components/ExtratoBancario';
 import CategorizePopup from './components/CategorizePopup';
 import Suporte from './components/Suporte';
+import SuporteAdmin from './components/SuporteAdmin';
 import FechamentoMes from './components/FechamentoMes';
 import { montarFechamento, aplicarFechamento, contarAcumulo, monthKeyOf, DecisaoFechamento } from './lib/fechamentoMes';
 import { hasOpenFinanceAccess } from './lib/ofAccess';
@@ -189,6 +190,9 @@ const App: React.FC = () => {
   const [showInvitePanel, setShowInvitePanel] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showSuporte, setShowSuporte] = useState(false);
+  const [showSuporteAdmin, setShowSuporteAdmin] = useState(false);
+  /** Contagem para o sino do admin. Só pede a contagem, não a lista. */
+  const [chamadosAbertos, setChamadosAbertos] = useState(0);
   const [coachViewHouseholdId, setCoachViewHouseholdId] = useState<string | null>(null);
   const [coachViewClientName, setCoachViewClientName] = useState<string>('');
   // Registros da consultoria (raio-X imutável) do cliente em visão de coach
@@ -1185,6 +1189,23 @@ const App: React.FC = () => {
   const handleUpdateCardConfig = (id: string, field: 'closingDay' | 'dueDay', value: number) => {
     setItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
   };
+
+  /**
+   * Contagem de chamados em aberto, para o sino. Pede só o número — a lista
+   * (que traz mensagem e print) só é carregada quando o painel abre.
+   */
+  const carregarChamadosAbertos = useCallback(async () => {
+    if (!isAdmin) return;
+    try {
+      const token = await getToken({ template: 'supabase' });
+      const res = await fetch('/api/support-admin?count=1', { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) return;
+      const body = await res.json();
+      setChamadosAbertos(body.abertos ?? 0);
+    } catch { /* sino é acessório: falha em silêncio */ }
+  }, [isAdmin, getToken]);
+
+  useEffect(() => { carregarChamadosAbertos(); }, [carregarChamadosAbertos]);
 
   /**
    * Tooltip da Compilação. Não usa o `title` do navegador: ele é lento, sem
@@ -2335,6 +2356,25 @@ const App: React.FC = () => {
                 <i className="fas fa-cog"></i>
               </button>
             )}
+            {/* Sino de chamados — só para o admin. Vermelho quando há chamado
+                em aberto; some quando tudo estiver respondido ou resolvido. */}
+            {isAdmin && (
+              <button
+                onClick={() => setShowSuporteAdmin(true)}
+                className="relative px-3 py-2 text-[#aeaeb2] hover:text-[#7ab800] transition-colors"
+                title={chamadosAbertos > 0 ? `${chamadosAbertos} chamado(s) em aberto` : 'Chamados de suporte'}
+              >
+                <i className={`fas fa-bell ${chamadosAbertos > 0 ? 'text-red-500' : ''}`}></i>
+                {chamadosAbertos > 0 && (
+                  <span
+                    className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-black flex items-center justify-center border-2 border-white"
+                    style={{ animation: 'kashimPulse 2s ease-in-out infinite' }}
+                  >
+                    {chamadosAbertos > 9 ? '9+' : chamadosAbertos}
+                  </span>
+                )}
+              </button>
+            )}
             <button onClick={() => signOut()} className="px-3 py-2 text-[#aeaeb2] hover:text-red-500 transition-colors"><i className="fas fa-sign-out-alt"></i></button>
           </div>
         </div>
@@ -3115,6 +3155,9 @@ const App: React.FC = () => {
       )}
 
       {showSuporte && <Suporte onClose={() => setShowSuporte(false)} telaAtual={activeTab} />}
+      {showSuporteAdmin && (
+        <SuporteAdmin onClose={() => setShowSuporteAdmin(false)} onMudou={carregarChamadosAbertos} />
+      )}
 
       {/* Tooltip da Compilação. `fixed` porque a tabela rola na horizontal e
           cortaria um absolute; `pointer-events-none` para não roubar o hover
