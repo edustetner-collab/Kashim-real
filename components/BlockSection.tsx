@@ -203,6 +203,58 @@ const BlockSection: React.FC<BlockSectionProps> = ({
   const isLeisureBlock = category === CategoryType.PERSONAL_LEISURE;
   const firstLeisureId = isLeisureBlock ? items[0]?.id : null;
 
+  /**
+   * Contas em que o cliente ALTERNOU a forma de pagamento entre os meses.
+   *
+   * Olha o que ele de fato fez, não o que declarou — por isso funciona no Open
+   * Finance, onde a forma vem do extrato e não existe campo para preencher.
+   *
+   * Por que isso importa: um gasto CONSTANTE de R$ 1.500 pago ora no débito,
+   * ora no cartão, faz o caixa virar 1.500 → 0 → 3.000 → 0, porque num mês se
+   * paga o débito E a fatura do mês anterior. Não é defeito do app; é o que
+   * acontece com o dinheiro. É a regra que o Eduardo sempre ensinou na
+   * consultoria — fixar a forma e manter.
+   *
+   * É RECADO, nunca trava: quem divide um gasto entre dois cartões de propósito
+   * continua livre para fazer isso.
+   */
+  const contasQueAlternaram = React.useMemo(() => {
+    // Variável fica de fora: imprevisto não tem forma fixa, e cobrar
+    // previsibilidade dele contraria a categoria.
+    if (category !== CategoryType.FIXED_EXPENSE && category !== CategoryType.PERSONAL_LEISURE) return [];
+
+    const achados: { nome: string; de: string; para: string }[] = [];
+    for (const item of items) {
+      if (hiddenItemIds.has(item.id)) continue;
+      const historico: { mes: string; forma: 'cartão' | 'débito' }[] = [];
+
+      for (let m = 0; m < months.length; m++) {
+        const mk = `${months[m].year}-${months[m].index}`;
+        const partials = (item.partialExpenses?.[mk] || []) as PartialExpense[];
+        const total = partials.reduce((s, p) => s + (p.value || 0), 0);
+        if (total <= 0) continue;
+        const noCartao = partials
+          .filter(p => getSourceInfo(p, item, allCards).isCredit)
+          .reduce((s, p) => s + p.value, 0);
+        // Forma PREDOMINANTE do mês: dividir um gasto não conta como alternar.
+        historico.push({ mes: months[m].monthName, forma: noCartao / total >= 0.5 ? 'cartão' : 'débito' });
+      }
+
+      // Precisa de pelo menos dois meses com gasto para existir alternância.
+      for (let k = 1; k < historico.length; k++) {
+        if (historico[k].forma !== historico[k - 1].forma) {
+          achados.push({
+            nome: item.description || 'Sem nome',
+            de: `${historico[k - 1].mes} no ${historico[k - 1].forma}`,
+            para: `${historico[k].mes} no ${historico[k].forma}`,
+          });
+          break; // uma menção por conta basta
+        }
+      }
+    }
+    return achados;
+  }, [items, months, allCards, hiddenItemIds, category]);
+
   // Âncoras do tour de onboarding — um id estável por bloco
   const blockTourId = {
     [CategoryType.INCOME]: 'block-entradas',
@@ -526,6 +578,32 @@ const BlockSection: React.FC<BlockSectionProps> = ({
           </div>
         );
       })()}
+
+      {/* Alternância observada no histórico. Diferente do aviso acima: aquele
+          cobra um campo em branco, este mostra o que o cliente FEZ — por isso
+          funciona também no Open Finance, onde não há campo para preencher. */}
+      {contasQueAlternaram.length > 0 && (
+        <div className="bg-[#fff8e6] border-b border-[rgba(224,155,0,0.22)] px-4 py-2.5 flex items-start gap-2.5">
+          <i className="fas fa-arrows-rotate text-[#e09b00] text-[11px] mt-[2px] shrink-0"></i>
+          <p className="text-[10.5px] text-[#8a6100] leading-snug">
+            <b className="font-black text-[#e01b00]">
+              {contasQueAlternaram.length === 1
+                ? 'Você trocou a forma de pagamento de uma conta'
+                : `Você trocou a forma de pagamento de ${contasQueAlternaram.length} contas`}
+            </b>
+            {' – '}
+            {contasQueAlternaram.slice(0, 2).map((c, i) => (
+              <span key={c.nome}>
+                {i > 0 && '; '}
+                <b className="font-bold">{c.nome}</b> ficou em {c.de} e passou para {c.para}
+              </span>
+            ))}
+            {contasQueAlternaram.length > 2 && ` e mais ${contasQueAlternaram.length - 2}`}.{' '}
+            <span className="text-[#e01b00]">Escolha uma forma e mantenha</span> — alternar faz um mês
+            pagar o débito e a fatura do mês anterior juntos, e o seu caixa balança sem o gasto ter mudado.
+          </p>
+        </div>
+      )}
 
       {/* Progress bars: Ideal / Realizado */}
       {(category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE) && totalIncome > 0 && (() => {
