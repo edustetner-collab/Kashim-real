@@ -1195,6 +1195,34 @@ const App: React.FC = () => {
     setTip({ titulo, texto, valor, x: r.left + r.width / 2, y: r.bottom + 8 });
   };
 
+  /**
+   * Célula de valor da Compilação, com espaço FIXO reservado para o ícone
+   * embaixo do número — com ou sem tooltip.
+   *
+   * Sem essa reserva o ícone entrava no fluxo do texto e, num número largo
+   * como R$ 10.061,77, quebrava para a linha de baixo e empurrava o valor para
+   * cima: a linha da tabela deixava de ficar reta. Agora o número sempre ocupa
+   * a mesma altura e só o ícone aparece ou não.
+   */
+  const CelulaValor: React.FC<{
+    texto: string;
+    tip?: { titulo: string; corpo: string; destaque?: string };
+    sublinhado?: string;
+  }> = ({ texto, tip: t, sublinhado = 'border-zinc-600' }) => (
+    <span className="inline-flex flex-col items-center leading-none">
+      <span
+        className={t ? `cursor-help border-b border-dashed ${sublinhado} pb-0.5` : undefined}
+        onMouseEnter={t ? e => abrirTip(e, t.titulo, t.corpo, t.destaque) : undefined}
+        onMouseLeave={t ? () => setTip(null) : undefined}
+      >
+        {texto}
+      </span>
+      <span className="h-3.5 mt-1 flex items-center justify-center" aria-hidden="true">
+        {t && <i className="fas fa-circle-info text-[9px] text-sky-400/70" />}
+      </span>
+    </span>
+  );
+
   // ── Fechamento do mês ──────────────────────────────────────────────────────
   // Na virada, perguntar o que ficou sem pagar em vez de adivinhar. Desenho
   // validado com o Eduardo em 2026-08-27 (ver lib/fechamentoMes.ts).
@@ -2785,18 +2813,15 @@ const App: React.FC = () => {
                         <span className="block text-[10px] font-normal text-zinc-500 normal-case">valor cheio que vence no mês</span>
                       </td>
                       {monthlySummaries.map((s, i) => (
-                        <td key={i} className="p-4 text-center text-orange-400 font-mono">
-                          <span
-                            className={s.jaNaFatura > 0 ? 'cursor-help border-b border-dashed border-zinc-600 pb-0.5' : undefined}
-                            onMouseEnter={s.jaNaFatura > 0 ? e => abrirTip(e,
-                              'O que forma esta fatura',
-                              'Além das compras do mês, esta fatura carrega as contas fixas que você optou por pagar no cartão. Elas foram gastas no mês anterior e vencem agora.',
-                              formatCurrency(s.jaNaFatura)) : undefined}
-                            onMouseLeave={() => setTip(null)}
-                          >
-                            {formatCurrency(s.totalCreditCard)}
-                            {s.jaNaFatura > 0 && <i className="fas fa-circle-info text-[9px] text-sky-400/70 ml-1.5 align-middle" />}
-                          </span>
+                        <td key={i} className="p-4 text-center text-orange-400 font-mono align-top">
+                          <CelulaValor
+                            texto={formatCurrency(s.totalCreditCard)}
+                            tip={s.jaNaFatura > 0 ? {
+                              titulo: 'O que forma esta fatura',
+                              corpo: 'Além das compras do mês, esta fatura carrega as contas fixas que você optou por pagar no cartão. Elas foram gastas no mês anterior e vencem agora.',
+                              destaque: formatCurrency(s.jaNaFatura),
+                            } : undefined}
+                          />
                         </td>
                       ))}
                     </tr>
@@ -2806,18 +2831,15 @@ const App: React.FC = () => {
                         <span className="block text-[10px] font-normal text-zinc-500 normal-case">valor cheio do mês</span>
                       </td>
                       {monthlySummaries.map((s, i) => (
-                        <td key={i} className="p-4 text-center text-orange-400 font-mono">
-                          <span
-                            className={s.jaNaFatura > 0 ? 'cursor-help border-b border-dashed border-zinc-600 pb-0.5' : undefined}
-                            onMouseEnter={s.jaNaFatura > 0 ? e => abrirTip(e,
-                              'Sua conta fixa completa',
-                              'Este é o total das suas contas fixas do mês, independente de como você paga cada uma. É o número que o Diagnóstico usa para medir o peso sobre o seu salário. A parte que vai no cartão é abatida logo abaixo, para não ser contada duas vezes.',
-                              `${formatCurrency(s.jaNaFatura)} no cartão`) : undefined}
-                            onMouseLeave={() => setTip(null)}
-                          >
-                            {formatCurrency(s.totalFixed)}
-                            {s.jaNaFatura > 0 && <i className="fas fa-circle-info text-[9px] text-sky-400/70 ml-1.5 align-middle" />}
-                          </span>
+                        <td key={i} className="p-4 text-center text-orange-400 font-mono align-top">
+                          <CelulaValor
+                            texto={formatCurrency(s.totalFixed)}
+                            tip={s.jaNaFatura > 0 ? {
+                              titulo: 'Sua conta fixa completa',
+                              corpo: 'Este é o total das suas contas fixas do mês, independente de como você paga cada uma. É o número que o Diagnóstico usa para medir o peso sobre o seu salário. A parte que vai no cartão é abatida logo abaixo, para não ser contada duas vezes.',
+                              destaque: `${formatCurrency(s.jaNaFatura)} no cartão`,
+                            } : undefined}
+                          />
                         </td>
                       ))}
                     </tr>
@@ -2836,17 +2858,16 @@ const App: React.FC = () => {
                           <span className="block text-[10px] font-normal text-zinc-500 normal-case">conta fixa paga no cartão — não conta duas vezes</span>
                         </td>
                         {monthlySummaries.map((s, i) => (
-                          <td key={i} className="p-4 text-center font-mono text-sky-300/90">
-                            <span
-                              className={s.jaNaFatura > 0 ? 'cursor-help border-b border-dashed border-sky-500/40 pb-0.5' : undefined}
-                              onMouseEnter={s.jaNaFatura > 0 ? e => abrirTip(e,
-                                'Por que descontamos',
-                                'Este valor aparece duas vezes acima: uma na sua conta fixa e outra dentro da fatura do cartão. Como o dinheiro sai da sua conta uma vez só, descontamos aqui para o total ficar correto.',
-                                formatCurrency(s.jaNaFatura)) : undefined}
-                              onMouseLeave={() => setTip(null)}
-                            >
-                              {s.jaNaFatura > 0 ? `− ${formatCurrency(s.jaNaFatura)}` : '—'}
-                            </span>
+                          <td key={i} className="p-4 text-center font-mono text-sky-300/90 align-top">
+                            <CelulaValor
+                              texto={s.jaNaFatura > 0 ? `− ${formatCurrency(s.jaNaFatura)}` : '—'}
+                              sublinhado="border-sky-500/40"
+                              tip={s.jaNaFatura > 0 ? {
+                                titulo: 'Por que descontamos',
+                                corpo: 'Este valor aparece duas vezes acima: uma na sua conta fixa e outra dentro da fatura do cartão. Como o dinheiro sai da sua conta uma vez só, descontamos aqui para o total ficar correto.',
+                                destaque: formatCurrency(s.jaNaFatura),
+                              } : undefined}
+                            />
                           </td>
                         ))}
                       </tr>
@@ -2854,17 +2875,15 @@ const App: React.FC = () => {
                     <tr className="border-b border-zinc-800 bg-zinc-800/20">
                       <td className="p-4 font-black text-zinc-200 uppercase italic">Total de Custos</td>
                       {monthlySummaries.map((s, i) => (
-                        <td key={i} className="p-4 text-center text-orange-400 font-mono font-black whitespace-nowrap">
-                          <span
-                            className={s.jaNaFatura > 0 ? 'cursor-help border-b border-dashed border-zinc-600 pb-0.5' : undefined}
-                            onMouseEnter={s.jaNaFatura > 0 ? e => abrirTip(e,
-                              'Como chegamos neste total',
-                              `Fatura ${formatCurrency(s.totalCreditCard)} + conta fixa ${formatCurrency(s.totalFixed)}${s.totalVariable > 0 ? ` + variáveis ${formatCurrency(s.totalVariable)}` : ''} + lazer ${formatCurrency(s.totalLeisure)}, menos ${formatCurrency(s.jaNaFatura)} que já estavam contados dentro da fatura.`,
-                              formatCurrency(s.totalCost)) : undefined}
-                            onMouseLeave={() => setTip(null)}
-                          >
-                            {formatCurrency(s.totalCost)}
-                          </span>
+                        <td key={i} className="p-4 text-center text-orange-400 font-mono font-black whitespace-nowrap align-top">
+                          <CelulaValor
+                            texto={formatCurrency(s.totalCost)}
+                            tip={s.jaNaFatura > 0 ? {
+                              titulo: 'Como chegamos neste total',
+                              corpo: `Fatura ${formatCurrency(s.totalCreditCard)} + conta fixa ${formatCurrency(s.totalFixed)}${s.totalVariable > 0 ? ` + variáveis ${formatCurrency(s.totalVariable)}` : ''} + lazer ${formatCurrency(s.totalLeisure)}, menos ${formatCurrency(s.jaNaFatura)} que já estavam contados dentro da fatura.`,
+                              destaque: formatCurrency(s.totalCost),
+                            } : undefined}
+                          />
                         </td>
                       ))}
                     </tr>
