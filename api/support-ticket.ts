@@ -18,11 +18,32 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!;
 const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET ?? '';
+const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? '';
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'kashimappbr@gmail.com';
 
 /** Print grande é recusado antes de chegar no storage. O app já comprime. */
 const MAX_SCREENSHOT_BYTES = 3 * 1024 * 1024;
 const MAX_MENSAGEM = 4000;
+
+/**
+ * Tipos de imagem aceitos — LISTA FECHADA, nunca o que o cliente declarar.
+ *
+ * Antes o `contentType` e a extensão saíam direto do data URI, com a única
+ * checagem sendo `startsWith('data:image/')`. Isso deixava passar
+ * `image/svg+xml`: SVG executa script quando o navegador o abre como
+ * documento, e o painel convida o admin a fazer exatamente isso ("clique para
+ * abrir em tamanho real"). Era XSS armazenado, de qualquer cliente contra o
+ * Eduardo.
+ *
+ * A lista também elimina a injeção de `../` na chave do storage, que vinha
+ * pelo mesmo caminho.
+ */
+const TIPOS_DE_IMAGEM: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+};
 
 function verifyAuthToken(authHeader?: string): { sub: string } | null {
   if (!SUPABASE_JWT_SECRET) return null;
@@ -46,6 +67,39 @@ function verifyAuthToken(authHeader?: string): { sub: string } | null {
 }
 
 const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+/**
+ * Quem é o cliente, segundo o Clerk — NÃO segundo o corpo da requisição.
+ *
+ * Antes o nome e o e-mail vinham do body. Como o painel mostra esses campos e o
+ * `replyTo` do aviso usa o e-mail, qualquer cliente podia abrir chamado se
+ * passando por outro: o Eduardo responderia achando que falava com o Roger e a
+ * resposta — que costuma repetir saldo e diagnóstico — iria para o impostor.
+ *
+ * Mesmo caminho que `api/activate-client.ts` já usa para consultar o Clerk.
+ */
+async function identidadeDoClerk(userId: string): Promise<{ nome: string | null; email: string | null }> {
+  if (!CLERK_SECRET_KEY) return { nome: null, email: null };
+  try {
+    const r = await fetch(`https://api.clerk.com/v1/users/${userId}`, {
+      headers: { Authorization: `Bearer ${CLERK_SECRET_KEY}` },
+    });
+    if (!r.ok) return { nome: null, email: null };
+    const u = await r.json() as {
+      first_name?: string; last_name?: string;
+      primary_email_address_id?: string;
+      email_addresses?: Array<{ id: string; email_address: string }>;
+    };
+    const principal = u.email_addresses?.find(e => e.id === u.primary_email_address_id)
+      ?? u.email_addresses?.[0];
+    return {
+      nome: [u.first_name, u.last_name].filter(Boolean).join(' ') || null,
+      email: principal?.email_address?.toLowerCase() ?? null,
+    };
+  } catch {
+    return { nome: null, email: null };
+  }
+}
 
 const escapeHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -84,9 +138,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const claims = verifyAuthToken(req.headers.authorization as string | undefined);
   if (!claims) return res.status(401).json({ error: 'Unauthorized' });
 
-  const { mensagem, nome, email, screenshot, contexto } = (req.body ?? {}) as {
-    mensagem?: string; nome?: string; email?: string;
-    screenshot?: string; contexto?: Record<string, unknown>;
+  // `nome` e `email` NÃO são lidos do corpo: vêm do Clerk, pelo token já
+  // verificado. O que o app enviar nesses campos é ignorado.
+  const { mensagem, screenshot, contexto } = (req.body ?? {}) as {
+    mensagem?: string; screenshot?: string; contexto?: Record<string, unknown>;
   };
 
   const texto = (mensagem ?? '').trim();
@@ -94,25 +149,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (texto.length > MAX_MENSAGEM) return res.status(400).json({ error: 'Mensagem muito longa.' });
 
   try {
-    const { data: membership } = await db
-      .from('household_members')
-      .select('household_id')
-      .eq('clerk_user_id', claims.sub)
-      .maybeSingle();
+    const [{ data: membership }, identidade] = await Promise.all([
+      db.from('household_members').select('household_id').eq('clerk_user_id', claims.sub).maybeSingle(),
+      identidadeDoClerk(claims.sub),
+    ]);
+    const { nome, email } = identidade;
 
     // Print: chega em base64 e sobe pela rota, para o bucket seguir privado.
     let screenshotUrl: string | null = null;
     if (typeof screenshot === 'string' && screenshot.startsWith('data:image/')) {
+      const fimDoTipo = screenshot.indexOf(';');
+      const declarado = fimDoTipo > 11 ? screenshot.slice(11, fimDoTipo).toLowerCase() : '';
+      const contentType = TIPOS_DE_IMAGEM[declarado];
+      if (!contentType) {
+        return res.status(400).json({ error: 'Envie o print em PNG, JPG ou WEBP.' });
+      }
+
       const base64 = screenshot.slice(screenshot.indexOf(',') + 1);
       const bytes = Buffer.from(base64, 'base64');
       if (bytes.length > MAX_SCREENSHOT_BYTES) {
         return res.status(400).json({ error: 'A imagem é grande demais. Tente um print menor.' });
       }
-      const ext = screenshot.slice(11, screenshot.indexOf(';')) || 'jpeg';
-      const path = `${claims.sub}/${Date.now()}.${ext === 'jpeg' ? 'jpg' : ext}`;
+
+      // Extensão vem da lista, não do que o cliente escreveu.
+      const ext = declarado === 'jpeg' ? 'jpg' : declarado;
+      const path = `${claims.sub}/${Date.now()}.${ext}`;
       const { error: upErr } = await db.storage
         .from('support')
-        .upload(path, bytes, { contentType: `image/${ext}`, upsert: false });
+        .upload(path, bytes, { contentType, upsert: false });
       // Anexo é acessório: se falhar, o chamado ainda tem que chegar.
       if (!upErr) screenshotUrl = path;
     }
@@ -124,8 +188,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .insert({
         household_id: membership?.household_id ?? null,
         clerk_user_id: claims.sub,
-        nome: nome ?? null,
-        email: email ?? null,
+        nome,
+        email,
         mensagem: texto,
         screenshot_url: screenshotUrl,
         contexto: ctx,

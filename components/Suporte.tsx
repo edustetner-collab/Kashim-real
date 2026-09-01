@@ -18,6 +18,14 @@ interface Props {
 
 const MAX_LADO = 1400;
 
+/**
+ * Comprime e RECODIFICA o print como JPEG.
+ *
+ * Recodificar não é só para tamanho: o canvas descarta o arquivo original e
+ * gera pixels novos, então nada do que veio no arquivo (metadados, conteúdo
+ * ativo de um SVG) sobrevive. A rota também valida o tipo, mas aqui o arquivo
+ * perigoso deixa de existir antes mesmo de sair do aparelho.
+ */
 async function comprimirImagem(file: File): Promise<string> {
   const dataUrl: string = await new Promise((ok, err) => {
     const fr = new FileReader();
@@ -78,8 +86,8 @@ const Suporte: React.FC<Props> = ({ onClose, telaAtual }) => {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           mensagem: mensagem.trim(),
-          nome: user?.fullName ?? user?.firstName ?? '',
-          email: user?.primaryEmailAddress?.emailAddress ?? '',
+          // Nome e e-mail NÃO são enviados: a rota busca no Clerk pelo token.
+          // Mandar daqui deixaria um cliente abrir chamado como se fosse outro.
           screenshot: print,
           // Contexto técnico automático: evita as idas e vindas para descobrir
           // onde o erro aconteceu.
