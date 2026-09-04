@@ -1212,11 +1212,18 @@ const App: React.FC = () => {
    * estilo e não cabe uma explicação de duas linhas. Renderiza `fixed` fora da
    * tabela porque a Compilação rola na horizontal e cortaria um absolute.
    */
-  const [tip, setTip] = useState<{ titulo: string; texto: string; valor?: string; x: number; y: number } | null>(null);
+  /**
+   * O cabeçalho do tooltip é uma lista de pares: rótulo em azul, valor em
+   * branco ao lado. Assim "Sua conta fixa completa: R$ 7.175,53" e "No cartão:
+   * R$ 2.752,77" ficam em linhas próprias, cada uma legível — antes era um
+   * título só, longo, que quebrava em quatro linhas e cortava o valor.
+   */
+  type TipLinha = { rotulo: string; valor?: string };
+  const [tip, setTip] = useState<{ linhas: TipLinha[]; texto: string; x: number; y: number } | null>(null);
   const fecharTip = useCallback(() => setTip(null), []);
-  const abrirTip = (e: React.MouseEvent, titulo: string, texto: string, valor?: string) => {
+  const abrirTip = (e: React.MouseEvent, linhas: TipLinha[], texto: string) => {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setTip({ titulo, texto, valor, x: r.left + r.width / 2, y: r.bottom + 8 });
+    setTip({ linhas, texto, x: r.left + r.width / 2, y: r.bottom + 8 });
   };
 
   /**
@@ -1261,13 +1268,13 @@ const App: React.FC = () => {
    */
   const celulaValor = (
     texto: string,
-    t?: { titulo: string; corpo: string; destaque?: string },
+    t?: { linhas: TipLinha[]; corpo: string },
     sublinhado = 'border-zinc-600',
   ) => (
     <span className="inline-flex flex-col items-center leading-none">
       <span
         className={t ? `cursor-help border-b border-dashed ${sublinhado} pb-0.5` : undefined}
-        onMouseEnter={t ? e => abrirTip(e, t.titulo, t.corpo, t.destaque) : undefined}
+        onMouseEnter={t ? e => abrirTip(e, t.linhas, t.corpo) : undefined}
         onMouseLeave={t ? fecharTip : undefined}
       >
         {texto}
@@ -2944,9 +2951,11 @@ const App: React.FC = () => {
                           {celulaValor(
                             formatCurrency(s.totalCreditCard),
                             s.fixoNoCartao > 0 ? {
-                              titulo: 'Sua fatura completa ao final desse mês',
-                              corpo: `Contas fixas dentro da fatura: ${formatCurrency(s.fixoNoCartao)}. Além do valor que já existe na sua fatura atual, essa projeção já carrega as contas fixas que vão entrar, pois você optou em gastar ${formatCurrency(s.fixoNoCartao)} de contas fixas no cartão. Sendo assim, ele já é o valor que ela ficará ao final do período, após você ter gasto o valor que previu gastar.`,
-                              destaque: formatCurrency(s.totalCreditCard),
+                              linhas: [
+                                { rotulo: 'Sua fatura completa ao final desse mês:', valor: formatCurrency(s.totalCreditCard) },
+                                { rotulo: 'Contas fixas dentro da fatura:', valor: formatCurrency(s.fixoNoCartao) },
+                              ],
+                              corpo: `Além do valor que já existe na sua fatura atual, essa projeção já carrega as contas fixas que vão entrar, pois você optou em gastar ${formatCurrency(s.fixoNoCartao)} de contas fixas no cartão. Sendo assim, ele já é o valor que ela ficará ao final do período, após você ter gasto o valor que previu gastar.`,
                             } : undefined
                           )}
                         </td>
@@ -2962,9 +2971,11 @@ const App: React.FC = () => {
                           {celulaValor(
                             formatCurrency(s.totalFixed),
                             s.fixoNoCartao > 0 ? {
-                              titulo: 'Sua conta fixa completa',
+                              linhas: [
+                                { rotulo: 'Sua conta fixa completa:', valor: formatCurrency(s.totalFixed) },
+                                { rotulo: 'No cartão:', valor: formatCurrency(s.fixoNoCartao) },
+                              ],
                               corpo: 'Esse é o total das suas contas fixas no mês, independente de como você paga cada uma. Ele é fundamental para você entender o peso que suas contas fixas têm sobre seu salário, e isso é mostrado no seu diagnóstico financeiro. A parte que vai no cartão é abatida logo abaixo, para não ser contada duas vezes.',
-                              destaque: `${formatCurrency(s.totalFixed)} · no cartão ${formatCurrency(s.fixoNoCartao)}`,
                             } : undefined
                           )}
                         </td>
@@ -2984,9 +2995,13 @@ const App: React.FC = () => {
                             {celulaValor(
                             s.jaNaFatura > 0 ? `− ${formatCurrency(s.jaNaFatura)}` : '—',
                             s.jaNaFatura > 0 ? {
-                                titulo: `Por que subtraímos esse valor de ${formatCurrency(s.jaNaFatura)}?`,
-                                corpo: 'Essa subtração acontece para a conta bater corretamente, pois esse valor está em dois lugares, mas só pode somar uma vez. 1º Está na fatura, porque você decidiu passar parte das contas fixas no cartão. 2º Também está nas contas fixas, para que você saiba o total de contas fixas que tem, independente da forma de pagamento.',
-                                destaque: formatCurrency(s.jaNaFatura),
+                                // O número mora DENTRO da pergunta — mostrá-lo também
+                                // na lateral repetia o mesmo valor duas vezes na
+                                // mesma linha.
+                                linhas: [
+                                  { rotulo: 'Por que subtraímos esse valor de', valor: `${formatCurrency(s.jaNaFatura)}?` },
+                                ],
+                                corpo: 'Essa subtração acontece para a conta bater corretamente, pois esse valor está em dois lugares, mas só pode somar uma vez. 1º Está na fatura, porque você decidiu passar parte das contas fixas no cartão. 2º Também está nas contas fixas, para que você saiba o total de contas fixas que você tem, independente da forma de pagamento.',
                               } : undefined,
                             'border-sky-500/40'
                           )}
@@ -3009,9 +3024,10 @@ const App: React.FC = () => {
                           {celulaValor(
                             formatCurrency(s.totalCost),
                             s.jaNaFatura > 0 ? {
-                              titulo: 'Como chegamos neste total',
+                              linhas: [
+                                { rotulo: 'Como chegamos neste total:', valor: formatCurrency(s.totalCost) },
+                              ],
                               corpo: `Fatura ${formatCurrency(s.totalCreditCard)} + conta fixa ${formatCurrency(s.totalFixed)}${s.totalVariable > 0 ? ` + variáveis ${formatCurrency(s.totalVariable)}` : ''} + lazer ${formatCurrency(s.totalLeisure)}, menos ${formatCurrency(s.jaNaFatura)} que já estavam contados dentro da fatura.`,
-                              destaque: formatCurrency(s.totalCost),
                             } : undefined
                           )}
                         </td>
@@ -3236,15 +3252,22 @@ const App: React.FC = () => {
           className="fixed z-[400] pointer-events-none"
           style={{ left: tip.x, top: tip.y, transform: 'translateX(-50%)' }}
         >
-          <div className="w-[300px] rounded-2xl border border-zinc-700 bg-[#17181a] shadow-2xl overflow-hidden">
+          <div className="w-[330px] rounded-2xl border border-zinc-700 bg-[#17181a] shadow-2xl overflow-hidden">
             {/* Seta apontando para a célula */}
             <div className="absolute -top-[6px] left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 bg-[#17181a] border-l border-t border-zinc-700" />
             <div className="relative px-4 pt-3.5 pb-3">
-              <div className="flex items-baseline justify-between gap-3 mb-1.5">
-                <span className="text-[10px] font-black uppercase tracking-[0.14em] text-sky-400">{tip.titulo}</span>
-                {tip.valor && <span className="font-mono text-[13px] font-bold text-white tabular-nums whitespace-nowrap">{tip.valor}</span>}
-              </div>
-              <p className="text-[12.5px] leading-relaxed text-zinc-300">{tip.texto}</p>
+              {/* Cada linha do cabeçalho: rótulo em azul, número em branco ao
+                  lado. O rótulo pode quebrar; o número nunca (`shrink-0`), que
+                  era o que cortava "no cartão R$ 2.752,77" pela metade. */}
+              {tip.linhas.map((l, i) => (
+                <div key={i} className="flex items-baseline justify-between gap-2.5 mb-1">
+                  <span className="text-[10px] font-black uppercase tracking-[0.08em] leading-[1.35] text-sky-400">{l.rotulo}</span>
+                  {l.valor && (
+                    <span className="shrink-0 font-mono text-[12.5px] font-bold text-white tabular-nums whitespace-nowrap">{l.valor}</span>
+                  )}
+                </div>
+              ))}
+              <p className="mt-2 text-[12.5px] leading-relaxed text-zinc-300">{tip.texto}</p>
             </div>
           </div>
         </div>
