@@ -94,6 +94,14 @@ export interface SummaryData {
    * uma linha "(−) já incluído na fatura".
    */
   jaNaFatura: number;
+  /**
+   * A parcela de `jaNaFatura` que vem só da CONTA FIXA.
+   *
+   * `jaNaFatura` soma conta fixa, variáveis e lazer — tudo que foi pago no
+   * cartão. O tooltip da linha de conta fixa precisa falar só da parte dela,
+   * senão anuncia um número que não sai daquela linha.
+   */
+  fixoNoCartao: number;
   totalCost: number;
   balance: number;
   accumulated: number;

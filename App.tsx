@@ -1858,11 +1858,16 @@ const App: React.FC = () => {
       const jaNaFatura = CATEGORIAS_DE_CUSTO
         .reduce((sum, cat) => sum + items.filter(i => i.category === cat).reduce((s, i) => s + jaNaFaturaDoItem(i), 0), 0);
 
+      // Só a parte que vem da conta fixa — é o que o tooltip daquela linha cita.
+      const fixoNoCartao = items
+        .filter(i => i.category === CategoryType.FIXED_EXPENSE)
+        .reduce((s, i) => s + jaNaFaturaDoItem(i), 0);
+
       const totalCost = totalCreditCard + totalFixed + totalVariable + totalLeisure - jaNaFatura;
       const balance = totalIncome - totalCost;
       accumulated += balance;
 
-      summaries.push({ totalIncome, totalCreditCard, totalFixed, totalVariable, totalLeisure, jaNaFatura, totalCost, balance, accumulated });
+      summaries.push({ totalIncome, totalCreditCard, totalFixed, totalVariable, totalLeisure, jaNaFatura, fixoNoCartao, totalCost, balance, accumulated });
     }
     return summaries;
   }, [items, months, currentActualMonth, currentActualYear]);
@@ -2938,10 +2943,10 @@ const App: React.FC = () => {
                         <td key={i} className="p-4 text-center text-orange-400 font-mono align-top">
                           {celulaValor(
                             formatCurrency(s.totalCreditCard),
-                            s.jaNaFatura > 0 ? {
-                              titulo: 'O que forma esta fatura',
-                              corpo: 'Além das compras do mês, esta fatura carrega as contas fixas que você optou por pagar no cartão. Elas foram gastas no mês anterior e vencem agora.',
-                              destaque: formatCurrency(s.jaNaFatura),
+                            s.fixoNoCartao > 0 ? {
+                              titulo: 'Sua fatura completa ao final desse mês',
+                              corpo: `Contas fixas dentro da fatura: ${formatCurrency(s.fixoNoCartao)}. Além do valor que já existe na sua fatura atual, essa projeção já carrega as contas fixas que vão entrar, pois você optou em gastar ${formatCurrency(s.fixoNoCartao)} de contas fixas no cartão. Sendo assim, ele já é o valor que ela ficará ao final do período, após você ter gasto o valor que previu gastar.`,
+                              destaque: formatCurrency(s.totalCreditCard),
                             } : undefined
                           )}
                         </td>
@@ -2956,36 +2961,31 @@ const App: React.FC = () => {
                         <td key={i} className="p-4 text-center text-orange-400 font-mono align-top">
                           {celulaValor(
                             formatCurrency(s.totalFixed),
-                            s.jaNaFatura > 0 ? {
+                            s.fixoNoCartao > 0 ? {
                               titulo: 'Sua conta fixa completa',
-                              corpo: 'Este é o total das suas contas fixas do mês, independente de como você paga cada uma. É o número que o Diagnóstico usa para medir o peso sobre o seu salário. A parte que vai no cartão é abatida logo abaixo, para não ser contada duas vezes.',
-                              destaque: `${formatCurrency(s.jaNaFatura)} no cartão`,
+                              corpo: 'Esse é o total das suas contas fixas no mês, independente de como você paga cada uma. Ele é fundamental para você entender o peso que suas contas fixas têm sobre seu salário, e isso é mostrado no seu diagnóstico financeiro. A parte que vai no cartão é abatida logo abaixo, para não ser contada duas vezes.',
+                              destaque: `${formatCurrency(s.totalFixed)} · no cartão ${formatCurrency(s.fixoNoCartao)}`,
                             } : undefined
                           )}
                         </td>
                       ))}
                     </tr>
-                    <tr className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
-                      <td className="p-4 font-bold text-zinc-300">Custos Variáveis<span className="block text-[10px] font-normal text-zinc-500 normal-case">fora do cartão</span></td>
-                      {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-orange-400 font-mono">{formatCurrency(s.totalVariable)}</td>)}
-                    </tr>
-                    <tr className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
-                      <td className="p-4 font-bold text-zinc-300">Gastos Pessoais e Lazer<span className="block text-[10px] font-normal text-zinc-500 normal-case">fora do cartão</span></td>
-                      {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-orange-400 font-mono">{formatCurrency(s.totalLeisure)}</td>)}
-                    </tr>
+                    {/* Abatimento colado na conta fixa — as duas linhas contam a
+                        mesma história: aqui está o total, aqui está a parte que
+                        não sai agora. Sugestão do cliente do Eduardo. */}
                     {monthlySummaries.some(s => s.jaNaFatura > 0) && (
                       <tr className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
                         <td className="p-4 font-bold text-sky-300/90">
                           (−) Já incluído na fatura
-                          <span className="block text-[10px] font-normal text-zinc-500 normal-case">conta fixa paga no cartão — não conta duas vezes</span>
+                          <span className="block text-[10px] font-normal text-zinc-500 normal-case">gastos que você paga no cartão — não contam duas vezes</span>
                         </td>
                         {monthlySummaries.map((s, i) => (
                           <td key={i} className="p-4 text-center font-mono text-sky-300/90 align-top">
                             {celulaValor(
                             s.jaNaFatura > 0 ? `− ${formatCurrency(s.jaNaFatura)}` : '—',
                             s.jaNaFatura > 0 ? {
-                                titulo: 'Por que descontamos',
-                                corpo: 'Este valor aparece duas vezes acima: uma na sua conta fixa e outra dentro da fatura do cartão. Como o dinheiro sai da sua conta uma vez só, descontamos aqui para o total ficar correto.',
+                                titulo: `Por que subtraímos esse valor de ${formatCurrency(s.jaNaFatura)}?`,
+                                corpo: 'Essa subtração acontece para a conta bater corretamente, pois esse valor está em dois lugares, mas só pode somar uma vez. 1º Está na fatura, porque você decidiu passar parte das contas fixas no cartão. 2º Também está nas contas fixas, para que você saiba o total de contas fixas que tem, independente da forma de pagamento.',
                                 destaque: formatCurrency(s.jaNaFatura),
                               } : undefined,
                             'border-sky-500/40'
@@ -2994,6 +2994,14 @@ const App: React.FC = () => {
                         ))}
                       </tr>
                     )}
+                    <tr className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+                      <td className="p-4 font-bold text-zinc-300">Custos Variáveis<span className="block text-[10px] font-normal text-zinc-500 normal-case">fora do cartão</span></td>
+                      {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-orange-400 font-mono">{formatCurrency(s.totalVariable)}</td>)}
+                    </tr>
+                    <tr className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+                      <td className="p-4 font-bold text-zinc-300">Gastos Pessoais e Lazer<span className="block text-[10px] font-normal text-zinc-500 normal-case">fora do cartão</span></td>
+                      {monthlySummaries.map((s, i) => <td key={i} className="p-4 text-center text-orange-400 font-mono">{formatCurrency(s.totalLeisure)}</td>)}
+                    </tr>
                     <tr className="border-b border-zinc-800 bg-zinc-800/20">
                       <td className="p-4 font-black text-zinc-200 uppercase italic">Total de Custos</td>
                       {monthlySummaries.map((s, i) => (
