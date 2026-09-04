@@ -1213,30 +1213,62 @@ const App: React.FC = () => {
    * tabela porque a Compilação rola na horizontal e cortaria um absolute.
    */
   const [tip, setTip] = useState<{ titulo: string; texto: string; valor?: string; x: number; y: number } | null>(null);
+  const fecharTip = useCallback(() => setTip(null), []);
   const abrirTip = (e: React.MouseEvent, titulo: string, texto: string, valor?: string) => {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     setTip({ titulo, texto, valor, x: r.left + r.width / 2, y: r.bottom + 8 });
   };
 
   /**
+   * Rede de segurança do tooltip: qualquer coisa que tire o número de baixo do
+   * mouse fecha o balão.
+   *
+   * `onMouseLeave` sozinho não basta — se a página rola, o usuário troca de
+   * aba, ou a janela muda de tamanho, o elemento sai sem disparar o evento e o
+   * balão fica preso na tela. Era o que acontecia.
+   */
+  useEffect(() => {
+    if (!tip) return;
+    const fecha = () => setTip(null);
+    window.addEventListener('scroll', fecha, true); // captura: pega o scroll da tabela também
+    window.addEventListener('resize', fecha);
+    window.addEventListener('blur', fecha);
+    document.addEventListener('visibilitychange', fecha);
+    return () => {
+      window.removeEventListener('scroll', fecha, true);
+      window.removeEventListener('resize', fecha);
+      window.removeEventListener('blur', fecha);
+      document.removeEventListener('visibilitychange', fecha);
+    };
+  }, [tip]);
+
+  // Trocar de aba desmonta a tabela sem passar pelo onMouseLeave.
+  useEffect(() => { setTip(null); }, [activeTab]);
+
+  /**
    * Célula de valor da Compilação, com espaço FIXO reservado para o ícone
    * embaixo do número — com ou sem tooltip.
    *
-   * Sem essa reserva o ícone entrava no fluxo do texto e, num número largo
-   * como R$ 10.061,77, quebrava para a linha de baixo e empurrava o valor para
-   * cima: a linha da tabela deixava de ficar reta. Agora o número sempre ocupa
-   * a mesma altura e só o ícone aparece ou não.
+   * É uma FUNÇÃO de render, não um componente. Como componente declarado dentro
+   * do App, cada render criava um tipo novo: o React desmontava e remontava o
+   * elemento, o `onMouseLeave` do antigo nunca disparava e o balão ficava preso
+   * na tela mesmo com o mouse longe dali. Chamada como função, o JSX pertence
+   * ao render do App e o elemento não é recriado.
+   *
+   * O espaço reservado embaixo existe porque, sem ele, o ícone entrava no fluxo
+   * do texto e num número largo (R$ 10.061,77) quebrava linha, empurrando o
+   * valor para cima e torcendo a linha da tabela.
    */
-  const CelulaValor: React.FC<{
-    texto: string;
-    tip?: { titulo: string; corpo: string; destaque?: string };
-    sublinhado?: string;
-  }> = ({ texto, tip: t, sublinhado = 'border-zinc-600' }) => (
+  const celulaValor = (
+    texto: string,
+    t?: { titulo: string; corpo: string; destaque?: string },
+    sublinhado = 'border-zinc-600',
+  ) => (
     <span className="inline-flex flex-col items-center leading-none">
       <span
         className={t ? `cursor-help border-b border-dashed ${sublinhado} pb-0.5` : undefined}
         onMouseEnter={t ? e => abrirTip(e, t.titulo, t.corpo, t.destaque) : undefined}
-        onMouseLeave={t ? () => setTip(null) : undefined}
+        onMouseLeave={t ? fecharTip : undefined}
       >
         {texto}
       </span>
@@ -1675,6 +1707,47 @@ const App: React.FC = () => {
     const absMonth = (year: number, monthIndex: number) => year * 12 + monthIndex;
     const hojeAbs = absMonth(currentActualYear, currentActualMonth);
 
+    /**
+     * Quanto DESTE item vai para o cartão no mês `mIdx` — o que já foi lançado
+     * no crédito mais o que ainda está previsto numa linha declarada no cartão.
+     *
+     * Recebe o mês por parâmetro (e não do fechamento do laço) porque o mesmo
+     * número é usado duas vezes, em meses diferentes: sai do custo de M e entra
+     * na fatura de M+1. É essa simetria que impede o dinheiro de sumir.
+     */
+    const cartaoDoItemNoMes = (item: FinanceItem, mIdx: number): number => {
+      const md = months[mIdx];
+      if (!md) return 0;
+      const mk = `${md.year}-${md.index}`;
+      const partials = (item.partialExpenses?.[mk] || []) as PartialExpense[];
+      const gastoReal = partials.reduce((sum, p) => sum + p.value, 0);
+
+      // O que JÁ foi lançado no crédito — vale mesmo sem a linha declarar
+      // cartão, porque no Open Finance a forma vem do lançamento, não da linha.
+      const lancadoNoCartao = partials
+        .filter(p => getSourceInfo(p, item, creditCardItems).isCredit)
+        .reduce((sum, p) => sum + p.value, 0);
+
+      // E o que ainda vai passar, quando a linha inteira é declarada no cartão.
+      const declaradoCartao = !!item.linkedCardId && item.linkType !== LinkType.DEBIT;
+      const fechadaNoReal = item.paidStatus?.[mIdx] === true && partials.length > 0;
+      const planejadoRestante = fechadaNoReal ? 0 : Math.max(0, (item.values[mIdx] || 0) - gastoReal);
+
+      return lancadoNoCartao + (declaradoCartao ? planejadoRestante : 0);
+    };
+
+    const CATEGORIAS_DE_CUSTO = [
+      CategoryType.FIXED_EXPENSE,
+      CategoryType.VARIABLE_EXPENSE,
+      CategoryType.PERSONAL_LEISURE,
+    ];
+
+    /** Total que vai para o cartão num mês, somando todas as linhas de custo. */
+    const cartaoDoMes = (mIdx: number): number =>
+      mIdx < 0 || mIdx >= months.length ? 0
+        : items.reduce((sum, i) =>
+            CATEGORIAS_DE_CUSTO.includes(i.category) ? sum + cartaoDoItemNoMes(i, mIdx) : sum, 0);
+
     for (let m = 0; m < 12; m++) {
       const monthData = months[m];
       const monthKey = monthData ? `${monthData.year}-${monthData.index}` : '';
@@ -1693,27 +1766,13 @@ const App: React.FC = () => {
        * tambem cairia na fatura.
        */
       /**
-       * O que sai da conta por causa deste item, NESTE mês.
+       * O que sai da conta por causa deste item, NESTE mês — valor CHEIO.
        *
-       * Despesa declarada no cartão sai daqui no mês corrente E no mês seguinte
-       * — nos dois a fatura correspondente já foi informada pelo cliente, então
-       * contar de novo aqui duplicaria. Do segundo mês em diante ela continua
-       * contando (Opção B, 2026-08-20): é a previsão de quanto o cliente vai
-       * gastar, e é o que sustenta o planejamento.
-       *
-       * Estender do mês corrente para o SEGUINTE foi o que resolveu o problema
-       * que o Eduardo levava para toda reunião: o acumulado nascia num vermelho
-       * que se desfazia sozinho na virada do mês, e ele tinha que explicar isso
-       * ao cliente. Agora o mês seguinte já mostra o número que vai valer.
-       *
-       * Não estender para além disso é deliberado. A fatura dos meses distantes
-       * já contém as parcelas conhecidas; excluir o custo lá e somar a previsão
-       * na fatura duplicava esses valores — verificado no caso real em
-       * 2026-08-25, com R$ 414,73 a mais em outubro.
+       * A parte que vai no cartão continua aqui e é abatida uma vez só, no
+       * `jaNaFatura`, reaparecendo na fatura do mês seguinte. Antes o
+       * abatimento valia só até o mês seguinte; hoje vale sempre, porque a
+       * contrapartida na fatura existe (ver `totalCreditCard`).
        */
-      // 0 = mês corrente · 1 = mês seguinte · negativo = passado.
-      const mesesAdiante = monthData ? absMonth(monthData.year, monthData.index) - hojeAbs : m;
-
       const desembolsoDoItem = (item: FinanceItem): number => {
         const partials = (item.partialExpenses?.[monthKey] || []) as PartialExpense[];
         const gastoReal = partials.reduce((sum, p) => sum + p.value, 0);
@@ -1757,24 +1816,7 @@ const App: React.FC = () => {
        * vertical — foi a saída para mostrar a conta fixa cheia e estável sem
        * criar a pergunta "por que a soma não bate?".
        */
-      const jaNaFaturaDoItem = (item: FinanceItem): number => {
-        if (mesesAdiante > 1) return 0;
-        const partials = (item.partialExpenses?.[monthKey] || []) as PartialExpense[];
-        const gastoReal = partials.reduce((sum, p) => sum + p.value, 0);
-
-        // O que JÁ foi lançado no cartão — vale mesmo sem a linha declarar
-        // cartão, porque no Open Finance a forma de pagamento vem do lançamento.
-        const lancadoNoCartao = partials
-          .filter(p => getSourceInfo(p, item, creditCardItems).isCredit)
-          .reduce((sum, p) => sum + p.value, 0);
-
-        // E o que ainda vai passar, quando a linha inteira é declarada no cartão.
-        const declaradoCartao = !!item.linkedCardId && item.linkType !== LinkType.DEBIT;
-        const fechadaNoReal = item.paidStatus?.[m] === true && partials.length > 0;
-        const planejadoRestante = fechadaNoReal ? 0 : Math.max(0, (item.values[m] || 0) - gastoReal);
-
-        return lancadoNoCartao + (declaradoCartao ? planejadoRestante : 0);
-      };
+      const jaNaFaturaDoItem = (item: FinanceItem): number => cartaoDoItemNoMes(item, m);
 
       const somaDesembolso = (category: CategoryType) => items
         .filter(i => i.category === category)
@@ -1785,28 +1827,35 @@ const App: React.FC = () => {
       const totalLeisure = somaDesembolso(CategoryType.PERSONAL_LEISURE);
 
       /**
-       * Fatura do mes = a SOMA DAS FATURAS INFORMADAS nos cartoes. Nada mais.
+       * Fatura do mês = o que o cliente informou + o que veio do cartão do mês
+       * ANTERIOR, quando aquele mês ainda não terminou.
        *
-       * A Compilacao tem que bater com o "Total Faturas" da tela de cartoes,
-       * sempre. Se la mostra R$ 13,00, aqui e R$ 13,00.
+       * A segunda parcela é o que faltava, e o furo aparecia assim: em 4 de
+       * setembro o cliente ainda não tinha passado nada no cartão, mas o app já
+       * abatia R$ 3.082 da conta fixa de outubro "porque estaria na fatura" —
+       * e a fatura de outubro não tinha recebido nada. O dinheiro sumia entre
+       * as duas linhas e a sobra do mês aparecia R$ 3.082 maior do que era.
        *
-       * NAO REINTRODUZIR PROJECAO AQUI. Ja existiu, e em 2026-08-27 um cliente
-       * (Diego Costa) tinha R$ 13,00 de fatura informada em dezembro e a
-       * Compilacao mostrava R$ 2.657,64 — a diferenca era conta fixa declarada
-       * no cartao sendo "projetada" para uma fatura que o cliente ja tinha
-       * informado como zero. Numero inventado, sem origem visivel em tela
-       * nenhuma, e impossivel de explicar para o cliente.
-       *
-       * Se um dia a previsao de fatura voltar a ser desejada, ela precisa
-       * aparecer numa LINHA PROPRIA — nunca somada silenciosamente a um valor
-       * que o cliente digitou.
+       * A regra do "ainda não terminou" evita o outro extremo. Se o mês
+       * anterior já acabou, o cliente teve chance de atualizar a fatura com o
+       * que passou — somar de novo duplicaria, que foi o erro de 2026-08-27,
+       * quando a Compilação do Diego mostrou R$ 2.657 numa fatura informada
+       * como R$ 13.
        */
-      const totalCreditCard = items
+      const faturaInformada = items
         .filter(i => i.category === CategoryType.CREDIT_CARD)
         .reduce((sum, card) => sum + (card.values[m] || 0), 0);
 
-      // Abatimento: o que já está na fatura não pode ser contado de novo.
-      const jaNaFatura = [CategoryType.FIXED_EXPENSE, CategoryType.VARIABLE_EXPENSE, CategoryType.PERSONAL_LEISURE]
+      const anteriorAindaNaoTerminou = m > 0 && !!months[m - 1] &&
+        absMonth(months[m - 1].year, months[m - 1].index) >= hojeAbs;
+      const vemDoMesAnterior = anteriorAindaNaoTerminou ? cartaoDoMes(m - 1) : 0;
+
+      const totalCreditCard = faturaInformada + vemDoMesAnterior;
+
+      // Abatimento: o que vai no cartão sai do custo deste mês — em TODOS os
+      // meses. Vale porque agora ele reaparece na fatura do mês seguinte; sem
+      // essa contrapartida, abater nos meses distantes fazia o valor evaporar.
+      const jaNaFatura = CATEGORIAS_DE_CUSTO
         .reduce((sum, cat) => sum + items.filter(i => i.category === cat).reduce((s, i) => s + jaNaFaturaDoItem(i), 0), 0);
 
       const totalCost = totalCreditCard + totalFixed + totalVariable + totalLeisure - jaNaFatura;
@@ -2854,7 +2903,9 @@ const App: React.FC = () => {
 
             <div id="summary-section" className="hidden lg:block bg-zinc-900 border border-green-500/30 rounded-[40px] p-8 mt-12 mb-8 shadow-2xl overflow-hidden">
               <h3 className="text-green-400 font-black text-xl uppercase italic tracking-tighter mb-8 flex items-center gap-3"><i className="fas fa-vault"></i> Compilação Financeira</h3>
-              <div className="overflow-x-auto print:overflow-visible pb-4">
+              {/* Sair da tabela fecha o balão, mesmo que o mouse tenha saído
+                  rápido demais para o onMouseLeave da célula disparar. */}
+              <div className="overflow-x-auto print:overflow-visible pb-4" onMouseLeave={fecharTip}>
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="text-zinc-500 font-black uppercase text-[10px] tracking-widest border-b border-zinc-800">
@@ -2885,14 +2936,14 @@ const App: React.FC = () => {
                       </td>
                       {monthlySummaries.map((s, i) => (
                         <td key={i} className="p-4 text-center text-orange-400 font-mono align-top">
-                          <CelulaValor
-                            texto={formatCurrency(s.totalCreditCard)}
-                            tip={s.jaNaFatura > 0 ? {
+                          {celulaValor(
+                            formatCurrency(s.totalCreditCard),
+                            s.jaNaFatura > 0 ? {
                               titulo: 'O que forma esta fatura',
                               corpo: 'Além das compras do mês, esta fatura carrega as contas fixas que você optou por pagar no cartão. Elas foram gastas no mês anterior e vencem agora.',
                               destaque: formatCurrency(s.jaNaFatura),
-                            } : undefined}
-                          />
+                            } : undefined
+                          )}
                         </td>
                       ))}
                     </tr>
@@ -2903,14 +2954,14 @@ const App: React.FC = () => {
                       </td>
                       {monthlySummaries.map((s, i) => (
                         <td key={i} className="p-4 text-center text-orange-400 font-mono align-top">
-                          <CelulaValor
-                            texto={formatCurrency(s.totalFixed)}
-                            tip={s.jaNaFatura > 0 ? {
+                          {celulaValor(
+                            formatCurrency(s.totalFixed),
+                            s.jaNaFatura > 0 ? {
                               titulo: 'Sua conta fixa completa',
                               corpo: 'Este é o total das suas contas fixas do mês, independente de como você paga cada uma. É o número que o Diagnóstico usa para medir o peso sobre o seu salário. A parte que vai no cartão é abatida logo abaixo, para não ser contada duas vezes.',
                               destaque: `${formatCurrency(s.jaNaFatura)} no cartão`,
-                            } : undefined}
-                          />
+                            } : undefined
+                          )}
                         </td>
                       ))}
                     </tr>
@@ -2930,15 +2981,15 @@ const App: React.FC = () => {
                         </td>
                         {monthlySummaries.map((s, i) => (
                           <td key={i} className="p-4 text-center font-mono text-sky-300/90 align-top">
-                            <CelulaValor
-                              texto={s.jaNaFatura > 0 ? `− ${formatCurrency(s.jaNaFatura)}` : '—'}
-                              sublinhado="border-sky-500/40"
-                              tip={s.jaNaFatura > 0 ? {
+                            {celulaValor(
+                            s.jaNaFatura > 0 ? `− ${formatCurrency(s.jaNaFatura)}` : '—',
+                            s.jaNaFatura > 0 ? {
                                 titulo: 'Por que descontamos',
                                 corpo: 'Este valor aparece duas vezes acima: uma na sua conta fixa e outra dentro da fatura do cartão. Como o dinheiro sai da sua conta uma vez só, descontamos aqui para o total ficar correto.',
                                 destaque: formatCurrency(s.jaNaFatura),
-                              } : undefined}
-                            />
+                              } : undefined,
+                            'border-sky-500/40'
+                          )}
                           </td>
                         ))}
                       </tr>
@@ -2947,14 +2998,14 @@ const App: React.FC = () => {
                       <td className="p-4 font-black text-zinc-200 uppercase italic">Total de Custos</td>
                       {monthlySummaries.map((s, i) => (
                         <td key={i} className="p-4 text-center text-orange-400 font-mono font-black whitespace-nowrap align-top">
-                          <CelulaValor
-                            texto={formatCurrency(s.totalCost)}
-                            tip={s.jaNaFatura > 0 ? {
+                          {celulaValor(
+                            formatCurrency(s.totalCost),
+                            s.jaNaFatura > 0 ? {
                               titulo: 'Como chegamos neste total',
                               corpo: `Fatura ${formatCurrency(s.totalCreditCard)} + conta fixa ${formatCurrency(s.totalFixed)}${s.totalVariable > 0 ? ` + variáveis ${formatCurrency(s.totalVariable)}` : ''} + lazer ${formatCurrency(s.totalLeisure)}, menos ${formatCurrency(s.jaNaFatura)} que já estavam contados dentro da fatura.`,
                               destaque: formatCurrency(s.totalCost),
-                            } : undefined}
-                          />
+                            } : undefined
+                          )}
                         </td>
                       ))}
                     </tr>
