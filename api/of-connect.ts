@@ -563,9 +563,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // ── DELETE — revogar conexão ──────────────────────────────────────────────
     if (req.method === 'DELETE') {
-      const { householdId, connectionId } = req.body as {
+      const { householdId, connectionId, apagarHistorico } = req.body as {
         householdId?: string;
         connectionId?: string;
+        /**
+         * true = além de desconectar, remove os lançamentos que vieram deste
+         * banco do Extrato. NÃO apaga o que o cliente já categorizou no plano:
+         * a categorização vira gasto em `finance_items`, que é registro
+         * separado e continua de pé. Some o extrato, fica o trabalho dele.
+         */
+        apagarHistorico?: boolean;
       };
 
       if (!householdId || !connectionId) {
@@ -585,6 +592,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (conn.payer_cpf && conn.account_hash) {
         // Falha na revogação remota não impede marcar como revogado aqui
         await revokeOpenFinance(conn.payer_cpf, conn.account_hash).catch(() => {});
+      }
+
+      if (apagarHistorico) {
+        // Antes do revoke: depois da conexão sair da lista o vínculo continua
+        // existindo, mas é mais fácil errar a ordem numa manutenção futura.
+        await db.from('of_transactions').delete().eq('connection_id', connectionId);
       }
 
       await db.from('bank_connections').update({ consent_status: 'revoked' }).eq('id', connectionId);

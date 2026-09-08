@@ -55,6 +55,8 @@ interface Props {
   onAddPartial: (itemId: string, expense: PartialExpense, year?: number, month?: number) => void;
   /** Cria um item no plano e devolve o id — usado pelo confirmar de um toque. */
   onCreateItem: (description: string, category: CategoryType, isOneTime?: boolean) => string;
+  /** Banco removido — o Plano precisa soltar as linhas de fatura que vieram dele. */
+  onBancoRemovido?: (bankName: string) => void;
   onClose: () => void;
 }
 
@@ -419,6 +421,7 @@ export default function ExtratoBancario({
   onLaunchExpense,
   onAddPartial,
   onCreateItem,
+  onBancoRemovido,
   onClose,
 }: Props) {
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
@@ -438,6 +441,15 @@ export default function ExtratoBancario({
   const [aberto, setAberto] = useState<{ connId: string; kind: 'checking' | 'card'; last4?: string } | null>(null);
   /** Modal de conectar banco, agora aberto de dentro do Extrato */
   const [showConectar, setShowConectar] = useState(false);
+  /**
+   * Banco marcado para remoção.
+   *
+   * A exclusão vive AQUI, e não só em "Bancos conectados": para achar o botão
+   * antigo era preciso tocar em "conectar outro banco" — ninguém descobre um
+   * excluir escondido atrás de um adicionar.
+   */
+  const [removendo, setRemovendo] = useState<BankConn | null>(null);
+  const [removendoAgora, setRemovendoAgora] = useState(false);
   /** Conexão cujo cartão está sendo ligado/desligado */
   const [togglingCard, setTogglingCard] = useState('');
   const [cardError, setCardError] = useState('');
@@ -721,6 +733,27 @@ export default function ExtratoBancario({
   // código COMPE (para a logo) vêm daqui.
   const [banks, setBanks] = useState<BankConn[]>([]);
   const [banksLoaded, setBanksLoaded] = useState(false);
+  /** Desconecta (e opcionalmente apaga o extrato) do banco escolhido. */
+  const removerBanco = async (conn: BankConn, apagarHistorico: boolean) => {
+    setRemovendoAgora(true);
+    try {
+      await fetch('/api/of-connect', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ householdId, connectionId: conn.id, apagarHistorico }),
+      });
+      if (apagarHistorico) {
+        setTransactions((prev) => prev.filter((t) => t.connectionId !== conn.id));
+        onBancoRemovido?.(conn.bankName);
+      }
+      setAberto(null);
+      setRemovendo(null);
+      loadBanks();
+    } finally {
+      setRemovendoAgora(false);
+    }
+  };
+
   const loadBanks = useCallback(() => {
     fetch(`/api/of-connect?householdId=${householdId}`, { headers: { Authorization: `Bearer ${authToken}` } })
       .then((r) => (r.ok ? r.json() : null))
@@ -999,6 +1032,16 @@ export default function ExtratoBancario({
                         </a>
                       )}
                     </div>
+                    {/* Exclusão mora AQUI: antes só existia atrás de "conectar
+                        outro banco", e ninguém procura um excluir dentro de um
+                        adicionar. */}
+                    <button
+                      onClick={() => setRemovendo(b)}
+                      aria-label={`Remover ${b.bankName}`}
+                      className="w-9 h-9 shrink-0 rounded-full text-[#c7c7cc] hover:bg-[#fff0f0] hover:text-[#ff3b30] flex items-center justify-center transition-colors"
+                    >
+                      <i className="fas fa-trash-can text-[13px]" />
+                    </button>
                   </div>
 
                   {ready && (
@@ -1057,6 +1100,63 @@ export default function ExtratoBancario({
             </>
           )}
         </div>
+
+        {/* Remover banco — duas saídas, porque as duas são legítimas.
+            "Apagar tudo" limpa o EXTRATO, não o plano: o que o cliente já
+            categorizou virou gasto em finance_items, registro separado, e
+            continua de pé. O texto diz isso, senão ninguém escolhe com
+            confiança. */}
+        {removendo && (
+          <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-5">
+            <div className="w-full sm:max-w-sm bg-white rounded-t-3xl sm:rounded-3xl p-5">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#fff0f0]">
+                <i className="fas fa-trash-can text-[#ff3b30]" />
+              </div>
+
+              <h3 className="mb-1 text-center text-[19px] font-black text-[#1d1d1f]">
+                Remover {removendo.bankName}?
+              </h3>
+              <p className="mb-5 text-center text-[13px] leading-snug text-[#6e6e73]">
+                Escolha o que fazer com o que já veio deste banco.
+              </p>
+
+              <button
+                disabled={removendoAgora}
+                onClick={() => removerBanco(removendo, false)}
+                className="mb-2 w-full rounded-2xl border border-[#e5e5ea] bg-white p-3.5 text-left active:bg-[#f7f7f8] disabled:opacity-50"
+              >
+                <span className="block text-[14px] font-bold text-[#1d1d1f]">
+                  Desconectar e manter o histórico
+                </span>
+                <span className="mt-0.5 block text-[12px] leading-snug text-[#8e8e93]">
+                  Para de puxar novidades. O que já entrou continua no seu extrato e no seu plano.
+                </span>
+              </button>
+
+              <button
+                disabled={removendoAgora}
+                onClick={() => removerBanco(removendo, true)}
+                className="mb-3 w-full rounded-2xl border border-[#ffd4d4] bg-[#fff7f7] p-3.5 text-left active:bg-[#ffefef] disabled:opacity-50"
+              >
+                <span className="block text-[14px] font-bold text-[#ff3b30]">
+                  Apagar tudo deste banco
+                </span>
+                <span className="mt-0.5 block text-[12px] leading-snug text-[#8e8e93]">
+                  Some o banco, os cartões e os lançamentos do extrato. Os gastos que você já
+                  categorizou continuam no seu plano. Não dá para desfazer.
+                </span>
+              </button>
+
+              <button
+                disabled={removendoAgora}
+                onClick={() => setRemovendo(null)}
+                className="w-full py-3 text-[12px] font-bold uppercase tracking-widest text-[#8e8e93] disabled:opacity-50"
+              >
+                {removendoAgora ? 'Removendo...' : 'Cancelar'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

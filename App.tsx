@@ -1614,6 +1614,24 @@ const App: React.FC = () => {
   // Cada despesa variável vira sua PRÓPRIA linha, com o nome que a pessoa
   // digitou. (Havia aqui um balde único "Gastos Avulsos" que juntava todas as
   // despesas pontuais numa linha só e apagava o nome — bug real 2026-07-XX.)
+  /**
+   * Banco removido com "apagar tudo" — solta as linhas de fatura que vieram
+   * dele.
+   *
+   * Essas linhas são REFLEXO da conexão: o efeito de billTotals as recria a
+   * cada carga. Era por isso que apagar a fatura no Plano não adiantava — ela
+   * voltava sozinha. Com a conexão revogada o efeito não a recria mais, mas a
+   * linha já existente precisa sair na mão.
+   */
+  const handleBancoRemovido = (bankName: string) => {
+    const daquele = (d: string) => d === `${bankName} · Fatura` || d.startsWith(`${bankName} ••`);
+    setItems(prev => prev.filter(i => {
+      if (i.category !== CategoryType.CREDIT_CARD || !daquele(i.description)) return true;
+      if (db) deleteFinanceItem(db, i.id).catch(console.error);
+      return false;
+    }));
+  };
+
   const handleOpenExtrato = async (cardLast4?: string) => {
     const t = await getToken({ template: 'supabase' });
     if (!t) return;
@@ -3261,6 +3279,7 @@ const App: React.FC = () => {
           onLaunchExpense={(pre) => setPendingExpense({ source: 'manual', ...pre })}
           onCreateItem={handleCreateItem}
           onAddPartial={handleAddPartial}
+          onBancoRemovido={handleBancoRemovido}
           onClose={() => { setShowExtrato(false); setOfInitialCardLast4(undefined); }}
         />
       )}

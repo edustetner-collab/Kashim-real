@@ -59,6 +59,19 @@
          relogio. Elemento `fixed` (o menu de baixo) nao sofre contentInset e
          continua precisando do safe-bottom. */
       html.native-ios .safe-top { padding-top: 0; }
+      /* Piso para o rodapé no app nativo.
+         Sintoma (iPhone 16 Pro Max, Eduardo, 2026-09-08): na PRIMEIRA abertura
+         o menu de baixo aparece cortado pela metade; fechando e abrindo de novo
+         fica certo. A hipótese é que `env(safe-area-inset-bottom)` ainda resolve
+         0 na primeira pintura — o WKWebView não terminou de calcular as áreas
+         seguras —, então o menu fica sem a folga do indicador de home. Da
+         segunda vez o valor já existe e tudo se ajeita.
+         `max()` não muda nada quando o inset chega certo (34px no 16 Pro Max):
+         só garante um mínimo quando ele vem zerado. Restrito ao app nativo para
+         não engordar a barra na web, onde o bug não existe.
+         NÃO confundir com o menu cortado no TOPO, que é outro mecanismo
+         (contentInset) e esse sim exige build nova. */
+      html.native-app .safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 16px); }
       html, body { height: 100%; overflow-x: hidden; }
       /* Tabular numbers for all monetary values */
       .k-num {
