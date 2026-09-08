@@ -10,8 +10,12 @@ import { useAuth, useUser } from '@clerk/clerk-react';
  * para algumas centenas de KB sem ficar ilegível.
  */
 
+import { assuntosVisiveis, artigosDoAssunto, FaqArtigo } from '../lib/faq';
+
 interface Props {
   onClose: () => void;
+  /** Libera os assuntos de Open Finance no FAQ. Mesmo portão do resto do app. */
+  temOpenFinance?: boolean;
   /** Onde o cliente estava quando abriu o chamado — vai junto no contexto. */
   telaAtual?: string;
 }
@@ -51,7 +55,7 @@ async function comprimirImagem(file: File): Promise<string> {
   return canvas.toDataURL('image/jpeg', 0.7);
 }
 
-const Suporte: React.FC<Props> = ({ onClose, telaAtual }) => {
+const Suporte: React.FC<Props> = ({ onClose, telaAtual, temOpenFinance = false }) => {
   const { getToken } = useAuth();
   const { user } = useUser();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -62,6 +66,11 @@ const Suporte: React.FC<Props> = ({ onClose, telaAtual }) => {
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState('');
   const [enviado, setEnviado] = useState(false);
+  // FAQ antes do chamado — modelo da TecnoSpeed: escolher o assunto já traz o
+  // artigo que costuma resolver, em vez de abrir chamado e esperar.
+  const [assunto, setAssunto] = useState<string | null>(null);
+  const [aberto, setAberto] = useState<FaqArtigo | null>(null);
+  const assuntos = assuntosVisiveis(temOpenFinance);
 
   const escolherArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -151,9 +160,66 @@ const Suporte: React.FC<Props> = ({ onClose, telaAtual }) => {
         </div>
 
         <p className="text-[13px] text-zinc-500 leading-snug mb-4">
-          Deu erro, um número não bateu ou ficou com dúvida? Conte o que aconteceu — se puder,
-          mande um print da tela.
+          Escolha o assunto: pode ser que a resposta já esteja aqui. Se não estiver, conte o que
+          aconteceu logo abaixo — se puder, com um print da tela.
         </p>
+
+        {/* Assuntos */}
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {assuntos.map(a => (
+            <button
+              key={a.id}
+              onClick={() => { setAssunto(assunto === a.id ? null : a.id); setAberto(null); }}
+              className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11.5px] font-bold transition-colors ${
+                assunto === a.id
+                  ? 'border-green-600 bg-green-600 text-white'
+                  : 'border-zinc-200 bg-zinc-50 text-zinc-600 active:bg-zinc-100'
+              }`}
+            >
+              <i className={`fas ${a.icone} text-[10px]`} />
+              {a.rotulo}
+            </button>
+          ))}
+        </div>
+
+        {/* Artigos do assunto escolhido */}
+        {assunto && (
+          <div className="mb-4 overflow-hidden rounded-2xl border border-zinc-200">
+            {artigosDoAssunto(assunto).map(art => {
+              const abertoAqui = aberto?.pergunta === art.pergunta;
+              return (
+                <div key={art.pergunta} className="border-b border-zinc-100 last:border-0">
+                  <button
+                    onClick={() => setAberto(abertoAqui ? null : art)}
+                    className="flex w-full items-start gap-2 px-3.5 py-3 text-left active:bg-zinc-50"
+                  >
+                    <i className={`fas fa-chevron-${abertoAqui ? 'down' : 'right'} mt-1 text-[9px] text-zinc-400`} />
+                    <span className="flex-1 text-[13px] font-bold leading-snug text-zinc-800">
+                      {art.pergunta}
+                    </span>
+                  </button>
+                  {abertoAqui && (
+                    <div className="space-y-2 bg-zinc-50 px-3.5 pb-3.5 pt-1">
+                      {art.resposta.map((par, i) => (
+                        <p
+                          key={i}
+                          className={`text-[12.5px] leading-relaxed ${
+                            i === 0 ? 'font-bold text-zinc-800' : 'text-zinc-600'
+                          }`}
+                        >
+                          {par}
+                        </p>
+                      ))}
+                      <p className="pt-1 text-[11px] italic text-zinc-400">
+                        Não resolveu? Conte abaixo o que aconteceu.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <textarea
           value={mensagem}

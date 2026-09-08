@@ -3275,7 +3275,7 @@ const App: React.FC = () => {
         />
       )}
 
-      {showSuporte && <Suporte onClose={() => setShowSuporte(false)} telaAtual={activeTab} />}
+      {showSuporte && <Suporte onClose={() => setShowSuporte(false)} telaAtual={activeTab} temOpenFinance={hasOpenFinanceAccess(user)} />}
       {showSuporteAdmin && (
         <SuporteAdmin onClose={() => setShowSuporteAdmin(false)} onMudou={carregarChamadosAbertos} />
       )}
