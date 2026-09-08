@@ -878,11 +878,16 @@ export default function ExtratoBancario({
     .filter((t) => filter === 'all' || t.transactionType === filter)
     .sort((a, b) => b.transactionDate.localeCompare(a.transactionDate));
 
+  // Os quatro números vêm de `inBank`, nunca de `transactions`. O total de
+  // despesas somava a lista inteira enquanto a contagem olhava só o banco
+  // aberto: a tela do Bradesco anunciava "8 itens · R$ 32.770,92" com o valor
+  // do Itaú e do Nubank dentro.
   const expenseCount = inBank.filter((t) => t.transactionType === 'expense').length;
   const incomeCount = inBank.filter((t) => t.transactionType === 'income').length;
-  const totalExpense = transactions
-    .filter((t) => t.transactionType === 'expense')
-    .reduce((s, t) => s + Number(t.amount), 0);
+  const somaDe = (tipo: 'expense' | 'income') =>
+    inBank.filter((t) => t.transactionType === tipo).reduce((s, t) => s + Number(t.amount), 0);
+  const totalExpense = somaDe('expense');
+  const totalIncome = somaDe('income');
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -1107,8 +1112,8 @@ export default function ExtratoBancario({
             {incomeCount > 0 && (
               <div className="flex-1 bg-[#34c75912] rounded-xl px-3 py-2 text-center">
                 <p className="text-[10px] font-bold text-[#34c759] uppercase">Receitas</p>
-                <p className="text-sm font-black text-[#1d1d1f]">{incomeCount}</p>
-                <p className="text-[10px] text-[#aeaeb2]">itens</p>
+                <p className="text-sm font-black text-[#1d1d1f]">{formatCurrencyBR(totalIncome)}</p>
+                <p className="text-[10px] text-[#aeaeb2]">{incomeCount} itens</p>
               </div>
             )}
           </div>
@@ -1160,14 +1165,18 @@ export default function ExtratoBancario({
           </div>
         ) : displayed.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-60 gap-3 px-8 text-center">
-            <i className={`fas ${transactions.length === 0 ? 'fa-clock' : 'fa-check-circle'} text-[#7ab800] text-4xl`} />
+            {/* Vazio POR BANCO, não pela lista toda. Quem conecta um segundo
+                banco tem `transactions` cheio do primeiro, e via "tente mudar o
+                filtro" — inútil — em vez do aviso de que o banco ainda não
+                liberou. É o exato momento em que o cliente acha que quebrou. */}
+            <i className={`fas ${inBank.length === 0 ? 'fa-clock' : 'fa-check-circle'} text-[#7ab800] text-4xl`} />
             <p className="font-bold text-[#1d1d1f]">
-              {transactions.length === 0
+              {inBank.length === 0
                 ? 'Nenhuma transação a categorizar'
                 : 'Nenhuma transação nesse filtro'}
             </p>
             <p className="text-sm text-[#6e6e73]">
-              {transactions.length === 0
+              {inBank.length === 0
                 ? 'Quando o banco liberar os dados (pode levar até 24h), as transações aparecerão aqui.'
                 : 'Tente mudar o filtro acima.'}
             </p>
