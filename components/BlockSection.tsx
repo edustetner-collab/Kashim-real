@@ -1322,7 +1322,10 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   const displayVal = isLeisureBlock
                     ? items.reduce((sum, i) => sum + (i.values[mIdx] || 0), 0)
                     : val;
-                  const isOver = realSpent > displayVal && displayVal > 0;
+                  // Em Entradas o selo conta o que FOI RECEBIDO, e receber mais
+                  // que o previsto é notícia boa — nunca vermelho.
+                  const ehEntrada = category === CategoryType.INCOME;
+                  const isOver = !ehEntrada && realSpent > displayVal && displayVal > 0;
 
                   return (
                     <td key={mIdx} className={`p-2 border-l text-center transition-colors focus-within:!bg-white ${isPaid ? 'bg-green-50/30' : val === 0 ? 'bg-zinc-100' : ''}`}>
@@ -1363,14 +1366,26 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                               <button
                                 onClick={(e) => { e.stopPropagation(); setBreakdown({ itemId: item.id, mIdx }); }}
                                 title="Ver em que formas de pagamento este gasto aconteceu"
-                                className={`text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-1 transition-all hover:brightness-95 ${isOver ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}
+                                className={`text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-1 transition-all hover:brightness-95 ${
+                                  isOver ? 'bg-red-100 text-red-600'
+                                    : ehEntrada ? 'bg-green-100 text-green-700'
+                                      : 'bg-blue-100 text-blue-600'}`}
                               >
-                                <span className="text-[8px] opacity-60 uppercase font-bold">Gasto</span>
+                                <span className="text-[8px] opacity-60 uppercase font-bold">{ehEntrada ? 'Recebido' : 'Gasto'}</span>
                                 <span className="k-num">{formatCurrency(realSpent)}</span>
                                 <i className="fas fa-chevron-right text-[7px] opacity-60" />
                               </button>
                               {isOver && excess > 0 && (
                                 <span className="text-[8px] font-black text-red-600 k-num">+ {formatCurrency(excess)} acima</span>
+                              )}
+                              {/* Planejado × recebido: a diferença é o dado que
+                                  interessa a quem tem renda variável. O plano
+                                  continua ancorado no PLANEJADO — é ele que
+                                  sustenta os percentuais dos pilares. */}
+                              {ehEntrada && displayVal > 0 && Math.abs(excess) >= 0.01 && (
+                                <span className={`text-[8px] font-black k-num ${excess > 0 ? 'text-green-700' : 'text-amber-600'}`}>
+                                  {excess > 0 ? '+' : '−'} {formatCurrency(Math.abs(excess))} vs. previsto
+                                </span>
                               )}
                             </div>
                           );

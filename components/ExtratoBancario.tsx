@@ -854,15 +854,13 @@ export default function ExtratoBancario({
 
     // 1. Update local state instantly
     //
-    // Entrada NÃO vira despesa parcial. `onAddPartial` grava um gasto, e usá-lo
-    // para um recebimento punha um selo "GASTO R$ 7.863,04" dentro do bloco de
-    // Entradas — num valor que, além disso, não entra em `totalIncome` (que
-    // soma `values[]`, não parciais). Ou seja: mentia e não contava.
-    // Enquanto não decidirmos o que um recebimento deve fazer com o plano,
-    // ele é apenas marcado como resolvido — sem inventar um gasto.
-    if (category !== CategoryType.INCOME) {
-      onAddPartial(itemId, partial, year, month);
-    }
+    // Vale para entrada também: numa linha de Renda o mesmo registro é lido
+    // como RECEBIDO, não como gasto (ver o selo em BlockSection). O que o
+    // recebimento NÃO faz é mexer em `totalIncome`, que continua somando o
+    // planejado — decisão do Eduardo em 2026-09-08: mostrar planejado × recebido
+    // lado a lado. Alterar a renda mexeria no denominador de todos os pilares e
+    // mudaria o diagnóstico inteiro.
+    onAddPartial(itemId, partial, year, month);
     setActiveTx(null);
     setTransactions((prev) => prev.filter((t) => t.transactionId !== tx.transactionId));
 
