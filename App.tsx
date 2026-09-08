@@ -4,6 +4,7 @@ import { useUser, useClerk, useSignIn, useAuth, SignIn, SignUp, useReverificatio
 import { CategoryType, FinanceItem, SummaryData, LinkType, PartialExpense, Goal } from './types';
 import { getNext12Months, formatCurrency, MONTHS_BR } from './constants';
 import BlockSection from './components/BlockSection';
+import ConviteConectarBanco from './components/ConviteConectarBanco';
 import ExpenseSheet, { DetectedExpense } from './components/ExpenseSheet';
 import Diagnosis from './components/Diagnosis';
 import TetoGastos from './components/TetoGastos';
@@ -950,6 +951,9 @@ const App: React.FC = () => {
     if (calIdx >= 0) setMobileMonthIdx(calIdx);
   };
 
+  // Convite de conexão logo apos o wizard — cenario A (docs/LANCAMENTO.md, D4).
+  const [showConviteBanco, setShowConviteBanco] = useState(false);
+
   const handleWizardComplete = async (result: WizardResult) => {
     const allUpdated: FinanceItem[] = [];
 
@@ -1027,6 +1031,10 @@ const App: React.FC = () => {
 
     localStorage.setItem(`onboarding_done_${user!.id}`, 'true');
     setShowOnboarding(false);
+
+    // Duas saidas, nunca troca pura: quem tem Open Finance recebe o convite de
+    // conectar; quem nao tem termina exatamente como sempre terminou.
+    if (hasOpenFinanceAccess(user)) setShowConviteBanco(true);
   };
 
   const handleGoalsChange = (next: Goal[]) => {
@@ -3213,6 +3221,16 @@ const App: React.FC = () => {
 
       {/* Spacer so bottom tab bar doesn't cover content on mobile */}
       <div className="lg:hidden h-16"></div>
+
+      {/* Convite de conexão — fecha o wizard e emenda na conexão bancária.
+          Só existe para quem passou pelo portão; os demais nem veem. */}
+      {showConviteBanco && hasOpenFinanceAccess(user) && (
+        <ConviteConectarBanco
+          nome={user?.firstName || undefined}
+          onConectar={() => { setShowConviteBanco(false); handleOpenExtrato(); }}
+          onDepois={() => setShowConviteBanco(false)}
+        />
+      )}
 
       {/* Open Finance — Extrato Bancário overlay */}
       {showExtrato && ofAuthToken && householdId && hasOpenFinanceAccess(user) && (
