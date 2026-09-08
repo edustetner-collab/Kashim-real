@@ -1623,6 +1623,22 @@ const App: React.FC = () => {
    * voltava sozinha. Com a conexão revogada o efeito não a recria mais, mas a
    * linha já existente precisa sair na mão.
    */
+  /** Reconta o que falta categorizar. */
+  const recontarPendentes = useCallback(async () => {
+    if (!hasOpenFinanceAccess(user) || !householdId) return;
+    try {
+      const token = await getToken({ template: 'supabase' });
+      if (!token) return;
+      const params = new URLSearchParams({ householdId, status: 'pending', limit: '200' });
+      const r = await fetch(`/api/of-transactions?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) return;
+      const json = await r.json() as { transactions?: unknown[] };
+      const n = json.transactions?.length ?? 0;
+      setCategorizeCount(n);
+      if (n === 0) setShowCategorizePopup(false);
+    } catch { /* aviso é acessório */ }
+  }, [user, householdId, getToken]);
+
   const handleBancoRemovido = (bankName: string) => {
     const daquele = (d: string) => d === `${bankName} · Fatura` || d.startsWith(`${bankName} ••`);
     setItems(prev => prev.filter(i => {
@@ -1630,6 +1646,9 @@ const App: React.FC = () => {
       if (db) deleteFinanceItem(db, i.id).catch(console.error);
       return false;
     }));
+    // A contagem era buscada UMA vez, no primeiro carregamento. Sem isto o
+    // "53 transações esperando você" continuava anunciando o que já não existe.
+    recontarPendentes();
   };
 
   const handleOpenExtrato = async (cardLast4?: string) => {
