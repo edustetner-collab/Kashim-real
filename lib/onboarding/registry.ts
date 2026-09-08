@@ -8,6 +8,7 @@ import { metasTour } from './content/metas';
 import { desempenhoTour } from './content/desempenho';
 import { lancarTour } from './content/lancar';
 import { cartoesTour } from './content/cartoes';
+import { openFinanceTour } from './content/openFinance';
 
 export const ALL_TOURS: Tour[] = [
   planoTour,
@@ -16,6 +17,7 @@ export const ALL_TOURS: Tour[] = [
   desempenhoTour,
   lancarTour,
   cartoesTour,
+  openFinanceTour,
 ];
 
 // Tours que auto-iniciam no primeiro acesso da tela — o primeiro de cada

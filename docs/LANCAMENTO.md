@@ -46,6 +46,22 @@ vez e mata a fragilidade de alvo/desktopOnly/mobileOnly.
 Um SEM Open Finance (caminho de lançamento manual) e um COM Open Finance
 (caminho da vinculação + contas pendentes de integrar).
 
+**D4. Dois pontos de entrada da conexão bancária** (2026-09-08)
+- **Cliente novo:** ao terminar o wizard de contas, **cai automaticamente** na
+  tela de conexão. Induzido, não opcional. *"Vamos já cadastrar seus bancos
+  para o Kashim puxar suas contas sozinho."* Não existe "de onde ele começa" —
+  o tour É o início.
+- **Cliente que já usa:** toca em **EXTRATO** na barra inferior e cai na mesma
+  tela de conexão.
+
+⚠️ **Conflito com o portão `lib/ofAccess.ts`.** Hoje só o Eduardo enxerga
+qualquer superfície de Open Finance (regra dele, repetida 3× — ver CLAUDE.md).
+O cenário do cliente novo **não pode** empurrar todo mundo para a conexão
+enquanto o portão estiver fechado. Construir com `hasOpenFinanceAccess(user)`
+decidindo entre DUAS saídas do wizard (com banco / sem banco), nunca troca
+pura — mesmo padrão de `open-finance-nao-pode-remover-do-plano-normal`. No dia
+em que o Eduardo abrir o portão, o fluxo já está pronto e não precisa deploy.
+
 **D3. As ~25 perguntas do wizard FICAM.** (resposta à pergunta em aberto)
 Razão dele: o cliente tem de entrar no app **já sabendo a expectativa de teto de
 gastos**. Divergência depois é esperada e se resolve atualizando o valor. Ideia

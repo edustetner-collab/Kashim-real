@@ -2148,7 +2148,11 @@ const App: React.FC = () => {
       {/* Onboarding interativo: auto-inicia no 1º acesso de cada tela + botão de ajuda global */}
       {user && !isAdmin && (
         <OnboardingManager
-          screen={activeTab}
+          // O Extrato é overlay, não aba: sem isto o tour de Open Finance nunca
+          // via a própria tela. O portão continua sendo o mesmo — `showExtrato`
+          // só abre com hasOpenFinanceAccess, então quem não tem acesso jamais
+          // chega em 'extrato'.
+          screen={showExtrato && hasOpenFinanceAccess(user) ? 'extrato' : activeTab}
           db={db}
           userId={user.id}
           active={!needsTermsAcceptance && !showOnboarding && !showSubscriptionGate && !coachViewHouseholdId && !dbLoading}

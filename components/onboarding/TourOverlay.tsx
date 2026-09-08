@@ -6,6 +6,7 @@
 import React, { useEffect, useState } from 'react';
 import { Tour, TourStep } from '../../lib/onboarding/types';
 import { useTourEngine, useTargetRect, TargetRect } from '../../lib/onboarding/engine';
+import TourIlustracao from './TourIlustracao';
 
 interface TourOverlayProps {
   tour: Tour;
@@ -153,6 +154,7 @@ const StepCard: React.FC<StepCardProps> = ({
           {step.title}
         </h3>
       </div>
+      {step.ilustracao && <TourIlustracao id={step.ilustracao} />}
       <p className="text-zinc-400 text-sm leading-relaxed mb-3">{step.body}</p>
 
       {step.demoAction && (
@@ -212,7 +214,9 @@ const TourOverlay: React.FC<TourOverlayProps> = ({
 
   // Passo com alvo ainda não encontrado: mostra só a máscara cheia até o
   // useTargetRect achar o elemento (ou desistir → card centralizado)
-  const effectiveRect = engine.step.targetId ? rect : null;
+  // Ilustração vence alvo: o passo se explica sozinho, então nada de holofote
+  // (que exigiria clicar no que o próprio card está cobrindo).
+  const effectiveRect = engine.step.targetId && !engine.step.ilustracao ? rect : null;
   // Mobile: posição explícita do passo vence; sem ela, o card vai para o
   // lado com mais espaço livre, para não cobrir o elemento destacado
   const mobileOnTop = (() => {
