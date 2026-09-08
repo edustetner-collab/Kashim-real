@@ -175,8 +175,15 @@ function CategoryPicker({ tx, items, onConfirm, onIgnore, onClose }: PickerProps
   );
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
-  const availableCategories = Object.values(CategoryType).filter(
-    (c) => c !== CategoryType.INCOME || tx.transactionType === 'income'
+  /**
+   * Entrada só pode ser Renda; saída, nunca.
+   *
+   * A regra antiga escondia "Renda" nas despesas mas NÃO escondia as despesas
+   * nas entradas: um recebimento de R$ 7.863 oferecia "conta fixa, variável,
+   * lazer" — e aceitava. O dinheiro que entrou virava gasto.
+   */
+  const availableCategories = Object.values(CategoryType).filter((c) =>
+    tx.transactionType === 'income' ? c === CategoryType.INCOME : c !== CategoryType.INCOME
   );
 
   const itemsForCategory = selectedCategory
@@ -846,7 +853,16 @@ export default function ExtratoBancario({
     }
 
     // 1. Update local state instantly
-    onAddPartial(itemId, partial, year, month);
+    //
+    // Entrada NÃO vira despesa parcial. `onAddPartial` grava um gasto, e usá-lo
+    // para um recebimento punha um selo "GASTO R$ 7.863,04" dentro do bloco de
+    // Entradas — num valor que, além disso, não entra em `totalIncome` (que
+    // soma `values[]`, não parciais). Ou seja: mentia e não contava.
+    // Enquanto não decidirmos o que um recebimento deve fazer com o plano,
+    // ele é apenas marcado como resolvido — sem inventar um gasto.
+    if (category !== CategoryType.INCOME) {
+      onAddPartial(itemId, partial, year, month);
+    }
     setActiveTx(null);
     setTransactions((prev) => prev.filter((t) => t.transactionId !== tx.transactionId));
 
