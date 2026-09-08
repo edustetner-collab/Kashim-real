@@ -67,6 +67,41 @@ Razão dele: o cliente tem de entrar no app **já sabendo a expectativa de teto 
 gastos**. Divergência depois é esperada e se resolve atualizando o valor. Ideia
 associada: se passar ~3 meses sem bater o teto, o app sugere adaptar.
 
+## CONSTRUÍDO em 2026-09-08 — commitado, NÃO publicado
+
+| commit | o quê |
+|---|---|
+| `ae0de6c` | Extrato misturava os bancos em três lugares |
+| `182999f` | tour de Open Finance — 11 passos ilustrados, 9 telas desenhadas |
+| `5d3fa31` | wizard emenda no convite de conectar banco (cenário A) |
+| `358457b` | os 6 tours antigos em duas versões (manual × banco conectado) |
+| `4beaeb8` | FAQ por assunto dentro do Suporte |
+
+**Publicar com `npx vercel deploy --prod --yes` quando o Eduardo avisar que
+terminou de usar o app como usuário** — deploy no meio do teste dele recarrega
+a tela e contamina o resultado.
+
+Infra nova que vale conhecer antes de mexer:
+- `TourStep.ilustracao` desenha a tela em vez de apontar (ver
+  `components/onboarding/TourIlustracao.tsx`). **Nunca usar print**: envelhece e
+  carrega CPF, conta e nome de terceiros.
+- `TourStep.bodyOF` / `apenasManual` / `apenasOpenFinance` — variante por passo,
+  filtrada em `filterSteps`. A troca é por **banco conectado**
+  (`temBancoConectado`), não por ter acesso.
+- `lib/faq.ts` — conteúdo do FAQ; os assuntos de Open Finance passam pelo mesmo
+  portão do resto do app.
+
+## Continua ABERTO
+
+- **Rodapé cortado na 1ª abertura** — `contentInset` + `.native-ios` vivem no
+  binário; **deploy não corrige**, só build nova na App Store. Ver memória
+  `pendente-ios-contentinset`.
+- **Liberar beta** — falta o Eduardo passar os IDs do Clerk da esposa e do
+  sócio para `VITE_OF_BETA_USER_IDS`.
+- **Fluxo de pagamento** — nunca auditado. Não opinar sem ler.
+- **Open Finance**: webhook por pagador nunca cadastrado; agência/conta não
+  persistidas em `bank_connections`.
+
 ## Ordem (a sequência importa)
 
 1. **Eduardo usa o app com o Itaú real.** Nenhum tutorial escrito antes disso
