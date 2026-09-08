@@ -20,6 +20,7 @@ export const cartoesTour: Tour = {
       targetId: 'block-faturas',
       title: 'Cadastre cada cartão',
       body: 'Um cartão = uma linha neste bloco. Dê o nome do cartão (Nubank, Inter, Itaú...) e lance o valor TOTAL da fatura de cada mês — não detalhe as compras aqui.',
+      bodyOF: 'Cada cartão do banco conectado já ganhou a própria linha aqui, com a fatura vinda do banco. Você não precisa cadastrar nem digitar valor — só cartão de outro banco, que você não conectou, ainda entra na mão.',
       icon: 'fa-plus',
       demoAction: 'Toque no "+" do bloco Faturas de Cartão e crie o seu primeiro cartão agora.',
     },
@@ -36,6 +37,7 @@ export const cartoesTour: Tour = {
       id: 'deduction',
       title: 'Sem contar duas vezes',
       body: 'Ao lançar um gasto no crédito (pelo lançador ou pelo Stets), você escolhe o cartão e o valor entra na fatura certa automaticamente. Gastos rastreados em Gastos Frequentes vinculados ao cartão são abatidos da fatura — o mesmo dinheiro nunca é somado duas vezes.',
+      bodyOF: 'A compra que você categoriza no extrato já está dentro da fatura que o banco mandou. Por isso ela aparece abatida na linha azul da Compilação: o mesmo dinheiro conta uma vez só, mesmo estando em dois lugares na tela.',
       icon: 'fa-shield-halved',
     },
     {

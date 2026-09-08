@@ -29,6 +29,7 @@ export const gastosFrequentesTour: Tour = {
       id: 'card-deduction',
       title: 'Sem contar duas vezes',
       body: 'Comprou no cartão de crédito? O Kashim abate automaticamente esse gasto da fatura do mês seguinte. Você acompanha o gasto aqui E a fatura lá no plano — sem somar duas vezes o mesmo dinheiro. É automático, você não precisa fazer nada.',
+      bodyOF: 'As compras do cartão conectado já chegam com o valor certo e caem no teto do gasto que você escolher ao categorizar. Você acompanha o teto aqui e a fatura no plano — o mesmo dinheiro nunca é somado duas vezes.',
       icon: 'fa-credit-card',
     },
     {

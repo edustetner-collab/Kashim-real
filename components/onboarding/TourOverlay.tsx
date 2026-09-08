@@ -16,6 +16,8 @@ interface TourOverlayProps {
   onSkip: () => void;
   // Chamado quando o usuário aceita a oferta de IA — o App leva ao Stets
   onAiPrompt: (prompt: string) => void;
+  // Troca os passos que ensinam lançamento manual pela versão de banco conectado
+  temOpenFinance?: boolean;
 }
 
 const OVERLAY_Z = 'z-[80]';
@@ -198,9 +200,9 @@ const StepCard: React.FC<StepCardProps> = ({
 };
 
 const TourOverlay: React.FC<TourOverlayProps> = ({
-  tour, initialStep = 0, onStepChange, onComplete, onSkip, onAiPrompt,
+  tour, initialStep = 0, onStepChange, onComplete, onSkip, onAiPrompt, temOpenFinance = false,
 }) => {
-  const engine = useTourEngine(tour, { initialStep, onStepChange, onComplete });
+  const engine = useTourEngine(tour, { initialStep, onStepChange, onComplete, temOpenFinance });
   const rect = useTargetRect(engine.step?.targetId);
   const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= DESKTOP_BREAKPOINT);
 

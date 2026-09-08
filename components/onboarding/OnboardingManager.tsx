@@ -23,10 +23,12 @@ interface OnboardingManagerProps {
   onRequestScreen: (screen: TourScreen) => void;
   // Usuário aceitou a oferta de IA — App leva ao Stets com o prompt pronto
   onAiPrompt: (prompt: string) => void;
+  // Quem tem banco conectado recebe outra versão dos passos (ver filterSteps)
+  temOpenFinance?: boolean;
 }
 
 const OnboardingManager: React.FC<OnboardingManagerProps> = ({
-  screen, db, userId, active, onRequestScreen, onAiPrompt,
+  screen, db, userId, active, onRequestScreen, onAiPrompt, temOpenFinance = false,
 }) => {
   const [progress, setProgress] = useState<OnboardingProgress | null>(null);
   const [activeTour, setActiveTour] = useState<Tour | null>(null);
@@ -135,6 +137,7 @@ const OnboardingManager: React.FC<OnboardingManagerProps> = ({
           onComplete={handleComplete}
           onSkip={handleSkip}
           onAiPrompt={handleAiPrompt}
+          temOpenFinance={temOpenFinance}
         />
       )}
 

@@ -15,6 +15,7 @@ export const lancarTour: Tour = {
       targetId: 'tab-launch',
       title: 'O botão de lançar',
       body: 'Todo gasto do dia a dia entra por aqui. Quanto mais rápido você lança, menos você esquece — e gasto esquecido é plano furado.',
+      bodyOF: 'Com o banco conectado, a maior parte dos gastos chega sozinha e você só categoriza. O lançador continua útil para o que o banco não vê: dinheiro vivo, gasto de outro banco, ou uma compra que você quer registrar antes de o banco enviar.',
       icon: 'fa-plus',
       demoAction: 'Toque no botão verde AGORA para abrir o lançador — o tour continua lá dentro.',
       mobileOnly: true,

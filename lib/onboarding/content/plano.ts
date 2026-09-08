@@ -39,6 +39,7 @@ export const planoTour: Tour = {
       targetId: 'block-entradas',
       title: 'Bloco 1: Entradas',
       body: 'Tudo que entra: salário fixo (o que cai na conta, já com descontos), rendas extras e bônus previstos. É a base do plano — os percentuais ideais são calculados sobre esse valor.',
+      bodyOF: 'Tudo que entra: salário, rendas extras e bônus previstos. O que cair na sua conta conectada aparece aqui para você confirmar — vale conferir, porque nem toda entrada é renda de verdade (transferência entre contas suas, por exemplo).',
       icon: 'fa-circle-dollar-to-slot',
     },
     {
@@ -46,6 +47,7 @@ export const planoTour: Tour = {
       targetId: 'block-faturas',
       title: 'Bloco 2: Faturas de Cartão',
       body: 'Lance o valor TOTAL da fatura de cada cartão — não detalhe os itens aqui. Configure o dia de fechamento para o Kashim saber em qual mês cada compra cai.',
+      bodyOF: 'Com o banco conectado você não digita fatura: ela chega do próprio banco e aparece aqui sozinha. Seu trabalho é só categorizar as compras que vieram, para o plano saber se foi mercado, lazer ou conta fixa.',
       icon: 'fa-credit-card',
     },
     {

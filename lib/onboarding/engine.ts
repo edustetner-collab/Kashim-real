@@ -8,16 +8,24 @@ import { isNativeApp } from './platform';
 
 const DESKTOP_BREAKPOINT = 1024; // lg do Tailwind — elementos hidden lg:block
 
-export function filterSteps(steps: TourStep[]): TourStep[] {
+/**
+ * Deixa o passo pronto para quem tem (ou não tem) o banco conectado: descarta o
+ * que não se aplica e troca o texto quando existe uma versão para Open Finance.
+ */
+export function filterSteps(steps: TourStep[], temOpenFinance = false): TourStep[] {
   const isDesktop = window.innerWidth >= DESKTOP_BREAKPOINT;
-  return steps.filter(step => {
-    const platform = step.platform ?? 'all';
-    if (platform === 'web' && isNativeApp) return false;
-    if (platform === 'native' && !isNativeApp) return false;
-    if (step.desktopOnly && !isDesktop) return false;
-    if (step.mobileOnly && isDesktop) return false;
-    return true;
-  });
+  return steps
+    .filter(step => {
+      const platform = step.platform ?? 'all';
+      if (platform === 'web' && isNativeApp) return false;
+      if (platform === 'native' && !isNativeApp) return false;
+      if (step.desktopOnly && !isDesktop) return false;
+      if (step.mobileOnly && isDesktop) return false;
+      if (step.apenasManual && temOpenFinance) return false;
+      if (step.apenasOpenFinance && !temOpenFinance) return false;
+      return true;
+    })
+    .map(step => (temOpenFinance && step.bodyOF ? { ...step, body: step.bodyOF } : step));
 }
 
 export interface TourEngine {
@@ -35,12 +43,14 @@ interface UseTourEngineOptions {
   initialStep?: number;
   onStepChange?: (index: number) => void;
   onComplete: () => void;
+  /** Muda o conjunto de passos: ver filterSteps. */
+  temOpenFinance?: boolean;
 }
 
 export function useTourEngine(tour: Tour, options: UseTourEngineOptions): TourEngine {
-  const { initialStep = 0, onStepChange, onComplete } = options;
+  const { initialStep = 0, onStepChange, onComplete, temOpenFinance = false } = options;
   // Passos filtrados uma vez por execução do tour (plataforma não muda em runtime)
-  const steps = useMemo(() => filterSteps(tour.steps), [tour]);
+  const steps = useMemo(() => filterSteps(tour.steps, temOpenFinance), [tour, temOpenFinance]);
   const [stepIndex, setStepIndex] = useState(() =>
     Math.min(Math.max(initialStep, 0), Math.max(steps.length - 1, 0))
   );

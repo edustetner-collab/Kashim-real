@@ -282,6 +282,14 @@ const App: React.FC = () => {
   const [showDiagnosis, setShowDiagnosis] = useState(false);
   /** Transações do Extrato já lançadas nesta sessão — sai da lista sem recarregar. */
   const [ofCategorized, setOfCategorized] = useState<string[]>([]);
+  /**
+   * Existe pelo menos um banco conectado?
+   *
+   * Decide qual versão dos tours o usuário lê. Ter ACESSO ao Open Finance não
+   * basta: quem está na lista mas ainda lança à mão precisa das instruções de
+   * lançamento manual, que para ele continuam sendo as certas.
+   */
+  const [temBancoConectado, setTemBancoConectado] = useState(false);
   /** Item cujo card deve receber o foco ao abrir Gastos (vindo do Plano). */
   const [focusSpendingItemId, setFocusSpendingItemId] = useState<string | null>(null);
   /** Filtro inicial do Gastos quando o usuário navega de uma linha do Plano. */
@@ -1078,6 +1086,7 @@ const App: React.FC = () => {
         if (!res.ok) return;
         const d = await res.json() as { connections?: Array<{ bankName: string; cardLast4: string | null; billTotals?: Record<string, number> }> };
         if (cancelado) return;
+        setTemBancoConectado((d.connections ?? []).length > 0);
 
         for (const conn of d.connections ?? []) {
           const totals = conn.billTotals ?? {};
@@ -2166,6 +2175,11 @@ const App: React.FC = () => {
           active={!needsTermsAcceptance && !showOnboarding && !showSubscriptionGate && !coachViewHouseholdId && !dbLoading}
           onRequestScreen={setActiveTab}
           onAiPrompt={handleTourAiPrompt}
+          // Ter acesso nao basta: os passos so mudam para quem REALMENTE
+          // conectou um banco. Quem esta na lista mas ainda lanca a mao
+          // continua lendo as instrucoes de lancamento manual, que sao as
+          // certas para ele.
+          temOpenFinance={temBancoConectado}
         />
       )}
 

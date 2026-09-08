@@ -50,6 +50,21 @@ export interface TourStep {
   title: string;
   // Proposta de valor / benefício — nunca só "clique aqui"
   body: string;
+  /**
+   * Texto alternativo para quem tem o banco conectado.
+   *
+   * Os tours foram escritos supondo que o usuário digita tudo à mão, e com Open
+   * Finance vários passos passaram a ensinar o contrário — o pior deles mandava
+   * "lançar o valor TOTAL da fatura", que com o banco conectado chega sozinho.
+   *
+   * Variante por passo, e não um segundo arquivo por tour: só o que realmente
+   * muda carrega a alternativa, e a diferença fica visível lado a lado.
+   */
+  bodyOF?: string;
+  /** Passo que só faz sentido para quem lança à mão. */
+  apenasManual?: boolean;
+  /** Passo que só faz sentido para quem conectou o banco. */
+  apenasOpenFinance?: boolean;
   // Classe FontAwesome, ex: 'fa-brain'
   icon?: string;
   // Instrução prática opcional, ex: "Toque no + amarelo para lançar"
