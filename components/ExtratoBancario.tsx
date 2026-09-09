@@ -880,18 +880,40 @@ export default function ExtratoBancario({
       .finally(() => setBanksLoaded(true));
   }, [householdId, cabecalho]);
   /**
-   * Trava a rolagem de trás com `overflow: hidden` — nunca com `position: fixed`.
+   * Compensa, POR MEDIÇÃO, o empurrão que o WKWebView dá no conteúdo em fluxo.
    *
-   * Esta distinção custou caro. Um `body` com `position: fixed` vira o BLOCO DE
-   * CONTENÇÃO de toda camada `fixed` dentro dele: o Extrato deixou de se ancorar
-   * na tela e passou a se ancorar no body deslocado, aparecendo fora de posição
-   * exatamente na medida da rolagem (Eduardo, 2026-09-09). `overflow: hidden`
-   * prende a rolagem sem mexer no posicionamento de ninguém.
+   * Com `contentInset: 'automatic'` o WebView empurra o conteúdo do documento
+   * para baixo do notch — e, por já fazer isso, reporta
+   * `env(safe-area-inset-top)` como ZERO. Resultado: a tela inicial (em fluxo)
+   * fica certa e uma camada `position: fixed` fica sem nenhum dos dois,
+   * encostada na borda de cima. Foi por isso que quatro tentativas de acertar
+   * isso por CSS falharam — não havia valor de CSS para usar.
+   *
+   * Em vez de adivinhar, mede: com a página no topo, `body.getBoundingClientRect().top`
+   * é exatamente o quanto o WebView empurrou. Esse número vira o respiro do
+   * Extrato. Se o WebView não empurrar nada (web, Android, ou depois de
+   * `contentInset: 'never'` entrar numa build nova), a medida dá zero e o
+   * `safe-top` do CSS assume — continua correto nos dois mundos.
    */
+  const [topoMedido, setTopoMedido] = useState(0);
   useEffect(() => {
     const anterior = document.body.style.overflow;
+    window.scrollTo(0, 0);
+
+    const medir = () => {
+      const empurrao = Math.round(document.body.getBoundingClientRect().top);
+      setTopoMedido(empurrao > 0 && empurrao < 120 ? empurrao : 0);
+    };
+    // Duas medidas: uma agora e outra depois do WebView assentar. Na primeira
+    // abertura do app ele ainda não aplicou o empurrão quando a tela monta.
+    medir();
+    const t = window.setTimeout(medir, 350);
+
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = anterior; };
+    return () => {
+      window.clearTimeout(t);
+      document.body.style.overflow = anterior;
+    };
   }, []);
 
   useEffect(() => { loadBanks(); }, [loadBanks]);
@@ -1176,7 +1198,7 @@ export default function ExtratoBancario({
   // ─── Tela inicial: escolher o banco ────────────────────────────────────────
   if (showBankPicker) {
     return (
-      <div className="fixed inset-0 z-[60] flex flex-col bg-[#f2f2f7]">
+      <div className="fixed inset-0 z-[60] flex flex-col bg-[#f2f2f7]" style={{ paddingTop: topoMedido }}>
         <div className="bg-white border-b border-[#e5e5ea] px-4 safe-top pt-2 pb-3 flex items-center justify-between flex-shrink-0">
           <div>
             <h2 className="text-lg font-black text-[#1d1d1f]">Extrato bancário</h2>
@@ -1438,7 +1460,7 @@ export default function ExtratoBancario({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-[#f2f2f7]">
+    <div className="fixed inset-0 z-[60] flex flex-col bg-[#f2f2f7]" style={{ paddingTop: topoMedido }}>
       {erroSalvar && (
         <div className="fixed inset-x-3 top-3 z-[75] rounded-2xl border border-[#ffd4d4] bg-[#fff5f5] p-3 shadow-lg">
           <p className="text-[12.5px] font-bold leading-snug text-[#c0392b]">{erroSalvar}</p>
