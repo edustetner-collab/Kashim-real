@@ -672,7 +672,25 @@ async function syncOne(
       .then(() => {}, () => {}); // fatura e acessoria: falha aqui nao derruba a importacao
   }
 
-  let txs = todasAsTx.filter((t) => t.date >= cutoff);
+  /**
+   * Corte do que vai para a fila de categorizar.
+   *
+   * CARTÃO: o corte é pela FATURA, não pelo calendário. Um cartão que fecha no
+   * dia 3 tem, na fatura de setembro, compras feitas a partir de 4 de agosto —
+   * e o corte por `data >= 1º do mês` jogava agosto inteiro fora. O cliente
+   * conectava com uma fatura de milhares e recebia 8 lançamentos para
+   * categorizar, todos dos últimos dias. Era a promessa central do produto
+   * falhando em silêncio (Eduardo, 2026-09-09).
+   *
+   * Compra sem data de fatura cai no critério antigo — é o que sobra quando o
+   * banco não informa o vencimento.
+   *
+   * CONTA CORRENTE: segue pelo mês corrente. Ali o extrato é fluxo de caixa,
+   * não existe fatura fechando, e trazer meses velhos só enche a fila.
+   */
+  let txs = isCard
+    ? todasAsTx.filter((t) => (t.billDueDate ? t.billDueDate >= cutoff : t.date >= cutoff))
+    : todasAsTx.filter((t) => t.date >= cutoff);
 
   if (txs.length === 0) {
     await db.from('bank_connections')
