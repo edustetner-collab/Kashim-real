@@ -4,6 +4,7 @@ import { CategoryType, FinanceItem, PartialExpense } from '../types';
 import type { BankTransaction } from '../lib/openfinance/types';
 import { merchantKey } from '../lib/openfinance/categoryMap';
 import ConectarBanco from './ConectarBanco';
+import Assinaturas from './Assinaturas';
 
 /** Conexão bancária como a rota /api/of-connect devolve. */
 interface BankConn {
@@ -569,6 +570,7 @@ export default function ExtratoBancario({
     );
   }
   const [tetoHit, setTetoHit] = useState<{ name: string; pct: number; teto: number; spent: number } | null>(null);
+  const [viewAssinaturas, setViewAssinaturas] = useState(false);
   /**
    * Renomear logo depois do toque único.
    *
@@ -1054,6 +1056,17 @@ export default function ExtratoBancario({
   // um banco, porque é onde mora o botão de conectar. Antes isso vivia em
   // Configurações → Gerenciar bancos, dois níveis longe de onde faz sentido.
   const showBankPicker = aberto === null;
+
+  if (viewAssinaturas && aberto === null) {
+    return (
+      <Assinaturas
+        householdId={householdId}
+        authToken={authToken}
+        topOffset={topoDaCamadaFixa}
+        onClose={() => setViewAssinaturas(false)}
+      />
+    );
+  }
   /**
    * Nenhum banco entregou movimentação ainda — é quando o aviso de espera importa.
    *
@@ -1244,6 +1257,22 @@ export default function ExtratoBancario({
                 </div>
               </div>
             </div>
+          )}
+
+          {banksLoaded && banks.length > 0 && (
+            <button
+              onClick={() => setViewAssinaturas(true)}
+              className="w-full bg-white rounded-2xl shadow-sm px-4 py-3.5 flex items-center gap-3 active:bg-[#f7f7f8] transition-colors text-left"
+            >
+              <div className="w-10 h-10 rounded-xl bg-[#007aff15] flex items-center justify-center flex-shrink-0">
+                <i className="fas fa-rotate text-[#007aff] text-[17px]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[14px] font-bold text-[#1d1d1f]">Assinaturas</p>
+                <p className="text-[12px] text-[#8e8e93]">Veja o que você paga todo mês</p>
+              </div>
+              <i className="fas fa-chevron-right text-[#c7c7cc] text-[11px] flex-shrink-0" />
+            </button>
           )}
 
           {!banksLoaded ? (
