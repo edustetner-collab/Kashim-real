@@ -77,7 +77,7 @@ const CODE_MAP: Record<string, CategoryType> = {
   TRANSPORT: CategoryType.FIXED_EXPENSE,
   CLOTHING: CategoryType.PERSONAL_LEISURE,
   HOMEIMPROVEMENT: CategoryType.VARIABLE_EXPENSE,
-  DIGITALSERVICES: CategoryType.VARIABLE_EXPENSE,
+  DIGITALSERVICES: CategoryType.FIXED_EXPENSE,
   ENTREPRENEURIALACTIVITIES: CategoryType.VARIABLE_EXPENSE,
   LATEPAYMENTANDOVERDRAFTCOSTS: CategoryType.VARIABLE_EXPENSE,
   ENTERTAINMENT: CategoryType.PERSONAL_LEISURE,
@@ -190,7 +190,10 @@ const MERCHANT_PATTERNS: Array<[RegExp, CategoryType]> = [
   [/\b(restaurante|pizzaria|hamburgu|burger|lanche|lanchonete)/i,    CategoryType.PERSONAL_LEISURE],
   [/\b(padaria|paes\s+e\s+doces|confeitaria|cafeteria|starbucks)/i, CategoryType.PERSONAL_LEISURE],
   [/\b(bar|choperia|adega|cervejaria|pub)\b/i,                          CategoryType.PERSONAL_LEISURE],
-  [/\b(cinema|cinemark|teatro|ingresso|netflix|spotify|disney)\b/i,     CategoryType.PERSONAL_LEISURE],
+  [/\b(cinema|cinemark|teatro|ingresso|bilheteria)\b/i,               CategoryType.PERSONAL_LEISURE],
+  // Assinatura mensal e CONTA FIXA no metodo — "Netflix" esta na lista padrao
+  // do onboarding. Eu as tinha posto em Lazer por engano em 2026-09-09.
+  [/\b(netflix|spotify|youtube|prime\s*video|disney|hbo|globoplay|paramount|deezer|apple\s*(music|tv|one)|icloud|google\s*(one|drive|storage)|dropbox|onedrive|canva|adobe|chatgpt|openai|microsoft\s*365|office\s*365|assinatura)/i, CategoryType.FIXED_EXPENSE],
 
   // Conta fixa — o que tem teto mensal no método
   [/\b(posto|combustivel|combustiveis|abastec|ipiranga|shell|petrobras)\b/i, CategoryType.FIXED_EXPENSE],
@@ -203,9 +206,25 @@ const MERCHANT_PATTERNS: Array<[RegExp, CategoryType]> = [
   [/\b(oficina|autopecas|mecanica|borracharia|funilaria)\b/i,           CategoryType.VARIABLE_EXPENSE],
 ];
 
+/**
+ * Marketplaces: mesmo nome, compra sempre diferente.
+ *
+ * Duplicado de api/of-cron.ts porque o Vercel não empacota import local em
+ * `api/`. Mudou uma lista, muda a outra.
+ */
+export const MARKETPLACE_RE = /\b(amazon|amzn|mercado\s*(livre|pago)|mercadoliv|mercadopago|shopee|shein|aliexpress|ali\s*express|magalu|magazine\s*luiza|americanas|submarino|casas\s*bahia|kabum|netshoes|temu|ebay|olx|enjoei|mp\s\*)/i;
+export function ehMarketplace(nome: string | null | undefined): boolean {
+  return !!nome && MARKETPLACE_RE.test(nome);
+}
+
 /** Categoria deduzida do nome do estabelecimento, ou null. */
 export function categoryFromMerchant(nome: string | null): CategoryType | null {
   if (!nome) return null;
+  // Marketplace nunca passa pelas regras de nome: "MERCADO*MERCADOLIVRE" casaria
+  // com o radical de supermercado e viraria conta fixa, quando e compra avulsa.
+  // Sem palpite por nome, decide o codigo do banco (ou fica em variavel).
+  if (ehMarketplace(nome)) return null;
+
   for (const [re, cat] of MERCHANT_PATTERNS) {
     if (re.test(nome)) return cat;
   }

@@ -201,7 +201,7 @@ const CC_CODE_MAP: Record<string, string> = {
   EATINGOUT: CAT_LEISURE,           // comer fora
   PHARMACY: CAT_VARIABLE,            // farmacia
   PUBLICTRANSPORTATION: CAT_FIXED,
-  DIGITALSERVICES: CAT_LEISURE,      // streaming e apps — estilo de vida, nao conta
+  DIGITALSERVICES: CAT_FIXED,      // streaming e apps — estilo de vida, nao conta
   ELECTRICITY: CAT_FIXED, UTILITIES: CAT_FIXED, TELECOM: CAT_FIXED, INTERNET: CAT_FIXED,
   WATER: CAT_FIXED, TELECOMMUNICATIONS: CAT_FIXED, HOUSING: CAT_FIXED, EDUCATION: CAT_FIXED,
   TAXES: CAT_FIXED, TAXONFINANCIALOPERATIONS: CAT_FIXED, BANKFEES: CAT_FIXED,
@@ -258,17 +258,43 @@ const MERCHANT_PATTERNS: Array<[RegExp, string]> = [
   [/\b(restaurante|pizzaria|hamburgu|burger|lanche|lanchonete)/i,         CAT_LEISURE],
   [/\b(padaria|paes\s+e\s+doces|confeitaria|cafeteria|starbucks)/i,     CAT_LEISURE],
   [/\b(bar|choperia|adega|cervejaria|pub)\b/i,                           CAT_LEISURE],
-  [/\b(cinema|cinemark|teatro|ingresso|netflix|spotify|disney)/i,         CAT_LEISURE],
+  [/\b(cinema|cinemark|teatro|ingresso|bilheteria)/i,         CAT_LEISURE],
   [/\b(posto|combustivel|combustiveis|abastec|ipiranga|shell|petrobras)/i, CAT_FIXED],
   [/\b(supermerc|mercad|atacad|hipermerc|carrefour|assai|sendas|shibata)/i, CAT_FIXED],
   [/\b(uber|99app|99\s*taxi|cabify|taxi)\b/i,                           CAT_FIXED],
+  // Assinatura mensal e CONTA FIXA no metodo — "Netflix" esta na lista padrao
+  // do onboarding. Eu as tinha posto em Lazer por engano em 2026-09-09.
+  [/\b(netflix|spotify|youtube|prime\s*video|disney|hbo|max\s*stream|globoplay|paramount|deezer|apple\s*(music|tv|one)|icloud|google\s*(one|drive|storage)|dropbox|onedrive|canva|adobe|chatgpt|openai|microsoft\s*365|office\s*365|assinatura)/i, CAT_FIXED],
   [/\b(academia|smartfit|smart\s*fit|crossfit|pilates)/i,                CAT_FIXED],
   [/\b(farmacia|drogaria|drogasil|droga\s*raia|pacheco)/i,               CAT_VARIABLE],
   [/\b(oficina|autopecas|mecanica|borracharia|funilaria)/i,               CAT_VARIABLE],
 ];
 
+/**
+ * Marketplaces: mesmo nome, compra sempre diferente.
+ *
+ * A memória por estabelecimento existe porque "Diego Lanches" é sempre lanche —
+ * decidiu uma vez, vale para sempre. Marketplace quebra essa premissa: toda
+ * compra na Amazon chega como "Amazon Servicos de Varejo do Brasil LTDA",
+ * seja uma calça, um cabo ou um livro. Herdar a decisão anterior faria a calça
+ * jeans virar nome de tudo que vier depois (Eduardo, 2026-09-09).
+ *
+ * Aqui a categoria continua sendo sugerida — o que NÃO acontece é gravar e
+ * reaplicar a escolha do cliente. Cada compra é perguntada de novo, que é o
+ * único jeito honesto quando o nome não diz o que foi comprado.
+ */
+const MARKETPLACE_RE = /\b(amazon|amzn|mercado\s*(livre|pago)|mercadoliv|mercadopago|shopee|shein|aliexpress|ali\s*express|magalu|magazine\s*luiza|americanas|submarino|casas\s*bahia|kabum|netshoes|temu|ebay|olx|enjoei|mp\s\*)/i;
+function ehMarketplace(nome: string | null | undefined): boolean {
+  return !!nome && MARKETPLACE_RE.test(nome);
+}
+
 function categoryFromMerchant(nome: string | null | undefined): string | null {
   if (!nome) return null;
+  // Marketplace nunca passa pelas regras de nome: "MERCADO*MERCADOLIVRE" casaria
+  // com o radical de supermercado e viraria conta fixa, quando e compra avulsa.
+  // Sem palpite por nome, decide o codigo do banco (ou fica em variavel).
+  if (ehMarketplace(nome)) return null;
+
   for (const [re, cat] of MERCHANT_PATTERNS) if (re.test(nome)) return cat;
   return null;
 }
@@ -782,7 +808,10 @@ async function syncOne(
   }
 
   const rows = txs.map((t) => {
-    const remembered = memory.get(memoryKey(t.merchant ?? t.description));
+    // Marketplace nunca herda a decisao anterior: mesmo nome, compra diferente.
+    const remembered = ehMarketplace(t.merchant ?? t.description)
+      ? undefined
+      : memory.get(memoryKey(t.merchant ?? t.description));
     return {
       household_id: conn.household_id,
       connection_id: conn.id,

@@ -730,7 +730,7 @@ export default function ExtratoBancario({
     setNomeNovo('');
 
     const key = merchantKey(tx.merchant ?? tx.description ?? '');
-    if (key) {
+    if (key && !ehMarketplace(tx.merchant ?? tx.description)) {
       fetch('/api/of-merchant-memory', {
         method: 'POST', headers: await cabecalho(),
         body: JSON.stringify({ householdId, merchantKey: key, category: categoria, itemId }),
@@ -978,6 +978,22 @@ export default function ExtratoBancario({
    * cliente consegue recategorizar, mas não consegue achar o que não aparece.
    */
   /**
+ * Marketplaces: mesmo nome, compra sempre diferente.
+ *
+ * A memória por estabelecimento existe porque "Diego Lanches" é sempre lanche —
+ * decidiu uma vez, vale para sempre. Marketplace quebra essa premissa: toda
+ * compra na Amazon chega como "Amazon Servicos de Varejo do Brasil LTDA",
+ * seja uma calça, um cabo ou um livro. Herdar a decisão anterior faria a calça
+ * jeans virar nome de tudo que vier depois (Eduardo, 2026-09-09).
+ *
+ * Aqui a categoria continua sendo sugerida — o que NÃO acontece é gravar e
+ * reaplicar a escolha do cliente. Cada compra é perguntada de novo, que é o
+ * único jeito honesto quando o nome não diz o que foi comprado.
+ */
+  const ehMarketplace = (nome: string | null | undefined) =>
+    !!nome && /\b(amazon|amzn|mercado\s*(livre|pago)|mercadoliv|mercadopago|shopee|shein|aliexpress|ali\s*express|magalu|magazine\s*luiza|americanas|submarino|casas\s*bahia|kabum|netshoes|temu|ebay|olx|enjoei|mp\s\*)/i.test(nome);
+
+  /**
    * Os 4 dígitos do cartão que o cliente RECONHECE.
    *
    * Compra em cartão virtual chega com um número temporário — o Itaú gera um
@@ -1098,7 +1114,7 @@ export default function ExtratoBancario({
     // Mesma fonte que o cron usa para LER (merchant primeiro, descrição como
     // reserva). Chaves diferentes entre gravar e ler = memória que nunca acerta.
     const key = merchantKey(tx.merchant ?? tx.description ?? '');
-    if (key) {
+    if (key && !ehMarketplace(tx.merchant ?? tx.description)) {
       fetch('/api/of-merchant-memory', {
         method: 'POST',
         headers: await cabecalho(),
