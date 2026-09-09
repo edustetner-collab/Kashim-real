@@ -121,11 +121,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ transactions: [], pendingCount: 0 });
       }
 
+      /**
+       * Nada antes do primeiro mês do plano.
+       *
+       * O cron já não importa gasto anterior ao início do plano, mas isto aqui
+       * é o que faz a REPROJEÇÃO valer: ao reprojetar para dezembro,
+       * `households.start_month` vira dezembro e tudo que ficou pendente de
+       * setembro a novembro para de aparecer na hora, sem precisar apagar linha
+       * nenhuma do banco. Filtro de leitura, não exclusão: reprojetar de volta
+       * traz tudo de volta.
+       *
+       * Sem `start_month` (household antigo), cai no mês corrente.
+       */
+      const { data: casa } = await db
+        .from('households')
+        .select('start_month, start_year')
+        .eq('id', householdId)
+        .maybeSingle();
+      const agora = new Date();
+      const mesInicio = casa?.start_month ?? agora.getMonth();
+      const anoInicio = casa?.start_year ?? agora.getFullYear();
+      const inicioDoPlano = `${anoInicio}-${String(mesInicio + 1).padStart(2, '0')}-01`;
+
       let query = db
         .from('bank_transactions')
         .select('*')
         .eq('household_id', householdId)
         .in('connection_id', idsVivos)
+        .gte('transaction_date', inicioDoPlano)
         .order('transaction_date', { ascending: false })
         .limit(limit);
 
@@ -135,11 +158,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { data, error } = await query;
       if (error) throw error;
 
+      // MESMO recorte da lista. Divergir aqui é o que já produziu "o pop-up diz
+      // 154 e o Extrato mostra 79" — a contagem tem de contar o que a tela mostra.
       const { count } = await db
         .from('bank_transactions')
         .select('id', { count: 'exact', head: true })
         .eq('household_id', householdId)
         .in('connection_id', idsVivos)
+        .gte('transaction_date', inicioDoPlano)
         .eq('status', 'pending');
 
       return res.status(200).json({

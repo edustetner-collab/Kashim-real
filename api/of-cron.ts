@@ -549,9 +549,23 @@ function parseStatement(env: Envelope) {
 
 const toDateStr = (d: Date) => d.toISOString().slice(0, 10);
 
-function cutoffDate(): string {
+/**
+ * Primeiro dia do plano — o corte de tudo que entra na fila de categorizar.
+ *
+ * Vem de `households.start_month/start_year`, NUNCA do calendário. O plano do
+ * cliente começa num mês escolhido (o wizard grava, e o botão "Reprojetar
+ * Ciclo" reescreve por `api/update-start-month.ts`), e é esse mês que define o
+ * que faz sentido categorizar: quem monta o plano em setembro não planeja
+ * agosto, e quem reprojeta para dezembro recomeça de dezembro.
+ *
+ * Sem household ou sem as colunas preenchidas, cai no mês corrente — que era o
+ * comportamento antigo e continua sendo um padrão seguro.
+ */
+function cutoffDoPlano(startMonth: number | null, startYear: number | null): string {
   const n = new Date();
-  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-01`;
+  const mes = startMonth ?? n.getMonth();
+  const ano = startYear ?? n.getFullYear();
+  return `${ano}-${String(mes + 1).padStart(2, '0')}-01`;
 }
 
 /**
@@ -703,7 +717,13 @@ async function syncOne(
   }
   if (status === 'PROCESSING' || status === 'PENDING') return { status: 'processing' };
 
-  const cutoff = cutoffDate();
+  // Mês em que o plano deste cliente começa — é ele que corta a fila abaixo.
+  const { data: casa } = await db
+    .from('households')
+    .select('start_month, start_year')
+    .eq('id', conn.household_id)
+    .maybeSingle();
+  const cutoff = cutoffDoPlano(casa?.start_month ?? null, casa?.start_year ?? null);
   const todasAsTx = parseStatement(env);
 
   // A fatura por mes usa o extrato INTEIRO, antes do corte do mes corrente:
@@ -720,24 +740,30 @@ async function syncOne(
   }
 
   /**
-   * Corte do que vai para a fila de categorizar.
+   * Corte do que vai para a fila de categorizar: DATA DA COMPRA >= início do plano.
    *
-   * CARTÃO: o corte é pela FATURA, não pelo calendário. Um cartão que fecha no
-   * dia 3 tem, na fatura de setembro, compras feitas a partir de 4 de agosto —
-   * e o corte por `data >= 1º do mês` jogava agosto inteiro fora. O cliente
-   * conectava com uma fatura de milhares e recebia 8 lançamentos para
-   * categorizar, todos dos últimos dias. Era a promessa central do produto
-   * falhando em silêncio (Eduardo, 2026-09-09).
+   * Vale para cartão e conta corrente igualmente, e o critério é sempre quando o
+   * cliente GASTOU — não quando a fatura vence.
    *
-   * Compra sem data de fatura cai no critério antigo — é o que sobra quando o
-   * banco não informa o vencimento.
+   * POR QUE NÃO É PELO VENCIMENTO (era, até 2026-09-10): quem monta o plano em
+   * setembro não planeja agosto. Cortando por vencimento, toda compra de agosto
+   * cuja fatura vence em 01/09 entrava na fila — o cliente conectava o banco e
+   * recebia o mês passado inteiro para categorizar, um mês que o plano dele nem
+   * cobre. Foi o que o Eduardo viu em 2026-09-10: 48 itens de agosto na fila de
+   * um plano que começa em setembro.
    *
-   * CONTA CORRENTE: segue pelo mês corrente. Ali o extrato é fluxo de caixa,
-   * não existe fatura fechando, e trazer meses velhos só enche a fila.
+   * O QUE NÃO MUDA: `computeBillTotals` acima roda sobre `todasAsTx`, sem este
+   * corte. A fatura de setembro continua sendo o valor CHEIO, com as compras de
+   * agosto dentro dela e as parcelas futuras projetadas — que foi o conserto de
+   * 2026-09-09 (commit 25e2e75) e continua de pé. As duas coisas são
+   * independentes: a fatura é um total que o cliente já deve, a fila é o que ele
+   * ainda vai decidir. Confundir as duas foi o erro.
+   *
+   * Na prática, no primeiro mês do plano o cartão entra como uma linha só (a
+   * fatura), e a fila recebe só as compras feitas dali para frente — que vencem
+   * na fatura do mês seguinte. É assim que a consultoria começa.
    */
-  let txs = isCard
-    ? todasAsTx.filter((t) => (t.billDueDate ? t.billDueDate >= cutoff : t.date >= cutoff))
-    : todasAsTx.filter((t) => t.date >= cutoff);
+  let txs = todasAsTx.filter((t) => t.date >= cutoff);
 
   if (txs.length === 0) {
     await db.from('bank_connections')
