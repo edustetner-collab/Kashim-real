@@ -872,11 +872,30 @@ export default function ExtratoBancario({
   const chaveDe = (connId: string, kind: 'checking' | 'card', last4?: string) =>
     `${connId}|${kind}|${last4 ?? ''}`;
 
+  /**
+   * Cartão onde cai a transação que veio SEM os 4 dígitos.
+   *
+   * O banco nem sempre manda o número. Sem este destino, a chave saía vazia
+   * (`conn|card|`) e não batia com linha nenhuma da tela: a transação era
+   * contada no total e não aparecia em badge algum — 71 no pop-up contra 49
+   * somando os badges (Eduardo, 2026-09-09).
+   *
+   * Precisa ser o MESMO destino que a lista usa. Lá, `inBank` aceita transação
+   * sem dígito em qualquer cartão aberto; aqui ela vai para o primeiro. Badge e
+   * lista contando de formas diferentes é o que produziu a divergência.
+   */
+  const cartaoPadraoDaConexao = new Map<string, string | undefined>(
+    banks.map((b) => [b.id, b.cards[0]?.last4] as [string, string | undefined]),
+  );
+
   /** Uma transacao pertence a conta corrente ou a um cartao especifico. */
-  const chaveDaTx = (t: BankTransaction) =>
-    t.accountType === 'credit_card'
-      ? chaveDe(t.connectionId ?? '', 'card', t.cardLast4 ?? undefined)
-      : chaveDe(t.connectionId ?? '', 'checking');
+  const chaveDaTx = (t: BankTransaction) => {
+    const conn = t.connectionId ?? '';
+    if (t.accountType !== 'credit_card') return chaveDe(conn, 'checking');
+    const last4 = t.cardLast4 ?? cartaoPadraoDaConexao.get(conn);
+    // Conexão sem cartão nenhum: cai na conta corrente para continuar visível.
+    return last4 ? chaveDe(conn, 'card', last4) : chaveDe(conn, 'checking');
+  };
 
   const countByKey = transactions.reduce<Record<string, number>>((acc, t) => {
     const k = chaveDaTx(t);

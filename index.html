@@ -58,7 +58,16 @@
          o espaco e esta regra tem de sair, senao o header sobe para debaixo do
          relogio. Elemento `fixed` (o menu de baixo) nao sofre contentInset e
          continua precisando do safe-bottom. */
-      html.native-ios .safe-top { padding-top: 0; }
+      /* A regra que zerava o respiro do topo FOI REMOVIDA em 2026-09-09.
+         Ela existia porque o WKWebView, com contentInset 'automatic', empurraria
+         o conteudo sozinho — somar os dois daria ~94px de vao. Só que o print do
+         Eduardo mostra o cabecalho ENCOSTADO na borda de cima: o empurrao do
+         WebView nao esta acontecendo nesta configuracao (o app carrega uma URL
+         remota via server.url). Zerando o nosso, ficava sem nenhum dos dois.
+         Duas tentativas de acertar o TEMPO da coisa falharam. Agora a folga e
+         nossa e ponto: sem depender de quando o WebView decide agir.
+         Se um dia o vao dobrar, a correcao e `contentInset: 'never'` no
+         capacitor.config.ts — que exige build nova — e NAO voltar a zerar aqui. */
       /* Piso para o rodapé no app nativo.
          Sintoma (iPhone 16 Pro Max, Eduardo, 2026-09-08): na PRIMEIRA abertura
          o menu de baixo aparece cortado pela metade; fechando e abrindo de novo
@@ -71,7 +80,9 @@
          não engordar a barra na web, onde o bug não existe.
          NÃO confundir com o menu cortado no TOPO, que é outro mecanismo
          (contentInset) e esse sim exige build nova. */
-      html.native-app .safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 16px); }
+      /* Piso removido junto: com a folga do topo garantida, o rodape volta a
+         usar o inset real. O Eduardo relatou sobra embaixo, e 16px forcados
+         eram parte dela. */
       /* `100%` herda a altura que o WKWebView calculou na PRIMEIRA pintura —
          e nela as áreas seguras ainda não existem, então a tela nasce com a
          altura errada e o conteúdo aparece cortado. Abrir de novo dá certo

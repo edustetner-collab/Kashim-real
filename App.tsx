@@ -52,25 +52,8 @@ const ADMIN_IDS =(import.meta.env.VITE_ADMIN_USER_IDS ?? '').split(',').map((s: 
 const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
 // Fallback CSS p/ esconder login social no nativo (ver regra .native-app no index.html)
 if (isNativeApp) document.documentElement.classList.add('native-app');
-// iOS nativo usa `contentInset: 'automatic'` (capacitor.config.ts): o WKWebView
-// JA empurra o conteudo do scroll para baixo do notch, entao somar
-// `env(safe-area-inset-top)` por cima daria padding em dobro (~94px).
-//
-// POR QUE ESPERAR O `load`: na PRIMEIRA abertura o WebView ainda nao aplicou
-// esse empurrao quando o JS roda. Zerando o padding de imediato, ficavamos sem
-// nenhum dos dois e o cabecalho subia para debaixo do relogio — era o app
-// "cortado em cima" que o Eduardo viu em 2026-09-09. Da segunda abertura em
-// diante o empurrao ja existia no primeiro quadro e por isso parecia certo.
-//
-// Esperando, a troca de falha fica a nosso favor: no pior caso sobra um respiro
-// por uma fracao de segundo, em vez de faltar espaco e cortar o conteudo.
-if (isNativeApp && (window as any).Capacitor?.getPlatform?.() === 'ios') {
-  const aplicar = () => requestAnimationFrame(() => {
-    document.documentElement.classList.add('native-ios');
-  });
-  if (document.readyState === 'complete') aplicar();
-  else window.addEventListener('load', aplicar, { once: true });
-}
+// A classe `native-ios` deixou de ser usada em 2026-09-09: quem reserva o
+// espaco do notch e o nosso CSS, sempre. Ver o comentario em index.html.
 
 const DEFAULT_FIXED_EXPENSES = [
   'Moradia', 'Condominio', 'Telefone fixo', 'Internet', 'Celular',
