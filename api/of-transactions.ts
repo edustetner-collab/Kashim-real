@@ -98,10 +98,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const limit = Math.min(parseInt(String(req.query.limit ?? '100')), 500);
       const direction = req.query.direction as string | undefined; // 'expense' | 'income' | 'savings'
 
+      /**
+       * Só transações de conexão VIVA.
+       *
+       * Sem este recorte, gasto de banco desconectado continuava sendo contado
+       * mas não aparecia em tela nenhuma: o pop-up anunciava 154 e o Extrato
+       * mostrava 79, porque a lista de bancos só desenha o que está conectado.
+       * Quem viu isso foi o Eduardo, três vezes, e das três a causa era esta.
+       *
+       * A contagem e a lista passam a sair da MESMA fonte. Divergir de novo
+       * exigiria alguém mudar as duas — e é para isso que elas estão lado a
+       * lado aqui.
+       */
+      const { data: vivas } = await db
+        .from('bank_connections')
+        .select('id')
+        .eq('household_id', householdId)
+        .neq('consent_status', 'revoked');
+      const idsVivos = (vivas ?? []).map((c) => c.id as string);
+
+      if (idsVivos.length === 0) {
+        return res.status(200).json({ transactions: [], pendingCount: 0 });
+      }
+
       let query = db
         .from('bank_transactions')
         .select('*')
         .eq('household_id', householdId)
+        .in('connection_id', idsVivos)
         .order('transaction_date', { ascending: false })
         .limit(limit);
 
@@ -111,11 +135,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { data, error } = await query;
       if (error) throw error;
 
-      // Também devolve a contagem total de pendentes para o badge na UI
       const { count } = await db
         .from('bank_transactions')
         .select('id', { count: 'exact', head: true })
         .eq('household_id', householdId)
+        .in('connection_id', idsVivos)
         .eq('status', 'pending');
 
       return res.status(200).json({
