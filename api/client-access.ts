@@ -82,13 +82,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { householdId, action, days } = req.body as {
     householdId?: string;
-    action?: 'revoke' | 'reactivate' | 'regularize-all';
+    action?: 'revoke' | 'reactivate' | 'regularize-all' | 'regularize-one';
     /** Dias de acesso extra a conceder, contados a partir de agora. */
     days?: number;
   };
 
   if (!action) return res.status(400).json({ error: 'action obrigatório' });
-  if (action !== 'revoke' && action !== 'reactivate' && action !== 'regularize-all') {
+  if (!['revoke', 'reactivate', 'regularize-all', 'regularize-one'].includes(action)) {
     return res.status(400).json({ error: 'action inválida' });
   }
   if (action !== 'regularize-all' && !householdId) {
@@ -126,6 +126,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       return res.status(200).json({ ok: true, action, atualizados, total: (hhs ?? []).length });
+    }
+
+    // ── regularize-one: mesma régua do regularize-all, mas para um household só ──
+    if (action === 'regularize-one') {
+      if (!isAdmin) return res.status(403).json({ error: 'Forbidden' });
+
+      const { data: hh, error: readErr } = await db
+        .from('households')
+        .select('id, first_access_at, access_until, subscription_status')
+        .eq('id', householdId)
+        .maybeSingle();
+      if (readErr) throw readErr;
+      if (!hh) return res.status(404).json({ error: 'Household não encontrado' });
+
+      const devido = prazoDevido(hh);
+      const { error } = await db
+        .from('households')
+        .update({ access_until: devido.toISOString() })
+        .eq('id', hh.id);
+      if (error) throw error;
+
+      return res.status(200).json({ ok: true, action, access_until: devido.toISOString() });
     }
 
     if (!isAdmin) {

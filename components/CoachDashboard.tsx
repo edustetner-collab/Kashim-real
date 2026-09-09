@@ -438,7 +438,15 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
           return (
           <div className="flex flex-col gap-3">
             {visible.map(client => {
-              const days = daysRemaining(client.coachingEndsAt);
+              // Mesma prioridade que computeAccess: accessUntil → firstAccessAt + 5 meses
+              const accessEnd = (() => {
+                if (client.accessUntil) return new Date(client.accessUntil);
+                const base = client.firstAccessAt ?? client.createdAt;
+                const d = new Date(base ?? Date.now());
+                d.setMonth(d.getMonth() + GRACE_MONTHS);
+                return d;
+              })();
+              const days = daysRemaining(accessEnd.toISOString());
               const isExpiring = days < 30;
               const isDraft = client.status === 'draft';
               const justActivated = activateSuccess === client.householdId;

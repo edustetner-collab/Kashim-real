@@ -16,6 +16,7 @@ interface ClientRow {
   trialDaysLeft: number | null;
   isAnnual: boolean;
   hidden: boolean;
+  householdId: string | null;
 }
 
 interface Metrics {
@@ -84,6 +85,8 @@ const AdminMetrics: React.FC = () => {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [regularizando, setRegularizando] = useState(false);
   const [regularizouMsg, setRegularizouMsg] = useState('');
+  const [reativandoId, setReativandoId] = useState<string | null>(null);
+  const [reativarMsg, setReativarMsg] = useState<{ id: string; ok: boolean; text: string } | null>(null);
 
   const load = useCallback(async () => {
     setError('');
@@ -125,6 +128,32 @@ const AdminMetrics: React.FC = () => {
       setRegularizouMsg(e instanceof Error ? e.message : 'Erro ao regularizar');
     } finally {
       setRegularizando(false);
+    }
+  }
+
+  async function reativarCliente(c: ClientRow) {
+    if (!c.householdId) {
+      setReativarMsg({ id: c.id, ok: false, text: 'Household não encontrado.' });
+      return;
+    }
+    setReativandoId(c.id);
+    setReativarMsg(null);
+    try {
+      const token = await getToken({ template: 'supabase' });
+      const res = await fetch('/api/client-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: 'regularize-one', householdId: c.householdId }),
+      });
+      const body = await res.json().catch(() => ({})) as { error?: string; access_until?: string };
+      if (!res.ok) throw new Error(body.error ?? `Erro ${res.status}`);
+      const ate = body.access_until ? new Date(body.access_until).toLocaleDateString('pt-BR') : '';
+      setReativarMsg({ id: c.id, ok: true, text: `Acesso até ${ate}.` });
+      await load();
+    } catch (e) {
+      setReativarMsg({ id: c.id, ok: false, text: e instanceof Error ? e.message : 'Erro' });
+    } finally {
+      setReativandoId(null);
     }
   }
 
@@ -290,29 +319,50 @@ const AdminMetrics: React.FC = () => {
           {visible.map(c => {
             const access = lastAccessLabel(c.lastSignInAt);
             const meta = STATUS_META[c.status];
+            const isCoachClient = c.status === 'coach' || c.status === 'trial';
+            const msgForThis = reativarMsg?.id === c.id ? reativarMsg : null;
             return (
-              <div key={c.id} className={`bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 flex items-center gap-3 ${c.hidden ? 'opacity-60' : ''}`}>
-                <div className={`w-2 h-2 rounded-full shrink-0 ${access.fresh ? 'bg-green-400' : 'bg-zinc-700'}`}></div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm font-bold truncate">{c.name}</p>
-                  <p className="text-zinc-600 text-[11px] truncate">{c.email}</p>
+              <div key={c.id} className={`bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 ${c.hidden ? 'opacity-60' : ''}`}>
+                <div className="flex items-center gap-3">
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${access.fresh ? 'bg-green-400' : 'bg-zinc-700'}`}></div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-sm font-bold truncate">{c.name}</p>
+                    <p className="text-zinc-600 text-[11px] truncate">{c.email}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className={`text-[11px] font-bold ${access.fresh ? 'text-green-400' : 'text-zinc-500'}`}>{access.text}</p>
+                    <span className={`inline-block mt-1 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${meta.classes}`}>
+                      {chipText(c)}
+                    </span>
+                  </div>
+                  {isCoachClient && c.householdId && (
+                    <button
+                      onClick={() => reativarCliente(c)}
+                      disabled={reativandoId === c.id}
+                      title="Dar mais 150 dias de acesso"
+                      className="shrink-0 w-9 h-9 flex items-center justify-center rounded-xl bg-green-500/10 text-green-400 hover:bg-green-500/20 active:scale-95 transition-all disabled:opacity-50"
+                    >
+                      {reativandoId === c.id
+                        ? <i className="fas fa-circle-notch animate-spin text-xs"></i>
+                        : <i className="fas fa-clock-rotate-left text-xs"></i>}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => toggleHidden(c)}
+                    disabled={togglingId === c.id}
+                    title={c.hidden ? 'Voltar a mostrar nas métricas' : 'Ocultar das métricas (não apaga a conta)'}
+                    className="shrink-0 w-9 h-9 flex items-center justify-center rounded-xl bg-zinc-800 text-zinc-500 hover:text-white active:scale-95 transition-all"
+                  >
+                    {togglingId === c.id
+                      ? <i className="fas fa-circle-notch animate-spin text-xs"></i>
+                      : <i className={`fas ${c.hidden ? 'fa-eye' : 'fa-eye-slash'} text-xs`}></i>}
+                  </button>
                 </div>
-                <div className="text-right shrink-0">
-                  <p className={`text-[11px] font-bold ${access.fresh ? 'text-green-400' : 'text-zinc-500'}`}>{access.text}</p>
-                  <span className={`inline-block mt-1 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${meta.classes}`}>
-                    {chipText(c)}
-                  </span>
-                </div>
-                <button
-                  onClick={() => toggleHidden(c)}
-                  disabled={togglingId === c.id}
-                  title={c.hidden ? 'Voltar a mostrar nas métricas' : 'Ocultar das métricas (não apaga a conta)'}
-                  className="shrink-0 w-9 h-9 flex items-center justify-center rounded-xl bg-zinc-800 text-zinc-500 hover:text-white active:scale-95 transition-all"
-                >
-                  {togglingId === c.id
-                    ? <i className="fas fa-circle-notch animate-spin text-xs"></i>
-                    : <i className={`fas ${c.hidden ? 'fa-eye' : 'fa-eye-slash'} text-xs`}></i>}
-                </button>
+                {msgForThis && (
+                  <p className={`text-[11px] font-bold mt-2 pl-5 ${msgForThis.ok ? 'text-green-400' : 'text-red-400'}`}>
+                    {msgForThis.text}
+                  </p>
+                )}
               </div>
             );
           })}

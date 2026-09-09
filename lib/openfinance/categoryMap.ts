@@ -167,12 +167,59 @@ function normalizeLabel(s: string): string {
  * 3. OF code → CategoryType (medium confidence for CC, low for account)
  * 4. null — user must decide (low confidence)
  */
+/**
+ * Categoria pelo NOME do estabelecimento.
+ *
+ * Faltava esta camada inteira: a sugestão olhava só o código e o rótulo que o
+ * banco manda, e quando o banco não manda nada útil — que é o caso do Itaú na
+ * maioria das compras — tudo caía em "Variável". O cliente via "ECO POSTO DE
+ * COMBUSTIVEL" classificado como imprevisto e, com razão, perdia a confiança
+ * na sugestão.
+ *
+ * As categorias seguem o método do Kashim, não o senso comum: mercado e
+ * gasolina são CONTA FIXA (estão na lista padrão do onboarding, com teto
+ * mensal), enquanto restaurante e delivery são LAZER. Farmácia fica em
+ * variável porque remédio é imprevisto, não rotina.
+ *
+ * Deliberadamente curto e óbvio. Padrão duvidoso vira erro silencioso — e
+ * errar com confiança é pior que não sugerir.
+ */
+const MERCHANT_PATTERNS: Array<[RegExp, CategoryType]> = [
+  // Lazer — delivery, restaurante, bar, padaria
+  [/\b(ifd\*|ifood|rappi|uber\s*eats|zedelivery)/i,                    CategoryType.PERSONAL_LEISURE],
+  [/\b(restaurante|pizzaria|hamburgu|burger|lanche|lanchonete)/i,    CategoryType.PERSONAL_LEISURE],
+  [/\b(padaria|paes\s+e\s+doces|confeitaria|cafeteria|starbucks)/i, CategoryType.PERSONAL_LEISURE],
+  [/\b(bar|choperia|adega|cervejaria|pub)\b/i,                          CategoryType.PERSONAL_LEISURE],
+  [/\b(cinema|cinemark|teatro|ingresso|netflix|spotify|disney)\b/i,     CategoryType.PERSONAL_LEISURE],
+
+  // Conta fixa — o que tem teto mensal no método
+  [/\b(posto|combustivel|combustiveis|abastec|ipiranga|shell|petrobras)\b/i, CategoryType.FIXED_EXPENSE],
+  [/\b(supermerc|mercad|atacad|hipermerc|carrefour|assai|sendas|shibata)/i,    CategoryType.FIXED_EXPENSE],
+  [/\b(uber|99app|99\s*taxi|cabify|taxi)\b/i,                               CategoryType.FIXED_EXPENSE],
+  [/\b(academia|smartfit|smart\s*fit|crossfit|pilates)/i,                 CategoryType.FIXED_EXPENSE],
+
+  // Variável — imprevisto por natureza
+  [/\b(farmacia|drogaria|drogasil|droga\s*raia|pacheco)/i,           CategoryType.VARIABLE_EXPENSE],
+  [/\b(oficina|autopecas|mecanica|borracharia|funilaria)\b/i,           CategoryType.VARIABLE_EXPENSE],
+];
+
+/** Categoria deduzida do nome do estabelecimento, ou null. */
+export function categoryFromMerchant(nome: string | null): CategoryType | null {
+  if (!nome) return null;
+  for (const [re, cat] of MERCHANT_PATTERNS) {
+    if (re.test(nome)) return cat;
+  }
+  return null;
+}
+
 export function suggestCategory(params: {
   accountType: OFAccountType;
   rawDirection: 'credit' | 'debit';
   code: string;
   ofCategory: string | null;
   paymentMethod: string | null;
+  /** Nome do estabelecimento — última camada antes de desistir. */
+  merchantName?: string | null;
 }): CategorySuggestion {
   const { accountType, rawDirection, code, ofCategory } = params;
   const upperCode = (code ?? '').toUpperCase();
@@ -213,6 +260,9 @@ export function suggestCategory(params: {
     const codeCat = CODE_MAP[upperCode];
     if (codeCat) return { category: codeCat, direction: 'expense', confidence: 'medium' };
 
+    const porNome = categoryFromMerchant(params.merchantName ?? null);
+    if (porNome) return { category: porNome, direction: 'expense', confidence: 'medium' };
+
     return { category: CategoryType.VARIABLE_EXPENSE, direction: 'expense', confidence: 'low' };
   }
 
@@ -230,6 +280,9 @@ export function suggestCategory(params: {
     const labelCat = LABEL_CATEGORY_MAP[normalizedLabel];
     if (labelCat) return { category: labelCat, direction: 'expense', confidence: 'medium' };
   }
+
+  const porNome = categoryFromMerchant(params.merchantName ?? null);
+  if (porNome) return { category: porNome, direction: 'expense', confidence: 'medium' };
 
   return { category: CategoryType.VARIABLE_EXPENSE, direction: 'expense', confidence: 'low' };
 }

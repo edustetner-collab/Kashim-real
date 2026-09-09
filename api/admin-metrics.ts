@@ -193,6 +193,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       trialDaysLeft: number | null;
       isAnnual: boolean;
       hidden: boolean;
+      householdId: string | null;
     }
 
     const rows: ClientRow[] = [];
@@ -280,7 +281,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      rows.push({ id: u.id, name, email: primary?.email_address ?? '—', lastSignInAt: last, status, trialDaysLeft, isAnnual, hidden: isHidden });
+      rows.push({ id: u.id, name, email: primary?.email_address ?? '—', lastSignInAt: last, status, trialDaysLeft, isAnnual, hidden: isHidden, householdId: hhId ?? null });
     }
 
     // Mais recentes primeiro; quem nunca logou vai pro fim

@@ -457,6 +457,8 @@ export default function ExtratoBancario({
    */
   const [removendo, setRemovendo] = useState<BankConn | null>(null);
   const [removendoAgora, setRemovendoAgora] = useState(false);
+  /** Falha ao gravar a categorização — precisa ser visível, não engolida. */
+  const [erroSalvar, setErroSalvar] = useState('');
   /** Conexão cujo cartão está sendo ligado/desligado */
   const [togglingCard, setTogglingCard] = useState('');
   const [cardError, setCardError] = useState('');
@@ -568,21 +570,64 @@ export default function ExtratoBancario({
    * torna o toque unico possivel — sem ela, "confirmar" ainda exigiria escolher
    * um item, que era exatamente a friccao reclamada.
    */
+  /**
+   * Marca a transação como resolvida no servidor.
+   *
+   * Antes era `fetch(...).catch(() => {})`: um 403, um 500 ou uma linha que não
+   * casou passavam despercebidos. O cliente via o gasto sumir da tela, voltava
+   * depois e encontrava tudo de novo — sem nunca saber que a gravação falhou.
+   * Agora a falha devolve a transação para a fila e avisa.
+   */
+  async function marcarNoServidor(tx: BankTransaction, corpo: Record<string, unknown>): Promise<boolean> {
+    try {
+      const r = await fetch('/api/of-transactions', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify(corpo),
+      });
+      if (r.ok) return true;
+    } catch { /* rede caiu — cai no mesmo tratamento */ }
+    setTransactions((prev) => (prev.some((t) => t.transactionId === tx.transactionId) ? prev : [tx, ...prev]));
+    setErroSalvar('Não consegui salvar essa categorização. Confira a internet e tente de novo.');
+    return false;
+  }
+
   function confirmarRapido(tx: BankTransaction) {
     const categoria = tx.suggestedCategory as CategoryType | null;
     if (!categoria) return;
 
     const nome = tx.merchant || tx.description || 'Gasto';
-    // Para PERSONAL_LEISURE há sempre UMA única linha — nunca criar nova.
-    const leisureItemId = categoria === CategoryType.PERSONAL_LEISURE
-      ? items.find(i => i.category === CategoryType.PERSONAL_LEISURE)?.id
+
+    /**
+     * Item de destino, sem inventar linha nova a cada estabelecimento.
+     *
+     * Antes, o toque único caía em `onCreateItem(nome)` sempre que não
+     * reconhecia o item — e o nome era o do estabelecimento cru. Em poucos dias
+     * o plano tinha linhas chamadas "AMAZONMKTPLC*MEGABYTEM" e "Mshop
+     * Atacado", e o seletor de itens virou uma lista de recibos.
+     *
+     * Agora cada categoria tem uma linha guarda-chuva: o gasto entra nela e o
+     * nome do estabelecimento vai na descrição do lançamento, que é onde ele
+     * pertence. Criar linha nova volta a ser decisão do cliente, no fluxo
+     * completo.
+     */
+    const GUARDA_CHUVA: Partial<Record<CategoryType, string>> = {
+      [CategoryType.PERSONAL_LEISURE]: 'Lazer e Despesas Pessoais',
+      [CategoryType.VARIABLE_EXPENSE]: 'Gastos Variáveis',
+      [CategoryType.FIXED_EXPENSE]: 'Outras Contas Fixas',
+    };
+    const daCategoria = items.filter((i) => i.category === categoria);
+    const nomeGuardaChuva = GUARDA_CHUVA[categoria];
+    const guardaChuva = nomeGuardaChuva
+      ? (daCategoria.find((i) => i.description === nomeGuardaChuva)?.id
+         ?? (categoria === CategoryType.PERSONAL_LEISURE ? daCategoria[0]?.id : undefined))
       : undefined;
 
     const itemId = tx.suggestedItemId && items.some((i) => i.id === tx.suggestedItemId)
       ? tx.suggestedItemId
       : resolveItemByCode(tx.ofCode, tx.suggestedCategory, items)
-        ?? leisureItemId
-        ?? onCreateItem(nome, categoria, false);
+        ?? guardaChuva
+        ?? onCreateItem(nomeGuardaChuva ?? nome, categoria, false);
 
     const dateStr = tx.billDueDate ?? tx.transactionDate;
     const [y, rawM] = dateStr.split('-').map(Number);
@@ -613,10 +658,7 @@ export default function ExtratoBancario({
     setTransactions((prev) => prev.filter((t) => t.transactionId !== tx.transactionId));
 
     const auth = { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` };
-    fetch('/api/of-transactions', {
-      method: 'PATCH', headers: auth,
-      body: JSON.stringify({ householdId, transactionId: tx.transactionId, action: 'categorize', itemId, category: categoria, partialId: partial.id }),
-    }).catch(() => {});
+    marcarNoServidor(tx, { householdId, transactionId: tx.transactionId, action: 'categorize', itemId, category: categoria, partialId: partial.id });
 
     const key = merchantKey(tx.merchant ?? tx.description ?? '');
     if (key) {
@@ -864,19 +906,15 @@ export default function ExtratoBancario({
     setActiveTx(null);
     setTransactions((prev) => prev.filter((t) => t.transactionId !== tx.transactionId));
 
-    // 2. Mark as categorized in DB (fire-and-forget)
-    fetch('/api/of-transactions', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-      body: JSON.stringify({
-        householdId,
-        transactionId: tx.transactionId,
-        action: 'categorize',
-        itemId,
-        category,
-        partialId: partial.id,
-      }),
-    }).catch(() => {/* non-critical */});
+    // 2. Marca no servidor — e devolve para a fila se falhar.
+    marcarNoServidor(tx, {
+      householdId,
+      transactionId: tx.transactionId,
+      action: 'categorize',
+      itemId,
+      category,
+      partialId: partial.id,
+    });
 
     // 3. Update merchant memory (fire-and-forget)
     // Mesma fonte que o cron usa para LER (merchant primeiro, descrição como
@@ -1177,6 +1215,15 @@ export default function ExtratoBancario({
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-[#f2f2f7]">
+      {erroSalvar && (
+        <div className="fixed inset-x-3 top-3 z-[75] rounded-2xl border border-[#ffd4d4] bg-[#fff5f5] p-3 shadow-lg">
+          <p className="text-[12.5px] font-bold leading-snug text-[#c0392b]">{erroSalvar}</p>
+          <button onClick={() => setErroSalvar('')} className="mt-1 text-[11px] font-bold uppercase tracking-wider text-[#8e8e93]">
+            Fechar
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white border-b border-[#e5e5ea] px-4 safe-top pt-2 pb-2 flex-shrink-0">
         <div className="flex items-center justify-between mb-3">

@@ -241,8 +241,41 @@ function normalizeLabel(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
 }
 
+/**
+ * Categoria pelo NOME do estabelecimento — última camada antes de desistir.
+ *
+ * Duplicado de lib/openfinance/categoryMap.ts porque o Vercel não empacota
+ * import local em `api/`. Mudou lá, muda aqui: as duas listas precisam contar
+ * a mesma história, senão o cron classifica de um jeito e a tela de outro.
+ *
+ * Sem esta camada tudo que o banco não rotulava caía em "Variável" — o cliente
+ * via "ECO POSTO DE COMBUSTIVEL" como imprevisto e perdia a fé na sugestão.
+ * As categorias seguem o método: mercado e gasolina são CONTA FIXA (têm teto
+ * mensal), restaurante e delivery são LAZER, farmácia é variável.
+ */
+const MERCHANT_PATTERNS: Array<[RegExp, string]> = [
+  [/\b(ifd\*|ifood|rappi|uber\s*eats|zedelivery)/i,                     CAT_LEISURE],
+  [/\b(restaurante|pizzaria|hamburgu|burger|lanche|lanchonete)/i,         CAT_LEISURE],
+  [/\b(padaria|paes\s+e\s+doces|confeitaria|cafeteria|starbucks)/i,     CAT_LEISURE],
+  [/\b(bar|choperia|adega|cervejaria|pub)\b/i,                           CAT_LEISURE],
+  [/\b(cinema|cinemark|teatro|ingresso|netflix|spotify|disney)/i,         CAT_LEISURE],
+  [/\b(posto|combustivel|combustiveis|abastec|ipiranga|shell|petrobras)/i, CAT_FIXED],
+  [/\b(supermerc|mercad|atacad|hipermerc|carrefour|assai|sendas|shibata)/i, CAT_FIXED],
+  [/\b(uber|99app|99\s*taxi|cabify|taxi)\b/i,                           CAT_FIXED],
+  [/\b(academia|smartfit|smart\s*fit|crossfit|pilates)/i,                CAT_FIXED],
+  [/\b(farmacia|drogaria|drogasil|droga\s*raia|pacheco)/i,               CAT_VARIABLE],
+  [/\b(oficina|autopecas|mecanica|borracharia|funilaria)/i,               CAT_VARIABLE],
+];
+
+function categoryFromMerchant(nome: string | null | undefined): string | null {
+  if (!nome) return null;
+  for (const [re, cat] of MERCHANT_PATTERNS) if (re.test(nome)) return cat;
+  return null;
+}
+
 function suggestCategory(p: {
   accountType: OFAccountType; rawDirection: 'credit' | 'debit'; code: string; ofCategory: string | null;
+  merchantName?: string | null;
 }): { category: string | null; direction: OFDirection; confidence: 'high' | 'medium' | 'low' } {
   const { accountType, rawDirection, code, ofCategory } = p;
   const upperCode = (code ?? '').toUpperCase();
@@ -268,6 +301,8 @@ function suggestCategory(p: {
     // isto, luz, água, escola e seguro caíam todos em "Contas Variáveis".
     const codeCat = CC_CODE_MAP[upperCode];
     if (codeCat) return { category: codeCat, direction: 'expense', confidence: 'medium' };
+    const porNome = categoryFromMerchant(p.merchantName);
+    if (porNome) return { category: porNome, direction: 'expense', confidence: 'medium' };
     return { category: CAT_VARIABLE, direction: 'expense', confidence: 'low' };
   }
 
@@ -279,6 +314,8 @@ function suggestCategory(p: {
     const c = LABEL_CATEGORY_MAP[label];
     if (c) return { category: c, direction: 'expense', confidence: 'medium' };
   }
+  const porNome = categoryFromMerchant(p.merchantName);
+  if (porNome) return { category: porNome, direction: 'expense', confidence: 'medium' };
   return { category: CAT_VARIABLE, direction: 'expense', confidence: 'low' };
 }
 
@@ -421,7 +458,7 @@ function parseStatement(env: Envelope) {
   function normalize(raw: RawTx, direction: OFDirection) {
     const desc = fixMojibake(raw.description ?? '').trim();
     const ofCategory = raw.category ? fixMojibake(raw.category) : null;
-    const s = suggestCategory({ accountType, rawDirection: raw.transactionType, code: raw.code, ofCategory });
+    const s = suggestCategory({ accountType, rawDirection: raw.transactionType, code: raw.code, ofCategory, merchantName: extractMerchant(raw) ?? desc });
     return {
       transactionId: raw.transactionId,
       fitid: raw.fitid ?? null,
@@ -447,14 +484,14 @@ function parseStatement(env: Envelope) {
   }
 
   for (const tx of debits) {
-    const s = suggestCategory({ accountType, rawDirection: 'debit', code: tx.code, ofCategory: tx.category });
+    const s = suggestCategory({ accountType, rawDirection: 'debit', code: tx.code, ofCategory: tx.category, merchantName: tx.description ?? null });
     if (s.direction === 'ignore') continue;
     out.push(normalize(tx, s.direction));
   }
   for (const tx of credits) {
     if (tx.code === 'CREDITCARDPAYMENT' || tx.code === 'TEV') continue;
     if (accountType === 'credit_card') continue; // estornos — fora do MVP
-    const s = suggestCategory({ accountType, rawDirection: 'credit', code: tx.code, ofCategory: tx.category });
+    const s = suggestCategory({ accountType, rawDirection: 'credit', code: tx.code, ofCategory: tx.category, merchantName: tx.description ?? null });
     if (s.direction === 'ignore') continue;
     out.push(normalize(tx, s.direction));
   }

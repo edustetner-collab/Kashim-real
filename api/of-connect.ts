@@ -597,7 +597,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (apagarHistorico) {
         // Antes do revoke: depois da conexão sair da lista o vínculo continua
         // existindo, mas é mais fácil errar a ordem numa manutenção futura.
-        await db.from('of_transactions').delete().eq('connection_id', connectionId);
+        // A tabela é `bank_transactions`. Escrito como `of_transactions` na
+        // primeira versão, o delete não achava tabela nenhuma e falhava em
+        // SILÊNCIO: o banco saía da lista e as transações dele continuavam
+        // contando no "N transações esperando você".
+        const { error: errApagar } = await db
+          .from('bank_transactions')
+          .delete()
+          .eq('household_id', householdId)
+          .eq('connection_id', connectionId);
+        if (errApagar) throw errApagar;
       }
 
       await db.from('bank_connections').update({ consent_status: 'revoked' }).eq('id', connectionId);
