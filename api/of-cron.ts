@@ -436,7 +436,28 @@ function installmentFromCard(raw: RawTx): { current: number; total: number } | n
   const total = parseInt(String(raw.creditCardTotalInstallments ?? ''), 10);
   const current = parseInt(String(raw.creditCardInstallmentNumber ?? ''), 10);
   if (!Number.isFinite(total) || total <= 1) return null;
-  return { current: Number.isFinite(current) && current > 0 ? current : 1, total };
+  if (Number.isFinite(current) && current > 0) return { current, total };
+
+  /**
+   * Sem o número da parcela, a versão antiga assumia a PRIMEIRA — e projetava
+   * todas as seguintes. Uma compra 4/4, que está acabando, virava 4 parcelas
+   * futuras inventadas no plano, e o cliente tinha de caçar e apagar uma por
+   * uma (Eduardo, 2026-09-09: "Tapete 04/04" projetado até dezembro).
+   *
+   * A informação costuma estar na descrição — "MP *CAZATI 04/04" —, então ela
+   * vem antes de qualquer suposição.
+   */
+  const daDescricao = detectInstallment(fixMojibake(raw.description ?? ''));
+  if (daDescricao && daDescricao.total === total) return daDescricao;
+
+  /**
+   * Ainda sem saber: trata como a ÚLTIMA, que é o mesmo que não projetar nada.
+   *
+   * Errar para menos é recuperável — a próxima parcela chega na fatura do mês
+   * que vem e entra sozinha. Errar para mais enche o plano de dívida que não
+   * existe, e quem limpa é o cliente.
+   */
+  return { current: total, total };
 }
 
 function detectInstallment(desc: string) {

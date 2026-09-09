@@ -1437,10 +1437,13 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
           </div>
         </div>
       )}
+      {/* Editar lançamento: caixa CENTRALIZADA, não folha colada embaixo. O foco
+          automático vai para a descrição e abre o teclado, que cobria justamente
+          esse campo — sobrava só a categoria na tela, e o cliente concluía, com
+          razão, que não dava para editar o nome (Eduardo, 2026-09-09). */}
       {editPartialConfirm && (
-        <div className="fixed inset-0 z-[60] flex items-end" onClick={() => setEditPartialConfirm(null)}>
-          <div className="w-full bg-white rounded-t-3xl p-6 pb-10 border-t border-[#e8e8ed] animate-in slide-in-from-bottom-4 duration-200" onClick={e => e.stopPropagation()}>
-            <div className="w-8 h-1 bg-[#e8e8ed] rounded-full mx-auto mb-5" />
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40" onClick={() => setEditPartialConfirm(null)}>
+          <div className="w-full max-w-sm max-h-[85dvh] overflow-y-auto bg-white rounded-3xl p-6 border border-[#e8e8ed] animate-in fade-in duration-200" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-11 h-11 rounded-full bg-[#f0fad0] flex items-center justify-center shrink-0">
                 <i className="fas fa-pen text-[#7ab800] text-base" />
@@ -1455,6 +1458,16 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
               </div>
             </div>
             <div className="space-y-3 mb-5">
+              <div>
+                <p className="text-[9px] text-[#aeaeb2] font-black uppercase tracking-widest mb-1.5">Descrição</p>
+                <input
+                  type="text"
+                  value={editDesc}
+                  onChange={e => setEditDesc(e.target.value)}
+                  className="w-full py-2.5 px-3 text-sm border border-[#e8e8ed] rounded-xl bg-[#f5f5f7] text-[#1d1d1f] outline-none focus:border-[#7ab800]"
+                  autoFocus
+                />
+              </div>
               <div>
                 <p className="text-[9px] text-[#aeaeb2] font-black uppercase tracking-widest mb-1.5">Categoria</p>
                 <select
@@ -1476,16 +1489,6 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                     Este gasto vai mudar de categoria ao salvar
                   </p>
                 )}
-              </div>
-              <div>
-                <p className="text-[9px] text-[#aeaeb2] font-black uppercase tracking-widest mb-1.5">Descrição</p>
-                <input
-                  type="text"
-                  value={editDesc}
-                  onChange={e => setEditDesc(e.target.value)}
-                  className="w-full py-2.5 px-3 text-sm border border-[#e8e8ed] rounded-xl bg-[#f5f5f7] text-[#1d1d1f] outline-none focus:border-[#7ab800]"
-                  autoFocus
-                />
               </div>
               <div>
                 <p className="text-[9px] text-[#aeaeb2] font-black uppercase tracking-widest mb-1.5">Valor</p>

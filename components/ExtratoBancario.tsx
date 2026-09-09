@@ -203,7 +203,10 @@ function CategoryPicker({ tx, items, onConfirm, onIgnore, onClose }: PickerProps
   }, [selectedCategory]);
 
   const canConfirm = selectedCategory !== null && (
-    selectedCategory === CategoryType.INCOME ? true : selectedItemId !== null
+    selectedCategory === CategoryType.INCOME
+    || selectedCategory === CategoryType.PERSONAL_LEISURE
+      ? true
+      : selectedItemId !== null
   );
 
   function handleConfirm() {
@@ -258,7 +261,15 @@ function CategoryPicker({ tx, items, onConfirm, onIgnore, onClose }: PickerProps
         </div>
 
         {/* Item selector */}
-        {selectedCategory && selectedCategory !== CategoryType.INCOME && (
+        {/* Lazer NÃO tem subcategoria.
+            Regra do método, dita pelo Eduardo em 2026-09-09: tudo que é lazer
+            entra numa linha só, e o que distingue um gasto do outro é a
+            descrição — não um item de plano. Perguntar "qual item?" ali só
+            produzia lixo: o plano ganhava linhas chamadas
+            "AMAZONMKTPLC*MEGABYTEM". Contas variáveis, ao contrário, têm itens
+            de verdade (conserto, farmácia), e lá a pergunta continua. */}
+        {selectedCategory && selectedCategory !== CategoryType.INCOME
+          && selectedCategory !== CategoryType.PERSONAL_LEISURE && (
           <>
             <p className="text-xs font-semibold text-[#6e6e73] mb-2">ITEM DO PLANO</p>
             {itemsForCategory.length === 0 ? (
@@ -704,7 +715,7 @@ export default function ExtratoBancario({
         description: total > 1 ? `${nome} ${atual + k}/${total}` : nome,
         value: Number(tx.amount),
         paymentSource: origem,
-        cardLast4: tx.cardLast4 ?? aberto?.last4 ?? undefined,
+        cardLast4: cartaoVisivel(tx),
       };
       onAddPartial(itemId, partial, Math.floor(abs / 12), abs % 12);
     }
@@ -745,7 +756,7 @@ export default function ExtratoBancario({
       isCredit: tx.accountType === 'credit_card',
       // O extrato sabe como foi pago — o ExpenseSheet nao pergunta de novo.
       knownPayMethod: tx.accountType === 'credit_card' ? 'credit' as const : 'debit' as const,
-      knownCardLast4: tx.cardLast4 ?? aberto?.last4 ?? null,
+      knownCardLast4: cartaoVisivel(tx) ?? null,
       category: (tx.suggestedCategory as CategoryType) ?? undefined,
       purchaseDate: { day: rawD || 1, month: (rawM || 1) - 1, year: y },
       ofTx: { transactionId: tx.transactionId, merchantKey: merchantKey(tx.merchant ?? tx.description ?? '') },
@@ -816,7 +827,7 @@ export default function ExtratoBancario({
         value: Number(tx.amount),
         // O extrato sabe a origem: cartão vai para a fatura, conta já saiu.
         paymentSource: tx.accountType === 'credit_card' ? 'credit' : 'debit',
-        cardLast4: tx.cardLast4 ?? undefined,
+        cardLast4: cartaoVisivel(tx),
       };
       const itemId = itemById.get(tx.transactionId)!;
       onAddPartial(itemId, partial, y, rawM - 1);
@@ -966,6 +977,25 @@ export default function ExtratoBancario({
    * contada. Melhor no cartão errado e visível do que certa e fantasma: o
    * cliente consegue recategorizar, mas não consegue achar o que não aparece.
    */
+  /**
+   * Os 4 dígitos do cartão que o cliente RECONHECE.
+   *
+   * Compra em cartão virtual chega com um número temporário — o Itaú gera um
+   * por compra. Gravar esse número no plano fazia aparecer "Cartão ··6174" e
+   * "··0879" no filtro de meios de pagamento, e o Eduardo não sabia de onde
+   * vinham: não são cartões dele, são descartáveis de uma compra só
+   * (2026-09-09).
+   *
+   * Cai no cartão real da conexão sempre que o número não estiver entre os
+   * cadastrados. O extrato do banco continua guardando o número original; o
+   * plano passa a mostrar o cartão que existe na vida do cliente.
+   */
+  const cartaoVisivel = (t: BankTransaction): string | undefined => {
+    const daConexao = cartoesDaConexao.get(t.connectionId ?? '') ?? [];
+    if (t.cardLast4 && daConexao.includes(t.cardLast4)) return t.cardLast4;
+    return daConexao[0] ?? aberto?.last4 ?? undefined;
+  };
+
   const chaveDaTx = (t: BankTransaction) => {
     const conn = t.connectionId ?? '';
     if (t.accountType !== 'credit_card') return chaveDe(conn, 'checking');
@@ -1020,7 +1050,7 @@ export default function ExtratoBancario({
       description: tx.description ?? '',
       value: Number(tx.amount),
       paymentSource: tx.accountType === 'credit_card' ? 'credit' : 'debit',
-      cardLast4: tx.cardLast4 ?? aberto?.last4 ?? undefined,
+      cardLast4: cartaoVisivel(tx),
     };
 
     // Alerta de teto — o lançamento manual já avisava, mas o que vem do banco
