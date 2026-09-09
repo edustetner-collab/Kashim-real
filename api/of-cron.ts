@@ -617,6 +617,8 @@ interface Conn {
   card_protocol_at?: string | null;
   account_import_enabled?: boolean | null;
   cards?: StoredCard[] | null;
+  /** Fatura por cartão: {"7212": {"2026-09": 7863.04}}. Formato antigo era plano. */
+  bill_totals?: Record<string, unknown> | null;
 }
 
 /** Cartão guardado em  (ver migrations-v9.sql). */
@@ -729,12 +731,40 @@ async function syncOne(
   // A fatura por mes usa o extrato INTEIRO, antes do corte do mes corrente:
   // uma parcela comprada em marco ainda pesa em outubro, e cortar por data
   // esvaziaria justamente a projecao dos meses futuros.
+  /**
+   * Fatura gravada POR CARTAO, nao por conexao.
+   *
+   * `bill_totals` e um campo so, mas `cards` e uma lista e a sincronizacao roda
+   * uma vez por cartao. Gravando o resultado direto, cada cartao APAGAVA o do
+   * anterior — sobrava a fatura do ultimo que sincronizou.
+   *
+   * Foi o que aconteceu com o Eduardo em 2026-09-09: a conexao Itau tem os
+   * cartoes 7212 e 6256; o 6256 sincronizou 22 segundos depois do 7212 e seus
+   * dois valores velhos ({2025-10: 34,16, 2026-02: 43,29}) apagaram a fatura
+   * inteira do Latam. O plano ficou com numeros congelados de uma passada
+   * anterior, e setembro mostrava R$ 1.435 no lugar de R$ 7.863.
+   *
+   * Agora a forma e {"7212": {"2026-09": 7863.04, ...}, "6256": {...}} e cada
+   * cartao mexe so na sua chave. Formato antigo (plano, mes -> valor) e migrado
+   * na primeira gravacao: as chaves AAAA-MM soltas sao descartadas.
+   */
   if (isCard && card) {
     const totals = computeBillTotals(todasAsTx);
+    const anterior = (conn.bill_totals && typeof conn.bill_totals === 'object' && !Array.isArray(conn.bill_totals))
+      ? conn.bill_totals as Record<string, unknown>
+      : {};
+    const porCartao: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(anterior)) {
+      // Descarta o formato antigo (chave de mes na raiz); mantem outros cartoes.
+      if (/^\d{4}-\d{2}$/.test(k)) continue;
+      porCartao[k] = v;
+    }
+    porCartao[card.last4] = totals;
+
     const nextCards = (conn.cards ?? []).map((c) => (c.last4 === card.last4 ? { ...c } : c));
     conn.cards = nextCards;
     await db.from('bank_connections')
-      .update({ bill_totals: totals })
+      .update({ bill_totals: porCartao })
       .eq('id', conn.id)
       .then(() => {}, () => {}); // fatura e acessoria: falha aqui nao derruba a importacao
   }
@@ -896,6 +926,7 @@ function computeBillTotals(txs: Array<{
   date: string;
   direction: string;
   billDueDate: string | null;
+  billTotal?: number | null;
   installment: { current: number; total: number } | null;
 }>): Record<string, number> {
   const totals: Record<string, number> = {};
@@ -926,7 +957,32 @@ function computeBillTotals(txs: Array<{
   // R$ 23.640 (medido contra o app do Bradesco em 2026-08-13).
   const proximaFatura = ultimaReal ? shiftMonth(ultimaReal, 1) : '';
 
-  // 1) O que ja foi cobrado, cada um no mes da sua fatura.
+  /**
+   * 0) O TOTAL QUE O BANCO DECLARA, por mes de vencimento.
+   *
+   * O extrato de cartao carimba `creditCardBill.totalAmount` em cada lancamento:
+   * e a fatura fechada, do jeito que o cliente ve no app do banco. Preferimos
+   * ela a qualquer soma nossa.
+   *
+   * POR QUE SOMAR NAO BASTA (medido em 2026-09-10, cartao Latam Itau ••7212):
+   * a soma dos 75 lancamentos de setembro dava R$ 7.758,04 e a fatura era
+   * R$ 7.863,04. Os R$ 105,00 de diferenca sao a linha "Produtos e servicos"
+   * do Itau, que a Technospeed nao entrega como lancamento nenhum — nao ha
+   * transacao de R$ 105 no extrato inteiro. Somando, ela nunca apareceria.
+   *
+   * Isso tambem tira do caminho a ambiguidade do CREDITCARDFEES, que fica
+   * ignorado (e deve ficar: no Bradesco ele e o pagamento da fatura, R$ 58 mil
+   * de dupla contagem) sem com isso furar o total.
+   */
+  const declarado = new Map<string, number>();
+  for (const t of txs) {
+    const due = (t.billDueDate ?? '').slice(0, 7);
+    if (!MES_VALIDO.test(due)) continue;
+    const v = Number(t.billTotal);
+    if (Number.isFinite(v) && v > 0) declarado.set(due, v);
+  }
+
+  // 1) Mes SEM total declarado: soma os lancamentos, como antes.
   const vistos = new Set<string>();
   for (const t of relevantes) {
     // `transaction` e `transactionDuplicated` podem trazer a mesma transacao.
@@ -937,8 +993,12 @@ function computeBillTotals(txs: Array<{
     const due = (t.billDueDate ?? '').slice(0, 7);
     const base = MES_VALIDO.test(due) ? due : proximaFatura;
     if (!MES_VALIDO.test(base)) continue;
+    if (declarado.has(base)) continue; // o banco ja disse quanto e
     addTo(base, t.amount);
   }
+
+  // O declarado vence qualquer soma.
+  for (const [mes, valor] of declarado) totals[mes] = valor;
 
   // 2) O que ainda vai vencer.
   //
@@ -957,7 +1017,21 @@ function computeBillTotals(txs: Array<{
     const base = MES_VALIDO.test(due) ? due : proximaFatura;
     if (!MES_VALIDO.test(base)) continue;
 
-    const compra = `${(t.description ?? '').trim()}|${t.installment.total}|${Math.round(t.amount)}`;
+    /**
+     * A parcela NAO pode entrar na identidade da compra.
+     *
+     * O banco escreve o numero da parcela dentro da descricao, colado no nome:
+     * "MERCADO*MERCADOLIV08/10" e "MERCADO*MERCADOLIV09/10" sao a MESMA compra
+     * em dois meses. Com a descricao crua na chave elas viravam duas compras e
+     * as duas projetavam o resto das parcelas — cada parcelamento contado duas
+     * vezes. Media em 2026-09-10: outubro saia R$ 4.920 contra R$ 4.092 do app
+     * do Itau, e novembro R$ 785 contra R$ 497.
+     *
+     * O sufixo vem sem espaco em alguns casos ("...LIV08/10") e com espacos em
+     * outros ("MP *CAZATI        03/04"), por isso o \s* dos dois lados.
+     */
+    const semParcela = (t.description ?? '').replace(/\s*\d{1,2}\s*\/\s*\d{1,2}\s*$/, '').trim();
+    const compra = `${semParcela}|${t.installment.total}|${Math.round(t.amount)}`;
     const atual = ultimaParcelaPorCompra.get(compra);
     if (!atual || t.installment.current > atual.current) {
       ultimaParcelaPorCompra.set(compra, {
@@ -975,7 +1049,67 @@ function computeBillTotals(txs: Array<{
       // Mes que ja tem cobranca real nao recebe projecao — seria contar duas
       // vezes a mesma parcela.
       if (ultimaReal && alvo <= ultimaReal) continue;
+      // Mes com total declarado pelo banco e fato fechado: projecao nao encosta.
+      if (declarado.has(alvo)) continue;
       addTo(alvo, amount);
+    }
+  }
+
+  /**
+   * 3) O encargo que o banco cobra e NAO entrega como lancamento.
+   *
+   * O Itau mostra a fatura em duas linhas: "Compras" e "Produtos e servicos".
+   * A segunda — seguro, anuidade, servico — nao vem como transacao nenhuma no
+   * Open Finance: nao existe lancamento com esse valor no extrato inteiro.
+   * Na fatura FECHADA isso nao machuca, porque usamos o total declarado. Nos
+   * meses projetados, machuca todo mes.
+   *
+   * Medimos o encargo na ultima fatura fechada (declarado - soma dos
+   * lancamentos dela) e o repetimos nos meses seguintes, porque é cobranca
+   * recorrente por natureza.
+   *
+   * Conferido contra o app do Itau em 2026-09-10 (Latam ••7212): o encargo deu
+   * R$ 105,00, e com ele novembro fecha em R$ 497,80, dezembro e janeiro em
+   * R$ 105,00 — os tres exatos. Sem ele davam R$ 392,80, zero e zero.
+   *
+   * O teto de 10% existe para nao propagar um gasto que simplesmente faltou
+   * importar: diferenca grande é buraco de dado, nao tarifa, e ai é melhor
+   * projetar de menos do que inventar cobranca.
+   */
+  /**
+   * Só de fatura RECENTE.
+   *
+   * Cartão parado tem a última fatura fechada meses atrás, e daí não se conclui
+   * nada sobre cobrança mensal — a tarifa pode ter acabado junto com o uso.
+   * Aconteceu no cartão ••6256 do Eduardo em 2026-09-10: última fatura de
+   * fevereiro, e o encargo de lá era projetado para o ano inteiro.
+   */
+  const mesCorrente = (() => {
+    const n = new Date();
+    return `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, '0')}`;
+  })();
+  const doisMesesAtras = shiftMonth(mesCorrente, -2);
+
+  if (MES_VALIDO.test(ultimaReal) && declarado.has(ultimaReal) && ultimaReal >= doisMesesAtras) {
+    const totalDeclarado = declarado.get(ultimaReal)!;
+    let somaDaUltima = 0;
+    const vistosUltima = new Set<string>();
+    for (const t of relevantes) {
+      const id = t.transactionId ?? `${t.date}|${t.amount}|${t.description ?? ''}`;
+      if (vistosUltima.has(id)) continue;
+      vistosUltima.add(id);
+      if ((t.billDueDate ?? '').slice(0, 7) !== ultimaReal) continue;
+      somaDaUltima += t.amount;
+    }
+
+    const encargo = Math.round((totalDeclarado - somaDaUltima) * 100) / 100;
+    if (encargo > 0 && encargo <= totalDeclarado * 0.1) {
+      // Horizonte de 12 meses: e a janela que o plano mostra.
+      for (let k = 1; k <= 12; k++) {
+        const alvo = shiftMonth(ultimaReal, k);
+        if (declarado.has(alvo)) continue;
+        addTo(alvo, encargo);
+      }
     }
   }
 
@@ -1097,7 +1231,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // needs_resync primeiro (webhook sinalizou transação nova), depois as mais antigas
     const { data: conns, error } = await db
       .from('bank_connections')
-      .select('id, household_id, account_hash, payer_cpf, account_type, card_last4, last_synced_at, last_protocol_id, last_protocol_at, needs_resync, card_import_enabled, card_protocol_id, card_protocol_at, account_import_enabled, cards')
+      .select('id, household_id, account_hash, payer_cpf, account_type, card_last4, last_synced_at, last_protocol_id, last_protocol_at, needs_resync, card_import_enabled, card_protocol_id, card_protocol_at, account_import_enabled, cards, bill_totals')
       .eq('consent_status', 'active')
       .order('needs_resync', { ascending: false })
       .order('last_synced_at', { ascending: true, nullsFirst: true })

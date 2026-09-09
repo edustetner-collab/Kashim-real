@@ -1082,52 +1082,80 @@ const App: React.FC = () => {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) return;
-        const d = await res.json() as { connections?: Array<{ bankName: string; cardLast4: string | null; billTotals?: Record<string, number> }> };
+        const d = await res.json() as {
+          connections?: Array<{
+            bankName: string;
+            cardLast4: string | null;
+            cards?: Array<{ last4: string }>;
+            billTotals?: Record<string, unknown>;
+          }>;
+        };
         if (cancelado) return;
         setTemBancoConectado((d.connections ?? []).length > 0);
 
+        const MES = /^\d{4}-\d{2}$/;
+
         for (const conn of d.connections ?? []) {
-          const totals = conn.billTotals ?? {};
-          if (Object.keys(totals).length === 0) continue;
+          const bruto = conn.billTotals ?? {};
+          if (Object.keys(bruto).length === 0) continue;
 
-          // Valores da fatura na ordem dos meses do plano.
-          const valoresPorMes = months.map((m) => {
-            const chave = `${m.year}-${String(m.index + 1).padStart(2, '0')}`;
-            const v = totals[chave];
-            return typeof v === 'number' && v > 0 ? v : 0;
-          });
-          if (valoresPorMes.every((v) => v === 0)) continue;
+          /**
+           * Uma fatura por CARTÃO.
+           *
+           * O formato novo é {"7212": {"2026-09": 7863.04}, "6256": {…}} porque
+           * uma conexão pode ter vários cartões, cada um com sua fatura. O
+           * antigo era plano ({"2026-09": …}) e valia para a conexão inteira —
+           * o que fazia o último cartão a sincronizar apagar o anterior.
+           * Aceitamos os dois: conexão que ainda não ressincronizou continua
+           * lendo o formato plano.
+           */
+          const ehPlanoAntigo = Object.keys(bruto).every((k) => MES.test(k));
+          const porCartao: Array<[string | null, Record<string, unknown>]> = ehPlanoAntigo
+            ? [[conn.cardLast4, bruto as Record<string, unknown>]]
+            : Object.entries(bruto)
+                .filter(([, v]) => v && typeof v === 'object')
+                .map(([last4, v]) => [last4, v as Record<string, unknown>]);
 
-          const apelido = conn.cardLast4
-            ? `${conn.bankName} ••${conn.cardLast4}`
-            : `${conn.bankName} · Fatura`;
-
-          // Item daquele cartao especifico. Sem os 4 digitos no nome, nao
-          // reaproveitamos qualquer linha de cartao: dois cartoes cairiam na
-          // mesma e um sobrescreveria o outro.
-          const alvo = items.find((i) =>
-            i.category === CategoryType.CREDIT_CARD &&
-            (conn.cardLast4
-              ? (i.description ?? '').includes(conn.cardLast4)
-              : (i.description ?? '').toLowerCase().includes(conn.bankName.toLowerCase().split(' ')[0])),
-          );
-
-          if (!alvo) {
-            // Cartao identificado e sem linha no plano: cria ja preenchida.
-            handleAddItem(CategoryType.CREDIT_CARD, {
-              description: apelido,
-              values: valoresPorMes,
+          for (const [last4, totals] of porCartao) {
+            // Valores da fatura na ordem dos meses do plano.
+            const valoresPorMes = months.map((m) => {
+              const chave = `${m.year}-${String(m.index + 1).padStart(2, '0')}`;
+              const v = totals[chave];
+              return typeof v === 'number' && v > 0 ? v : 0;
             });
-            continue;
-          }
+            if (valoresPorMes.every((v) => v === 0)) continue;
 
-          // Existe: atualiza so os meses que mudaram. Mes sem fatura conhecida
-          // fica como esta, para nao apagar a projecao digitada pelo coach.
-          valoresPorMes.forEach((real, idx) => {
-            if (real <= 0) return;
-            if (Math.abs((alvo.values[idx] ?? 0) - real) < 0.01) return;
-            handleUpdateValue(alvo.id, idx, String(real));
-          });
+            const apelido = last4
+              ? `${conn.bankName} ••${last4}`
+              : `${conn.bankName} · Fatura`;
+
+            // Item daquele cartao especifico. Sem os 4 digitos no nome, nao
+            // reaproveitamos qualquer linha de cartao: dois cartoes cairiam na
+            // mesma e um sobrescreveria o outro.
+            const alvo = items.find((i) =>
+              i.category === CategoryType.CREDIT_CARD &&
+              (last4
+                ? (i.description ?? '').includes(last4)
+                : (i.description ?? '').toLowerCase().includes(conn.bankName.toLowerCase().split(' ')[0])),
+            );
+
+            if (!alvo) {
+              // Cartao identificado e sem linha no plano: cria ja preenchida.
+              handleAddItem(CategoryType.CREDIT_CARD, {
+                description: apelido,
+                values: valoresPorMes,
+              });
+              continue;
+            }
+
+            // Existe: atualiza so os meses que mudaram. Mes sem fatura conhecida
+            // fica como esta, para nao apagar a projecao digitada pelo coach.
+            valoresPorMes.forEach((real, idx) => {
+              if (real <= 0) return;
+              if (Math.abs((alvo.values[idx] ?? 0) - real) < 0.01) return;
+              handleUpdateValue(alvo.id, idx, String(real));
+            });
+          }
         }
       } catch { /* fatura e acessoria: falha nao pode travar o app */ }
     })();
