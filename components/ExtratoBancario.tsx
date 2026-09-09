@@ -819,6 +819,36 @@ export default function ExtratoBancario({
       .catch(() => { /* sem lista: cai no extrato único */ })
       .finally(() => setBanksLoaded(true));
   }, [householdId, authToken]);
+  /**
+   * Congela a página de trás enquanto o Extrato está aberto.
+   *
+   * Sintoma (Eduardo, iPhone 16 Pro Max, 2026-09-09): o Extrato abria deslocado
+   * para cima e o primeiro toque no X não fechava — descia a tela para o lugar
+   * certo; só o segundo toque fechava.
+   *
+   * A causa é a página de trás continuar rolável: no WKWebView, uma camada
+   * `fixed` aberta com a página rolada nasce fora de posição, e o primeiro
+   * toque é consumido pelo ajuste de rolagem em vez de virar clique.
+   *
+   * Prender o `body` com a posição guardada resolve os dois de uma vez, e
+   * devolve o cliente exatamente onde ele estava ao fechar — sem isso, fechar o
+   * Extrato jogaria a pessoa para o topo do plano.
+   */
+  useEffect(() => {
+    const y = window.scrollY;
+    const body = document.body;
+    const antes = { position: body.style.position, top: body.style.top, width: body.style.width };
+    body.style.position = 'fixed';
+    body.style.top = `-${y}px`;
+    body.style.width = '100%';
+    return () => {
+      body.style.position = antes.position;
+      body.style.top = antes.top;
+      body.style.width = antes.width;
+      window.scrollTo(0, y);
+    };
+  }, []);
+
   useEffect(() => { loadBanks(); }, [loadBanks]);
 
   /**
@@ -884,17 +914,31 @@ export default function ExtratoBancario({
    * sem dígito em qualquer cartão aberto; aqui ela vai para o primeiro. Badge e
    * lista contando de formas diferentes é o que produziu a divergência.
    */
-  const cartaoPadraoDaConexao = new Map<string, string | undefined>(
-    banks.map((b) => [b.id, b.cards[0]?.last4] as [string, string | undefined]),
+  const cartoesDaConexao = new Map<string, string[]>(
+    banks.map((b) => [b.id, b.cards.map((c) => c.last4)] as [string, string[]]),
   );
 
-  /** Uma transacao pertence a conta corrente ou a um cartao especifico. */
+  /**
+   * Uma transacao pertence a conta corrente ou a um cartao ESPECIFICO DA TELA.
+   *
+   * Duas formas de a transação ficar órfã, e as duas aconteceram:
+   *   1. o banco não manda os 4 dígitos;
+   *   2. manda dígitos de um cartão que não está na lista — adicional, virtual,
+   *      cartão trocado. Foi este o caso das 22 que faziam o pop-up dizer 71
+   *      enquanto os badges somavam 49 (Eduardo, 2026-09-09).
+   *
+   * Nos dois casos a transação vai para o primeiro cartão da conexão. Ficar
+   * apontando para uma linha que não existe é o que a tornava invisível — e
+   * contada. Melhor no cartão errado e visível do que certa e fantasma: o
+   * cliente consegue recategorizar, mas não consegue achar o que não aparece.
+   */
   const chaveDaTx = (t: BankTransaction) => {
     const conn = t.connectionId ?? '';
     if (t.accountType !== 'credit_card') return chaveDe(conn, 'checking');
-    const last4 = t.cardLast4 ?? cartaoPadraoDaConexao.get(conn);
+    const daConexao = cartoesDaConexao.get(conn) ?? [];
+    const casa = t.cardLast4 && daConexao.includes(t.cardLast4) ? t.cardLast4 : daConexao[0];
     // Conexão sem cartão nenhum: cai na conta corrente para continuar visível.
-    return last4 ? chaveDe(conn, 'card', last4) : chaveDe(conn, 'checking');
+    return casa ? chaveDe(conn, 'card', casa) : chaveDe(conn, 'checking');
   };
 
   const countByKey = transactions.reduce<Record<string, number>>((acc, t) => {
@@ -1019,9 +1063,10 @@ export default function ExtratoBancario({
   const inBank = transactions.filter((t) => {
     if (!aberto) return true;
     if (t.connectionId !== aberto.connId) return false;
-    if (aberto.kind === 'checking') return t.accountType !== 'credit_card';
-    // Cartao: casa pelos 4 digitos; transacao sem digito fica no primeiro.
-    return t.accountType === 'credit_card' && (!t.cardLast4 || t.cardLast4 === aberto.last4);
+    // MESMA regra do badge (chaveDaTx). Se as duas divergirem, volta a existir
+    // gasto contado num lugar e exibido em outro — foi assim que nasceu a
+    // diferenca entre 71 e 49.
+    return chaveDaTx(t) === chaveDe(aberto.connId, aberto.kind, aberto.last4);
   });
 
   const displayed = inBank
