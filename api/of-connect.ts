@@ -49,6 +49,8 @@ async function isMember(sub: string, householdId: string): Promise<boolean> {
 const TS_BASE_URL = (process.env.TECHNOSPEED_BASE_URL ?? 'https://api.pagamentobancario.com.br').replace(/\/$/, '');
 const TS_CNPJ_SH = process.env.TECHNOSPEED_CNPJ_SH ?? '';
 const TS_TOKEN_SH = process.env.TECHNOSPEED_TOKEN_SH ?? '';
+const OF_WEBHOOK_SECRET = process.env.OF_WEBHOOK_SECRET ?? '';
+const WEBHOOK_URL = 'https://kashim.com.br/api/of-webhook';
 
 // Proxy de IP fixo (Droplet DigitalOcean). A Technospeed libera por IP e o
 // Vercel não tem IP de saída estável, então toda chamada passa por aqui.
@@ -187,6 +189,38 @@ async function ensurePayer(name: string, cpf: string, address: TSAddress): Promi
   // Chega aqui quando a criação não confirmou o Extrato ou o pagador já existia
   // sem ele. A equipe da Technospeed orienta ativar por este PUT.
   await tsReq('PUT', '/api/v1/payer', cpf, { statementActived: true });
+}
+
+/**
+ * Garante que a Technospeed sabe para onde avisar quando algo muda.
+ *
+ * O aviso é POR PAGADOR: não existe um webhook do Kashim inteiro, existe um por
+ * CPF. Sem ele, o app só descobre que o cliente autorizou quando alguém
+ * pergunta — e é por isso que o cliente autoriza no banco, volta, e continua
+ * vendo "aguardando você autorizar" (Michael, 2026-09-09).
+ *
+ * Consulta antes de criar porque a rota não deduplica: cada reconexão
+ * empilharia mais um webhook e o mesmo evento chegaria várias vezes. Foi
+ * exatamente essa falta de checagem que encheu a conta do Eduardo com 15
+ * cadastros de banco duplicados.
+ *
+ * Nunca derruba a conexão: sem aviso o app funciona, só fica mais lento para
+ * perceber. Falhar aqui e impedir o cliente de conectar seria pior.
+ */
+async function ensureWebhook(cpf: string): Promise<void> {
+  if (!OF_WEBHOOK_SECRET) return; // sem segredo, o webhook seria recusado com 401
+  try {
+    const atual = await tsReq<{ notification?: Array<{ url?: string }> }>('GET', '/api/v1/notification', cpf);
+    const jaTem = (atual?.notification ?? []).some((n) => n?.url === WEBHOOK_URL);
+    if (jaTem) return;
+
+    await tsReq('POST', '/api/v1/notification', cpf, {
+      type: 'webhook',
+      url: WEBHOOK_URL,
+      headers: { 'x-webhook-secret': OF_WEBHOOK_SECRET },
+      happen: ['STATEMENT_OPENFINANCE', 'STATEMENT_OPENFINANCE_PROCESSED', 'STATEMENT_OPENFINANCE_REVOKED'],
+    });
+  } catch { /* aviso é acessório: nunca impede o cliente de conectar */ }
 }
 
 /** A API alterna entre openfinanceLink e openFinanceLink conforme a rota. */
@@ -436,6 +470,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // 1. Registrar pagador (idempotente)
       await ensurePayer(ownerName, cpf, address);
+      // Depois do pagador existir: diz à Technospeed para onde avisar. É o que
+      // faz o status virar sozinho depois que o cliente autoriza no banco.
+      await ensureWebhook(cpf);
 
       // 2. Criar conta com Extrato ativo — a resposta já traz o link do conector
       const { accountHash, openFinanceLink, openfinanceId, openfinanceStatus } = await createAccount(cpf, {

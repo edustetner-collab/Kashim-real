@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { CategoryType, FinanceItem, PartialExpense } from '../types';
 import type { BankTransaction } from '../lib/openfinance/types';
 import { merchantKey } from '../lib/openfinance/categoryMap';
@@ -811,6 +811,41 @@ export default function ExtratoBancario({
       .finally(() => setBanksLoaded(true));
   }, [householdId, authToken]);
   useEffect(() => { loadBanks(); }, [loadBanks]);
+
+  /**
+   * Confere sozinho o status de quem está "aguardando autorização".
+   *
+   * A Technospeed não avisa por conta própria enquanto o webhook daquele
+   * pagador não estiver cadastrado, e mesmo com ele o aviso pode demorar. Sem
+   * esta checagem, o cliente autoriza no banco, volta ao app e continua vendo
+   * "aguardando você autorizar" — foi o que aconteceu com o Michael em
+   * 2026-09-09, com DOIS bancos já autorizados.
+   *
+   * Só as pendentes, uma vez por abertura da tela: leitura na Technospeed é
+   * limitada a 3 por minuto, e varrer tudo a cada render queimaria a cota.
+   */
+  const statusConferidoRef = useRef(false);
+  useEffect(() => {
+    if (!banksLoaded || statusConferidoRef.current) return;
+    const pendentes = banks.filter((b) => b.consentStatus === 'pending_authorization');
+    if (pendentes.length === 0) return;
+    statusConferidoRef.current = true;
+
+    (async () => {
+      let mudou = false;
+      for (const b of pendentes.slice(0, 3)) {
+        try {
+          const r = await fetch('/api/of-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+            body: JSON.stringify({ householdId, connectionId: b.id }),
+          });
+          if (r.ok) mudou = true;
+        } catch { /* checagem é acessória */ }
+      }
+      if (mudou) loadBanks();
+    })();
+  }, [banksLoaded, banks, householdId, authToken, loadBanks]);
 
   // Quando vem do CTA de fatura no Plano, pula direto para o cartão correto.
   useEffect(() => {

@@ -72,7 +72,15 @@
          NÃO confundir com o menu cortado no TOPO, que é outro mecanismo
          (contentInset) e esse sim exige build nova. */
       html.native-app .safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 16px); }
+      /* `100%` herda a altura que o WKWebView calculou na PRIMEIRA pintura —
+         e nela as áreas seguras ainda não existem, então a tela nasce com a
+         altura errada e o conteúdo aparece cortado. Abrir de novo dá certo
+         porque aí o valor já está calculado.
+         `dvh` acompanha a janela de verdade e se corrige sozinho quando ela
+         muda. O `100%` fica como reserva para navegador antigo — a ordem
+         importa: a última regra que o navegador entende é a que vale. */
       html, body { height: 100%; overflow-x: hidden; }
+      html, body { height: 100dvh; }
       /* Tabular numbers for all monetary values */
       .k-num {
         font-variant-numeric: tabular-nums;
@@ -305,6 +313,32 @@
 </head>
 <body class="font-sans">
     <div id="root"></div>
+<script>
+      /* Empurrao de layout na PRIMEIRA abertura do app nativo.
+         O WKWebView pinta antes de terminar de calcular as areas seguras: a
+         tela nasce com a altura errada e o conteudo aparece cortado. Reabrir
+         resolve porque na segunda vez o valor ja existe.
+         Mexer na altura da raiz e desfazer no quadro seguinte obriga o
+         navegador a refazer a conta com os valores certos. Invisivel (o
+         usuario nao ve piscar) e sem efeito nenhum na web, onde o bug nao
+         existe. Roda uma vez, e de novo apos 300ms para o caso de o inset
+         chegar depois. */
+      (function () {
+        if (!window.Capacitor || !window.Capacitor.isNativePlatform || !window.Capacitor.isNativePlatform()) return;
+        function recalcular() {
+          var raiz = document.documentElement;
+          raiz.style.height = '100.1%';
+          requestAnimationFrame(function () {
+            raiz.style.height = '';
+            window.dispatchEvent(new Event('resize'));
+          });
+        }
+        window.addEventListener('load', function () {
+          recalcular();
+          setTimeout(recalcular, 300);
+        });
+      })();
+    </script>
 <script type="module" src="/index.tsx"></script>
 </body>
 </html>
