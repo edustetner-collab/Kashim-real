@@ -880,40 +880,41 @@ export default function ExtratoBancario({
       .finally(() => setBanksLoaded(true));
   }, [householdId, cabecalho]);
   /**
-   * Compensa, POR MEDIÇÃO, o empurrão que o WKWebView dá no conteúdo em fluxo.
+   * Respiro do topo para camada `fixed` dentro do app nativo.
    *
-   * Com `contentInset: 'automatic'` o WebView empurra o conteúdo do documento
-   * para baixo do notch — e, por já fazer isso, reporta
-   * `env(safe-area-inset-top)` como ZERO. Resultado: a tela inicial (em fluxo)
-   * fica certa e uma camada `position: fixed` fica sem nenhum dos dois,
-   * encostada na borda de cima. Foi por isso que quatro tentativas de acertar
-   * isso por CSS falharam — não havia valor de CSS para usar.
+   * O QUE ACONTECE: com `contentInset: 'automatic'` o WKWebView empurra o
+   * conteúdo em FLUXO para baixo do notch e, por já cuidar disso, reporta
+   * `env(safe-area-inset-top)` como zero. Camada `position: fixed` não recebe
+   * o empurrão e também não tem o valor do CSS — encosta na borda de cima.
    *
-   * Em vez de adivinhar, mede: com a página no topo, `body.getBoundingClientRect().top`
-   * é exatamente o quanto o WebView empurrou. Esse número vira o respiro do
-   * Extrato. Se o WebView não empurrar nada (web, Android, ou depois de
-   * `contentInset: 'never'` entrar numa build nova), a medida dá zero e o
-   * `safe-top` do CSS assume — continua correto nos dois mundos.
+   * POR QUE NÃO É MEDIDO: o empurrão vive no scroll view nativo, fora do
+   * sistema de coordenadas do documento. `getBoundingClientRect` devolve zero
+   * para ele, e foi assim que a tentativa anterior falhou. Não existe leitura
+   * possível a partir do JavaScript aqui.
+   *
+   * ENTÃO É TABELADO, e assumidamente: 59px onde há Dynamic Island, 47px onde
+   * há entalhe, zero no resto. Fora do app nativo o valor é zero e o `safe-top`
+   * do CSS assume, que é o caminho correto na web e no Android.
+   *
+   * ISTO É PROVISÓRIO. A correção de verdade é `contentInset: 'never'` no
+   * capacitor.config.ts — já commitado, esperando build na App Store. Com ela o
+   * WebView para de empurrar, `env()` passa a valer, e este bloco inteiro pode
+   * sair. Ao mexer aqui, confira se aquela build já saiu.
    */
-  const [topoMedido, setTopoMedido] = useState(0);
+  const topoDaCamadaFixa = (() => {
+    const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string } }).Capacitor;
+    if (!cap?.isNativePlatform?.() || cap.getPlatform?.() !== 'ios') return 0;
+    const alturaLogica = Math.max(window.screen.width, window.screen.height);
+    if (alturaLogica >= 900) return 59; // Dynamic Island (14 Pro em diante)
+    if (alturaLogica >= 812) return 47; // entalhe (X ao 13)
+    return 0;                            // botão de início: sem área reservada
+  })();
+
   useEffect(() => {
     const anterior = document.body.style.overflow;
     window.scrollTo(0, 0);
-
-    const medir = () => {
-      const empurrao = Math.round(document.body.getBoundingClientRect().top);
-      setTopoMedido(empurrao > 0 && empurrao < 120 ? empurrao : 0);
-    };
-    // Duas medidas: uma agora e outra depois do WebView assentar. Na primeira
-    // abertura do app ele ainda não aplicou o empurrão quando a tela monta.
-    medir();
-    const t = window.setTimeout(medir, 350);
-
     document.body.style.overflow = 'hidden';
-    return () => {
-      window.clearTimeout(t);
-      document.body.style.overflow = anterior;
-    };
+    return () => { document.body.style.overflow = anterior; };
   }, []);
 
   useEffect(() => { loadBanks(); }, [loadBanks]);
@@ -1198,7 +1199,7 @@ export default function ExtratoBancario({
   // ─── Tela inicial: escolher o banco ────────────────────────────────────────
   if (showBankPicker) {
     return (
-      <div className="fixed inset-0 z-[60] flex flex-col bg-[#f2f2f7]" style={{ paddingTop: topoMedido }}>
+      <div className="fixed inset-0 z-[60] flex flex-col bg-[#f2f2f7]" style={{ paddingTop: topoDaCamadaFixa }}>
         <div className="bg-white border-b border-[#e5e5ea] px-4 safe-top pt-2 pb-3 flex items-center justify-between flex-shrink-0">
           <div>
             <h2 className="text-lg font-black text-[#1d1d1f]">Extrato bancário</h2>
@@ -1460,7 +1461,7 @@ export default function ExtratoBancario({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-[#f2f2f7]" style={{ paddingTop: topoMedido }}>
+    <div className="fixed inset-0 z-[60] flex flex-col bg-[#f2f2f7]" style={{ paddingTop: topoDaCamadaFixa }}>
       {erroSalvar && (
         <div className="fixed inset-x-3 top-3 z-[75] rounded-2xl border border-[#ffd4d4] bg-[#fff5f5] p-3 shadow-lg">
           <p className="text-[12.5px] font-bold leading-snug text-[#c0392b]">{erroSalvar}</p>
