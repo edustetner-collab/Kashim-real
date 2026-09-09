@@ -2585,7 +2585,7 @@ const App: React.FC = () => {
         })()
       )}
 
-      <main key={activeTab} className={`k-reveal ${showExtrato ? 'hidden' : ''} ${activeTab === 'plan' ? 'max-w-[1600px]' : 'w-full px-2'} mx-auto px-2 lg:px-8 mt-2 lg:mt-8`} style={(activeTab === 'desempenho' || activeTab === 'metas') ? { maxWidth: '100%' } : {}}>
+      <main key={activeTab} className={`k-reveal ${activeTab === 'plan' ? 'max-w-[1600px]' : 'w-full px-2'} mx-auto px-2 lg:px-8 mt-2 lg:mt-8`} style={(activeTab === 'desempenho' || activeTab === 'metas') ? { maxWidth: '100%' } : {}}>
         {activeTab === 'desempenho' ? (
           <Desempenho summary={monthlySummaries[mobileMonthIdx]} summaries={monthlySummaries.slice(0, mobileMonthIdx + 1)} items={items} goals={goals} monthIdx={mobileMonthIdx} />
         ) : activeTab === 'metas' ? (
@@ -3177,9 +3177,7 @@ const App: React.FC = () => {
       </main>
 
       {/* ── MOBILE BOTTOM TAB BAR ──────────────────────────────────────── */}
-      {/* Escondida junto com o <main> enquanto o Extrato está aberto — ele é
-          conteúdo do documento, não camada fixa (ver ExtratoBancario). */}
-      <nav className={`${showExtrato ? 'hidden' : 'lg:hidden'} fixed bottom-0 left-0 right-0 z-50 safe-bottom`} style={{background:'rgba(245,245,247,0.92)',backdropFilter:'blur(28px) saturate(1.8)',borderTop:'0.5px solid rgba(0,0,0,0.1)'}}>
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 safe-bottom" style={{background:'rgba(245,245,247,0.92)',backdropFilter:'blur(28px) saturate(1.8)',borderTop:'0.5px solid rgba(0,0,0,0.1)'}}>
         <div className="relative">
         {/* Right-edge scroll hint */}
         <div className="pointer-events-none absolute right-0 top-0 bottom-0 z-10 flex items-center pr-1" style={{width:'28px',background:'linear-gradient(to right,transparent,rgba(245,245,247,0.96))'}}>

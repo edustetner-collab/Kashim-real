@@ -869,30 +869,18 @@ export default function ExtratoBancario({
       .finally(() => setBanksLoaded(true));
   }, [householdId, cabecalho]);
   /**
-   * Por que o Extrato NÃO é `position: fixed`.
+   * Trava a rolagem de trás com `overflow: hidden` — nunca com `position: fixed`.
    *
-   * No WKWebView com `contentInset: 'automatic'`, o próprio WebView empurra o
-   * conteúdo do documento para baixo do notch — mas só o conteúdo em FLUXO.
-   * Camada `fixed` ancora na borda real da tela e fica por cima do relógio. Era
-   * isso que fazia a tela inicial (fluxo) ficar certa e o Extrato (fixed)
-   * abrir deslocado para cima, com o primeiro toque no X "descendo" a tela em
-   * vez de fechar (Eduardo, 16 Pro Max, 2026-09-09). Três tentativas de
-   * consertar por timing de CSS falharam porque atacavam o sintoma.
-   *
-   * `absolute` no topo do documento vive DENTRO da área rolável, como a tela
-   * inicial, e recebe o mesmo empurrão. O App esconde o <main> e a barra
-   * inferior enquanto isto está aberto, para a página não crescer além daqui.
-   * A correção de raiz — `contentInset: 'never'` no capacitor.config.ts — já
-   * está no repositório e entra na próxima build; este arranjo continua correto
-   * com ela.
-   *
-   * Vai ao topo ao abrir (o Extrato mora no topo do documento) e devolve o
-   * cliente exatamente onde ele estava ao fechar.
+   * Esta distinção custou caro. Um `body` com `position: fixed` vira o BLOCO DE
+   * CONTENÇÃO de toda camada `fixed` dentro dele: o Extrato deixou de se ancorar
+   * na tela e passou a se ancorar no body deslocado, aparecendo fora de posição
+   * exatamente na medida da rolagem (Eduardo, 2026-09-09). `overflow: hidden`
+   * prende a rolagem sem mexer no posicionamento de ninguém.
    */
   useEffect(() => {
-    const y = window.scrollY;
-    window.scrollTo(0, 0);
-    return () => { window.scrollTo(0, y); };
+    const anterior = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = anterior; };
   }, []);
 
   useEffect(() => { loadBanks(); }, [loadBanks]);
@@ -997,8 +985,13 @@ export default function ExtratoBancario({
   // um banco, porque é onde mora o botão de conectar. Antes isso vivia em
   // Configurações → Gerenciar bancos, dois níveis longe de onde faz sentido.
   const showBankPicker = aberto === null;
-  /** Nenhum banco entregou movimentação ainda — é quando o aviso de espera importa. */
-  const semNadaAindaParaCategorizar = transactions.length === 0;
+  /**
+   * Nenhum banco entregou movimentação ainda — é quando o aviso de espera importa.
+   *
+   * Precisa esperar o carregamento: no primeiro instante a lista está vazia
+   * porque ainda não chegou, e o banner piscava na tela antes de sumir sozinho.
+   */
+  const semNadaAindaParaCategorizar = !loading && transactions.length === 0;
 
   /** Texto de estado por conexão — evita dizer "nada a categorizar" para banco
    *  que sequer autorizou, que era leitura errada do que está acontecendo. */
@@ -1137,8 +1130,8 @@ export default function ExtratoBancario({
   // ─── Tela inicial: escolher o banco ────────────────────────────────────────
   if (showBankPicker) {
     return (
-      <div className="absolute inset-x-0 top-0 min-h-[100dvh] z-[60] flex flex-col bg-[#f2f2f7]">
-        <div className="sticky top-0 z-10 bg-white border-b border-[#e5e5ea] px-4 safe-top pt-2 pb-3 flex items-center justify-between flex-shrink-0">
+      <div className="fixed inset-0 z-[60] flex flex-col bg-[#f2f2f7]">
+        <div className="bg-white border-b border-[#e5e5ea] px-4 safe-top pt-2 pb-3 flex items-center justify-between flex-shrink-0">
           <div>
             <h2 className="text-lg font-black text-[#1d1d1f]">Extrato bancário</h2>
             <p className="text-xs text-[#6e6e73]">Escolha o banco para categorizar</p>
@@ -1399,7 +1392,7 @@ export default function ExtratoBancario({
   }
 
   return (
-    <div className="absolute inset-x-0 top-0 min-h-[100dvh] z-[60] flex flex-col bg-[#f2f2f7]">
+    <div className="fixed inset-0 z-[60] flex flex-col bg-[#f2f2f7]">
       {erroSalvar && (
         <div className="fixed inset-x-3 top-3 z-[75] rounded-2xl border border-[#ffd4d4] bg-[#fff5f5] p-3 shadow-lg">
           <p className="text-[12.5px] font-bold leading-snug text-[#c0392b]">{erroSalvar}</p>
@@ -1410,7 +1403,7 @@ export default function ExtratoBancario({
       )}
 
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-white border-b border-[#e5e5ea] px-4 safe-top pt-2 pb-2 flex-shrink-0">
+      <div className="bg-white border-b border-[#e5e5ea] px-4 safe-top pt-2 pb-2 flex-shrink-0">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2 min-w-0">
             <button
@@ -1603,8 +1596,11 @@ export default function ExtratoBancario({
 
       {/* Aviso de teto atingido */}
       {renomear && (
-        <div className="fixed inset-0 z-[85] flex items-end justify-center bg-black/50 sm:items-center">
-          <div className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl bg-white p-5">
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/50 p-4">
+          {/* Centralizada, não colada embaixo: com o teclado aberto o iOS
+              encolhe a área visível e uma folha ancorada no rodapé fica atrás
+              dele — foi o que cortou o botão "Salvar nome". */}
+          <div className="max-h-[85dvh] w-full max-w-sm overflow-y-auto rounded-3xl bg-white p-5">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#5a8c00]">Gasto salvo</p>
             <h3 className="mb-1 mt-1 text-[19px] font-black leading-tight text-[#1d1d1f]">
               Quer dar um nome que você reconheça?
