@@ -888,6 +888,8 @@ export default function ExtratoBancario({
   // um banco, porque é onde mora o botão de conectar. Antes isso vivia em
   // Configurações → Gerenciar bancos, dois níveis longe de onde faz sentido.
   const showBankPicker = aberto === null;
+  /** Nenhum banco entregou movimentação ainda — é quando o aviso de espera importa. */
+  const semNadaAindaParaCategorizar = transactions.length === 0;
 
   /** Texto de estado por conexão — evita dizer "nada a categorizar" para banco
    *  que sequer autorizou, que era leitura errada do que está acontecendo. */
@@ -1044,6 +1046,34 @@ export default function ExtratoBancario({
         )}
 
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          {/* Aviso de espera EM CIMA, com peso de banner.
+              Ele existia no rodapé, em cinza pequeno, e o primeiro cliente a
+              usar o app não leu: conectou, viu tudo vazio e perguntou "e agora,
+              o que eu faço?" (Michael, 2026-09-09). Aviso que responde a pergunta
+              mais frequente da tela não pode ficar onde ninguém rola. Some
+              sozinho quando já há o que categorizar — a essa altura ele virou
+              ruído. */}
+          {banksLoaded && banks.length > 0 && semNadaAindaParaCategorizar && (
+            <div className="rounded-2xl border border-[#c9e88a] bg-[#f0fad0] p-4">
+              <div className="flex items-start gap-3">
+                <i className="fas fa-hourglass-half mt-0.5 text-[#5a8c00]" />
+                <div className="min-w-0">
+                  <p className="text-[14px] font-black leading-snug text-[#2f4a00]">
+                    Estamos esperando seu banco
+                  </p>
+                  <p className="mt-1 text-[12.5px] leading-relaxed text-[#4a5c2a]">
+                    Seus gastos não chegam na hora da compra: o banco leva de <strong>6 a 24 horas</strong>
+                    {' '}para liberar. É regra do Open Finance, não do Kashim.
+                  </p>
+                  <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#4a5c2a]">
+                    <strong>Você não precisa fazer nada agora.</strong> Pode fechar o app — a gente te
+                    avisa assim que chegarem.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {!banksLoaded ? (
             <div className="text-center py-12 text-[#8e8e93]">
               <i className="fas fa-circle-notch animate-spin text-xl mb-2 block" />
@@ -1189,10 +1219,11 @@ export default function ExtratoBancario({
                 {banks.length === 0 ? 'Conectar meu banco' : 'Conectar outro banco'}
               </button>
 
-              <p className="text-[11px] text-[#8e8e93] leading-relaxed text-center px-4 pt-1 pb-4">
-                Seu banco leva um tempo para liberar as movimentações — não é na hora da compra.
-                Assim que chegarem, a gente te avisa. Pode fechar o app tranquilo.
-              </p>
+              {!semNadaAindaParaCategorizar && (
+                <p className="text-[11px] text-[#8e8e93] leading-relaxed text-center px-4 pt-1 pb-4">
+                  Movimentação nova pode levar algumas horas para aparecer. A gente te avisa.
+                </p>
+              )}
             </>
           )}
         </div>
@@ -1349,7 +1380,7 @@ export default function ExtratoBancario({
             <i className="fas fa-wand-magic-sparkles text-[#7ab800] text-sm mt-0.5" />
             <p className="text-[#3a3a3c] text-xs leading-relaxed">
               <strong className="text-[#1d1d1f]">
-                {autoFiled} lançamento{autoFiled === 1 ? '' : 's'} entrou{autoFiled === 1 ? '' : 'ram'} sozinho{autoFiled === 1 ? '' : 's'}
+                {autoFiled} lançamento{autoFiled === 1 ? '' : 's'} o Kashim já categorizou sozinho
               </strong>{' '}
               — ou você já categorizou aquele lugar antes, ou o nome era claro (luz, mercado, escola).
               {' '}
