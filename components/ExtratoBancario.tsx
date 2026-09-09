@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 import { CategoryType, FinanceItem, PartialExpense } from '../types';
 import type { BankTransaction } from '../lib/openfinance/types';
 import { merchantKey } from '../lib/openfinance/categoryMap';
@@ -55,6 +56,8 @@ interface Props {
   onAddPartial: (itemId: string, expense: PartialExpense, year?: number, month?: number) => void;
   /** Cria um item no plano e devolve o id — usado pelo confirmar de um toque. */
   onCreateItem: (description: string, category: CategoryType, isOneTime?: boolean) => string;
+  /** Renomeia o lançamento recém-criado, quando o cliente quiser batizá-lo. */
+  onRenomearPartial?: (itemId: string, partialId: string, nome: string, ano: number, mes: number) => void;
   /** Banco removido — o Plano precisa soltar as linhas de fatura que vieram dele. */
   onBancoRemovido?: (bankName: string) => void;
   onClose: () => void;
@@ -437,9 +440,31 @@ export default function ExtratoBancario({
   onLaunchExpense,
   onAddPartial,
   onCreateItem,
+  onRenomearPartial,
   onBancoRemovido,
   onClose,
 }: Props) {
+  /**
+   * Cabeçalho de autenticação com token NOVO a cada chamada.
+   *
+   * O token vinha por prop, buscado uma única vez ao abrir o Extrato, e servia
+   * às 16 chamadas seguintes. Só que token do Clerk vale 60 SEGUNDOS: quem
+   * ficava categorizando por mais de um minuto — ou seja, todo mundo — passava
+   * a receber 401 em tudo. As primeiras confirmações funcionavam, as demais
+   * eram recusadas, e o cliente via os gastos voltarem sozinhos sem entender
+   * (Eduardo, 2026-09-09).
+   *
+   * `getToken` do Clerk devolve o token em cache enquanto ele vale e renova
+   * quando expira, então chamar por requisição não custa rede à toa.
+   */
+  const { getToken } = useAuth();
+  const cabecalho = useCallback(async (comCorpo = true): Promise<HeadersInit> => {
+    const t = (await getToken({ template: 'supabase' })) ?? authToken;
+    return comCorpo
+      ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+      : { Authorization: `Bearer ${t}` };
+  }, [getToken, authToken]);
+
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTx, setActiveTx] = useState<BankTransaction | null>(null);
@@ -492,7 +517,7 @@ export default function ExtratoBancario({
     try {
       const res = await fetch('/api/of-connect', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        headers: await cabecalho(),
         body: JSON.stringify({
           householdId,
           connectionId: conn.id,
@@ -533,6 +558,17 @@ export default function ExtratoBancario({
     );
   }
   const [tetoHit, setTetoHit] = useState<{ name: string; pct: number; teto: number; spent: number } | null>(null);
+  /**
+   * Renomear logo depois do toque único.
+   *
+   * O nome que a maquininha manda não lembra nada: "Shopee ENS Suoficial" para
+   * uma camiseta, "AMAZONMKTPLC*MEGABYTEM" para um cabo. Daqui a três semanas o
+   * cliente olha o próprio plano e não sabe o que comprou (Eduardo,
+   * 2026-09-09). Aparece DEPOIS de o gasto já estar salvo: quem ignorar não
+   * perde nada, e quem quiser batiza em dois toques.
+   */
+  const [renomear, setRenomear] = useState<{ itemId: string; partialId: string; ano: number; mes: number; original: string } | null>(null);
+  const [nomeNovo, setNomeNovo] = useState('');
   /** Transação que o cliente pediu para descartar — aguardando confirmação */
   const [pendingDiscard, setPendingDiscard] = useState<BankTransaction | null>(null);
   /** Possível duplicata de um lançamento manual — aguardando decisão */
@@ -588,20 +624,29 @@ export default function ExtratoBancario({
    * Agora a falha devolve a transação para a fila e avisa.
    */
   async function marcarNoServidor(tx: BankTransaction, corpo: Record<string, unknown>): Promise<boolean> {
+    let motivo = 'Não consegui salvar essa categorização. Tente de novo.';
     try {
       const r = await fetch('/api/of-transactions', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        headers: await cabecalho(),
         body: JSON.stringify(corpo),
       });
       if (r.ok) return true;
-    } catch { /* rede caiu — cai no mesmo tratamento */ }
+      // Diz o motivo REAL. A primeira versão chutava "confira a internet" e
+      // mandava o cliente procurar defeito onde não havia: a falha era 401 por
+      // token vencido, com a rede perfeita.
+      motivo = r.status === 401 || r.status === 403
+        ? 'Sua sessão expirou. Feche e abra o Extrato para continuar.'
+        : `O servidor recusou (erro ${r.status}). Tente de novo em instantes.`;
+    } catch {
+      motivo = 'Sem conexão com o servidor. Confira a internet e tente de novo.';
+    }
     setTransactions((prev) => (prev.some((t) => t.transactionId === tx.transactionId) ? prev : [tx, ...prev]));
-    setErroSalvar('Não consegui salvar essa categorização. Confira a internet e tente de novo.');
+    setErroSalvar(motivo);
     return false;
   }
 
-  function confirmarRapido(tx: BankTransaction) {
+  async function confirmarRapido(tx: BankTransaction) {
     const categoria = tx.suggestedCategory as CategoryType | null;
     if (!categoria) return;
 
@@ -666,13 +711,17 @@ export default function ExtratoBancario({
     const partial = { id: primeiro };
     setTransactions((prev) => prev.filter((t) => t.transactionId !== tx.transactionId));
 
-    const auth = { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` };
     marcarNoServidor(tx, { householdId, transactionId: tx.transactionId, action: 'categorize', itemId, category: categoria, partialId: partial.id });
+
+    // Convite para batizar o gasto — o lançamento JÁ está salvo neste ponto.
+    const primeiroAbs = (y * 12) + (rawM - 1);
+    setRenomear({ itemId, partialId: primeiro, ano: Math.floor(primeiroAbs / 12), mes: primeiroAbs % 12, original: nome });
+    setNomeNovo('');
 
     const key = merchantKey(tx.merchant ?? tx.description ?? '');
     if (key) {
       fetch('/api/of-merchant-memory', {
-        method: 'POST', headers: auth,
+        method: 'POST', headers: await cabecalho(),
         body: JSON.stringify({ householdId, merchantKey: key, category: categoria, itemId }),
       }).catch(() => {});
     }
@@ -710,7 +759,7 @@ export default function ExtratoBancario({
     try {
       const params = new URLSearchParams({ householdId, status: 'pending', limit: '200' });
       const r = await fetch(`/api/of-transactions?${params}`, {
-        headers: { Authorization: `Bearer ${authToken}` },
+        headers: await cabecalho(false),
       });
       const json = await r.json();
       setTransactions(json.transactions ?? []);
@@ -719,7 +768,7 @@ export default function ExtratoBancario({
     } finally {
       setLoading(false);
     }
-  }, [householdId, authToken]);
+  }, [householdId, cabecalho]);
 
   useEffect(() => { loadTransactions(); }, [loadTransactions]);
 
@@ -772,20 +821,20 @@ export default function ExtratoBancario({
       const itemId = itemById.get(tx.transactionId)!;
       onAddPartial(itemId, partial, y, rawM - 1);
 
-      fetch('/api/of-transactions', {
+      cabecalho().then((h) => fetch('/api/of-transactions', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        headers: h,
         body: JSON.stringify({
           householdId, transactionId: tx.transactionId, action: 'categorize',
           itemId, category: tx.suggestedCategory, partialId: partial.id,
         }),
-      }).catch(() => { /* não crítico */ });
+      })).catch(() => { /* não crítico */ });
     }
 
     const ids = new Set(ready.map((t) => t.transactionId));
     setTransactions((prev) => prev.filter((t) => !ids.has(t.transactionId)));
     setAutoFiled((n) => n + ready.length);
-  }, [transactions, items, householdId, authToken, onAddPartial]);
+  }, [transactions, items, householdId, cabecalho, onAddPartial]);
 
   // Bancos conectados — a transação guarda só o connectionId, o nome e o
   // código COMPE (para a logo) vêm daqui.
@@ -797,7 +846,7 @@ export default function ExtratoBancario({
     try {
       await fetch('/api/of-connect', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        headers: await cabecalho(),
         body: JSON.stringify({ householdId, connectionId: conn.id, apagarHistorico }),
       });
       if (apagarHistorico) {
@@ -813,12 +862,12 @@ export default function ExtratoBancario({
   };
 
   const loadBanks = useCallback(() => {
-    fetch(`/api/of-connect?householdId=${householdId}`, { headers: { Authorization: `Bearer ${authToken}` } })
+    cabecalho(false).then((h) => fetch(`/api/of-connect?householdId=${householdId}`, { headers: h }))
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (d?.connections) setBanks(d.connections); })
       .catch(() => { /* sem lista: cai no extrato único */ })
       .finally(() => setBanksLoaded(true));
-  }, [householdId, authToken]);
+  }, [householdId, cabecalho]);
   /**
    * Por que o Extrato NÃO é `position: fixed`.
    *
@@ -873,7 +922,7 @@ export default function ExtratoBancario({
         try {
           const r = await fetch('/api/of-status', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+            headers: await cabecalho(),
             body: JSON.stringify({ householdId, connectionId: b.id }),
           });
           if (r.ok) mudou = true;
@@ -881,7 +930,7 @@ export default function ExtratoBancario({
       }
       if (mudou) loadBanks();
     })();
-  }, [banksLoaded, banks, householdId, authToken, loadBanks]);
+  }, [banksLoaded, banks, householdId, cabecalho, loadBanks]);
 
   // Quando vem do CTA de fatura no Plano, pula direto para o cartão correto.
   useEffect(() => {
@@ -1029,7 +1078,7 @@ export default function ExtratoBancario({
     if (key) {
       fetch('/api/of-merchant-memory', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        headers: await cabecalho(),
         body: JSON.stringify({ householdId, merchantKey: key, category, itemId }),
       }).catch(() => {/* non-critical */});
     }
@@ -1041,7 +1090,7 @@ export default function ExtratoBancario({
     try {
       const r = await fetch('/api/of-transactions', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        headers: await cabecalho(),
         body: JSON.stringify({ householdId, transactionId: tx.transactionId, action: 'ignore' }),
       });
       if (!r.ok) {
@@ -1553,6 +1602,46 @@ export default function ExtratoBancario({
       )}
 
       {/* Aviso de teto atingido */}
+      {renomear && (
+        <div className="fixed inset-0 z-[85] flex items-end justify-center bg-black/50 sm:items-center">
+          <div className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl bg-white p-5">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#5a8c00]">Gasto salvo</p>
+            <h3 className="mb-1 mt-1 text-[19px] font-black leading-tight text-[#1d1d1f]">
+              Quer dar um nome que você reconheça?
+            </h3>
+            <p className="mb-4 text-[13px] leading-snug text-[#6e6e73]">
+              O banco chamou de <strong className="text-[#1d1d1f]">{renomear.original}</strong>. Daqui a um
+              mês esse nome pode não dizer nada.
+            </p>
+            <input
+              autoFocus
+              value={nomeNovo}
+              onChange={(e) => setNomeNovo(e.target.value)}
+              placeholder="Ex.: camiseta do Tio, cabo do notebook"
+              maxLength={60}
+              className="w-full rounded-2xl border border-[#e5e5ea] bg-[#f7f7f8] px-4 py-3 text-[15px] text-[#1d1d1f] outline-none focus:border-[#a8e716] focus:bg-white"
+            />
+            <button
+              disabled={!nomeNovo.trim()}
+              onClick={() => {
+                onRenomearPartial?.(renomear.itemId, renomear.partialId, nomeNovo.trim(), renomear.ano, renomear.mes);
+                setRenomear(null);
+              }}
+              className="mt-3 w-full rounded-2xl py-3.5 text-xs font-black uppercase tracking-widest text-black transition-all active:scale-95 disabled:opacity-40"
+              style={{ background: 'linear-gradient(90deg, #c5f23a, #8cc400)' }}
+            >
+              Salvar nome
+            </button>
+            <button
+              onClick={() => setRenomear(null)}
+              className="w-full py-3 text-[12px] font-bold uppercase tracking-widest text-[#8e8e93]"
+            >
+              Manter como está
+            </button>
+          </div>
+        </div>
+      )}
+
       {tetoHit && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 px-6" onClick={() => setTetoHit(null)}>
           <div className="bg-white rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl" onClick={(e) => e.stopPropagation()}>

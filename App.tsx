@@ -1026,9 +1026,12 @@ const App: React.FC = () => {
     });
 
     // Save all to DB
+    // O 4o argumento (ordem da linha) faltava: os itens do wizard eram gravados
+    // sem posicao. Passou despercebido porque `npm run build` nao checa tipos.
     if (db && householdId) {
       for (const item of allUpdated) {
-        await saveFinanceItem(db, householdId, item).catch(console.error);
+        const ordem = Math.max(0, allUpdated.indexOf(item));
+        await saveFinanceItem(db, householdId, item, ordem).catch(console.error);
       }
     }
 
@@ -1664,6 +1667,27 @@ const App: React.FC = () => {
       paidStatus: new Array(12).fill(false),
     }]);
     return newId;
+  };
+
+  /** Troca a descrição de um lançamento já criado — usado pelo "dar um nome". */
+  const handleRenomearPartial = (itemId: string, partialId: string, nome: string, ano: number, mes: number) => {
+    const chave = `${ano}-${mes}`;
+    setItems(prev => prev.map(item => {
+      if (item.id !== itemId) return item;
+      const doMes = item.partialExpenses?.[chave];
+      if (!doMes) return item;
+      const atualizado = {
+        ...item,
+        partialExpenses: {
+          ...item.partialExpenses,
+          [chave]: doMes.map(p => (p.id === partialId ? { ...p, description: nome } : p)),
+        },
+      };
+      // O 4o argumento e a ordem da linha no bloco — preserva a posicao atual.
+      const ordem = prev.findIndex(i => i.id === itemId);
+      if (db && householdId) saveFinanceItem(db, householdId, atualizado, ordem).catch(console.error);
+      return atualizado;
+    }));
   };
 
   const handleRemovePartial = (itemId: string, expenseId: string) => {
@@ -3295,6 +3319,7 @@ const App: React.FC = () => {
           onLaunchExpense={(pre) => setPendingExpense({ source: 'manual', ...pre })}
           onCreateItem={handleCreateItem}
           onAddPartial={handleAddPartial}
+          onRenomearPartial={handleRenomearPartial}
           onBancoRemovido={handleBancoRemovido}
           onClose={() => { setShowExtrato(false); setOfInitialCardLast4(undefined); }}
         />
