@@ -794,6 +794,35 @@ const BlockSection: React.FC<BlockSectionProps> = ({
 
                 const alreadyCategorized = categorizedByCardLast4?.[last4 ?? ''] ?? 0;
 
+                /**
+                 * Primeiro mês do plano: a fatura é herança, não decisão.
+                 *
+                 * Ela é composta de compras feitas ANTES do plano existir — quem
+                 * monta o plano em setembro está pagando o que gastou em agosto.
+                 * Essas compras não entram na fila de categorizar (o corte em
+                 * api/of-cron.ts é pela data da compra), então o badge laranja
+                 * prometia "A categorizar R$ 7.863,04" e levava a uma lista
+                 * vazia — o app cobrando um trabalho que ele mesmo não tem.
+                 *
+                 * Aqui a fatura vale como número: é quanto sai da conta neste
+                 * mês. O detalhamento começa no mês seguinte, com as compras
+                 * feitas já dentro do plano.
+                 */
+                if (mobileMonthIdx === 0 && fatura > 0 && alreadyCategorized <= 0) {
+                  return (
+                    <div className="mt-2 ml-7 px-2.5 py-2 bg-[#f5f5f7] border border-[#e8e8ed] rounded-xl text-[10px]">
+                      <div className="flex items-start gap-1.5">
+                        <i className="fas fa-circle-info text-[#8e8e93] text-[11px] mt-px" />
+                        <p className="text-[#6e6e73] leading-relaxed">
+                          <span className="font-black text-[#1d1d1f]">Fatura de entrada.</span>{' '}
+                          São compras feitas antes do plano começar — não precisa categorizar.
+                          O detalhamento começa nas compras deste mês, que caem na próxima fatura.
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+
                 // Sem histórico rastreado: mostra só o CTA do Extrato se disponível
                 if (!tracked || !prevMonthName) {
                   const remaining = Math.max(0, fatura - alreadyCategorized);
