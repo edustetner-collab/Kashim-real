@@ -348,9 +348,18 @@ const TxRow: React.FC<TxRowProps> = ({ tx, onSelect, onDiscard, onConfirm }) => 
         <p className="text-[#1d1d1f] text-sm font-semibold truncate leading-snug">
           {tx.merchant || tx.description}
         </p>
-        {tx.merchant && tx.description && (
-          <p className="text-[10px] text-[#c7c7cc] truncate leading-tight">{tx.description}</p>
-        )}
+        {/* Segunda linha: o que ajudar a RECONHECER o gasto.
+            A descrição do banco quando ela diz algo a mais que o nome; senão, a
+            categoria que o próprio banco atribuiu. Existe porque nomes de
+            maquininha não significam nada sozinhos: "CVS" não diz se foi
+            farmácia, mercado ou restaurante, e o cliente fica sem como decidir
+            (Eduardo, 2026-09-09). O rótulo do banco costuma resolver. */}
+        {(() => {
+          const desc = tx.description && tx.description !== tx.merchant ? tx.description : null;
+          const extra = desc ?? (tx.ofCategory || null);
+          if (!extra) return null;
+          return <p className="text-[10px] text-[#c7c7cc] truncate leading-tight">{extra}</p>;
+        })()}
         <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
           <span className="text-xs text-[#aeaeb2]">{formatDateBR(tx.transactionDate)}</span>
           {tx.installmentCurrent && tx.installmentTotal && (
