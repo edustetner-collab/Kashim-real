@@ -32,7 +32,13 @@ const config: CapacitorConfig = {
     },
   },
   ios: {
-    contentInset: 'automatic',
+    // 'never' desde 2026-09-09. Com 'automatic' o WKWebView empurrava para
+    // baixo do notch só o conteúdo em fluxo; camada `position: fixed` ficava
+    // ancorada na borda real e abria por cima do relógio (Extrato, modais). O
+    // CSS já reserva a área segura sozinho (.safe-top/.safe-bottom sempre
+    // ativos em index.html), então o WebView não pode reservar de novo — senão
+    // o vão dobra. Exige build nova na App Store para valer.
+    contentInset: 'never',
     scrollEnabled: true,
     limitsNavigationsToAppBoundDomains: false,
     allowsLinkPreview: false,

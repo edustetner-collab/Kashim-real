@@ -820,33 +820,30 @@ export default function ExtratoBancario({
       .finally(() => setBanksLoaded(true));
   }, [householdId, authToken]);
   /**
-   * Congela a página de trás enquanto o Extrato está aberto.
+   * Por que o Extrato NÃO é `position: fixed`.
    *
-   * Sintoma (Eduardo, iPhone 16 Pro Max, 2026-09-09): o Extrato abria deslocado
-   * para cima e o primeiro toque no X não fechava — descia a tela para o lugar
-   * certo; só o segundo toque fechava.
+   * No WKWebView com `contentInset: 'automatic'`, o próprio WebView empurra o
+   * conteúdo do documento para baixo do notch — mas só o conteúdo em FLUXO.
+   * Camada `fixed` ancora na borda real da tela e fica por cima do relógio. Era
+   * isso que fazia a tela inicial (fluxo) ficar certa e o Extrato (fixed)
+   * abrir deslocado para cima, com o primeiro toque no X "descendo" a tela em
+   * vez de fechar (Eduardo, 16 Pro Max, 2026-09-09). Três tentativas de
+   * consertar por timing de CSS falharam porque atacavam o sintoma.
    *
-   * A causa é a página de trás continuar rolável: no WKWebView, uma camada
-   * `fixed` aberta com a página rolada nasce fora de posição, e o primeiro
-   * toque é consumido pelo ajuste de rolagem em vez de virar clique.
+   * `absolute` no topo do documento vive DENTRO da área rolável, como a tela
+   * inicial, e recebe o mesmo empurrão. O App esconde o <main> e a barra
+   * inferior enquanto isto está aberto, para a página não crescer além daqui.
+   * A correção de raiz — `contentInset: 'never'` no capacitor.config.ts — já
+   * está no repositório e entra na próxima build; este arranjo continua correto
+   * com ela.
    *
-   * Prender o `body` com a posição guardada resolve os dois de uma vez, e
-   * devolve o cliente exatamente onde ele estava ao fechar — sem isso, fechar o
-   * Extrato jogaria a pessoa para o topo do plano.
+   * Vai ao topo ao abrir (o Extrato mora no topo do documento) e devolve o
+   * cliente exatamente onde ele estava ao fechar.
    */
   useEffect(() => {
     const y = window.scrollY;
-    const body = document.body;
-    const antes = { position: body.style.position, top: body.style.top, width: body.style.width };
-    body.style.position = 'fixed';
-    body.style.top = `-${y}px`;
-    body.style.width = '100%';
-    return () => {
-      body.style.position = antes.position;
-      body.style.top = antes.top;
-      body.style.width = antes.width;
-      window.scrollTo(0, y);
-    };
+    window.scrollTo(0, 0);
+    return () => { window.scrollTo(0, y); };
   }, []);
 
   useEffect(() => { loadBanks(); }, [loadBanks]);
@@ -1091,8 +1088,8 @@ export default function ExtratoBancario({
   // ─── Tela inicial: escolher o banco ────────────────────────────────────────
   if (showBankPicker) {
     return (
-      <div className="fixed inset-0 z-[60] flex flex-col bg-[#f2f2f7]">
-        <div className="bg-white border-b border-[#e5e5ea] px-4 safe-top pt-2 pb-3 flex items-center justify-between flex-shrink-0">
+      <div className="absolute inset-x-0 top-0 min-h-[100dvh] z-[60] flex flex-col bg-[#f2f2f7]">
+        <div className="sticky top-0 z-10 bg-white border-b border-[#e5e5ea] px-4 safe-top pt-2 pb-3 flex items-center justify-between flex-shrink-0">
           <div>
             <h2 className="text-lg font-black text-[#1d1d1f]">Extrato bancário</h2>
             <p className="text-xs text-[#6e6e73]">Escolha o banco para categorizar</p>
@@ -1353,7 +1350,7 @@ export default function ExtratoBancario({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-[#f2f2f7]">
+    <div className="absolute inset-x-0 top-0 min-h-[100dvh] z-[60] flex flex-col bg-[#f2f2f7]">
       {erroSalvar && (
         <div className="fixed inset-x-3 top-3 z-[75] rounded-2xl border border-[#ffd4d4] bg-[#fff5f5] p-3 shadow-lg">
           <p className="text-[12.5px] font-bold leading-snug text-[#c0392b]">{erroSalvar}</p>
@@ -1364,7 +1361,7 @@ export default function ExtratoBancario({
       )}
 
       {/* Header */}
-      <div className="bg-white border-b border-[#e5e5ea] px-4 safe-top pt-2 pb-2 flex-shrink-0">
+      <div className="sticky top-0 z-10 bg-white border-b border-[#e5e5ea] px-4 safe-top pt-2 pb-2 flex-shrink-0">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2 min-w-0">
             <button
