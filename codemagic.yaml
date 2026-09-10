@@ -2,7 +2,11 @@ workflows:
   ios-release:
     name: Kashim iOS Release
     max_build_duration: 60
-    instance_type: mac_mini_m2
+    # M1 e nao M2: em 2026-09-10 a build ficou presa em `queued` sem nunca
+    # comecar, com o Billing marcando 0/500 minutos gratuitos. A cota gratuita
+    # do Codemagic costuma cobrir a M1; pedindo M2, a build espera por uma
+    # maquina que nao vem. Se um dia a conta for paga, a M2 e mais rapida.
+    instance_type: mac_mini_m1
 
     environment:
       groups:
