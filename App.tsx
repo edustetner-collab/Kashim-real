@@ -35,7 +35,8 @@ import { computeAccess, AccessInfo } from './lib/access';
 import { buildRaioXHtml, openRaioXWindow, RaioXSnapshot } from './lib/raioX';
 import { Quote, getQuoteForUser, getMondayKey } from './lib/quotes';
 import { refreshNotifications, scheduleTestNotification } from './lib/notifications';
-import { initPush, pedirPermissaoPush } from './lib/push';
+import { initPush, pedirPermissaoPush, diagnosticoPush } from './lib/push';
+import { PushNotifications } from '@capacitor/push-notifications';
 import { getNotifPrefs } from './lib/notifPrefs';
 import TermsGate from './components/TermsGate';
 import { hasAcceptedTerms, recordTermsAcceptance } from './lib/terms';
@@ -582,6 +583,41 @@ const App: React.FC = () => {
       alert(`Teste de notificação:\n\n${r.reason}`);
     });
   }, []);
+  /**
+   * `?testepush=1` — diagnóstico do push, e depois tenta registrar de verdade.
+   *
+   * O registro normal é silencioso dos dois lados: falha calada (nada pode
+   * impedir o app de abrir) e sucesso invisível. Sem isto, `push_devices` vazia
+   * não dizia se o plugin faltou, a permissão foi negada, o token não chegou ou
+   * o servidor recusou.
+   */
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('testepush') !== '1') return;
+    if (!householdId || !user) return;
+    diagnosticoPush().then(async (txt) => {
+      let extra = '';
+      try {
+        const jwt = await getToken({ template: 'supabase' });
+        const tok = await new Promise<string | null>((resolve) => {
+          const t = setTimeout(() => resolve(null), 6000);
+          PushNotifications.addListener('registration', (x) => { clearTimeout(t); resolve(x?.value ?? null); });
+          PushNotifications.register();
+        });
+        if (jwt && tok) {
+          const r = await fetch('/api/push-register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+            body: JSON.stringify({ householdId, token: tok, platform: 'ios' }),
+          });
+          const j = await r.json().catch(() => ({}));
+          extra = `\n\nservidor: ${r.status} ${JSON.stringify(j)}`;
+        }
+      } catch (e) {
+        extra = `\n\nservidor: falhou (${e instanceof Error ? e.message : 'erro'})`;
+      }
+      alert(`Diagnóstico de push:\n\n${txt}${extra}`);
+    });
+  }, [householdId, user, getToken]);
   useEffect(() => {
     if (!householdId || coachViewHouseholdId || needsTermsAcceptance || !user) return;
     const t = setTimeout(() => {

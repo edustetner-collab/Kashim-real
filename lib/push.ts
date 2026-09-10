@@ -55,6 +55,52 @@ export async function initPush(
 }
 
 /**
+ * Diagnóstico de push, para abrir com `?testepush=1`.
+ *
+ * O registro acontece em silêncio e falha em silêncio — três try/catch no
+ * caminho, porque nada aqui pode impedir o app de abrir. Quando `push_devices`
+ * fica vazia não há como saber ONDE parou: plugin ausente, permissão negada,
+ * token que não chega ou POST recusado. Isto conta.
+ */
+export async function diagnosticoPush(): Promise<string> {
+  const linhas: string[] = [];
+  linhas.push(`app nativo: ${isNativeApp ? 'sim' : 'NÃO — push só funciona no app'}`);
+  linhas.push(`plugin presente: ${typeof PushNotifications?.register === 'function' ? 'sim' : 'NÃO — a build é anterior ao push'}`);
+
+  if (!isNativeApp) return linhas.join('\n');
+
+  try {
+    const perm = await PushNotifications.checkPermissions();
+    linhas.push(`permissão: ${perm.receive}`);
+
+    if (perm.receive !== 'granted') {
+      const r = await PushNotifications.requestPermissions();
+      linhas.push(`após pedir: ${r.receive}`);
+      if (r.receive !== 'granted') return linhas.join('\n');
+    }
+
+    const token = await new Promise<string | null>((resolve) => {
+      const t = setTimeout(() => resolve(null), 8000);
+      PushNotifications.addListener('registration', (x) => {
+        clearTimeout(t); resolve(x?.value ?? null);
+      });
+      PushNotifications.addListener('registrationError', (e) => {
+        clearTimeout(t); resolve(`ERRO: ${JSON.stringify(e)}`);
+      });
+      PushNotifications.register();
+    });
+
+    linhas.push(token
+      ? (token.startsWith('ERRO') ? token : `token recebido: ${token.slice(0, 12)}… (${token.length} ch)`)
+      : 'token NÃO chegou em 8s — a Apple não respondeu');
+    return linhas.join('\n');
+  } catch (e) {
+    linhas.push(`exceção: ${e instanceof Error ? e.message : String(e)}`);
+    return linhas.join('\n');
+  }
+}
+
+/**
  * Pede a permissão do sistema. Chamar num momento com CONTEXTO.
  *
  * Pedir na primeira abertura é o jeito mais rápido de tomar um "não" definitivo
