@@ -594,26 +594,6 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
                 <i className="fas fa-sign-out-alt text-[10px]"></i> Sair da conta
               </button>
             </div>
-            {/**
-             * Diagnóstico de push, aqui e não numa URL com `?testepush=1`.
-             *
-             * O app não tem barra de endereço: abrir o link cai no Safari, onde
-             * `isNativeApp` é falso e o teste não vale — e o redirect do login
-             * ainda come o parâmetro no caminho (Eduardo, 2026-09-10). Dentro
-             * das Configurações o teste roda no lugar certo, ao lado do carimbo
-             * de versão, que responde a outra metade da mesma pergunta.
-             */}
-            <div className="flex justify-center pb-1">
-              <button
-                onClick={async () => {
-                  const { diagnosticoPush } = await import('../lib/push');
-                  alert(`Diagnóstico de push:\n\n${await diagnosticoPush()}`);
-                }}
-                className="text-zinc-600 hover:text-green-400 active:text-green-500 text-[11px] transition-colors flex items-center gap-1.5"
-              >
-                <i className="fas fa-bell text-[10px]"></i> Testar push
-              </button>
-            </div>
             {/* Carimbo do build: responde "a atualização entrou?" na hora, em
                 vez de depurar lógica nova contra bundle antigo em cache. */}
             <p className="text-center text-zinc-700 text-[10px] pb-1">

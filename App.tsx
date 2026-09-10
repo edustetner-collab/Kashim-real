@@ -300,6 +300,24 @@ const App: React.FC = () => {
    * lançamento manual, que para ele continuam sendo as certas.
    */
   const [temBancoConectado, setTemBancoConectado] = useState(false);
+  /**
+   * O plano ABERTO na tela está no modo Open Finance.
+   *
+   * Duas condições, e as duas são obrigatórias: quem está logado tem acesso, e
+   * este household tem banco conectado. Usar só o acesso de quem está logado
+   * foi o que fez a linha do cartão de uma cliente sem banco aparecer como
+   * "Categorizada" quando o Eduardo abriu o plano dela (2026-09-10) — e,
+   * sem portão nenhum na linha, para todos os clientes também.
+   */
+  const planoEmModoOF = hasOpenFinanceAccess(user) && temBancoConectado;
+
+  // Trocou de plano (coach abrindo cliente): o que era do plano anterior não
+  // pode vazar para este enquanto a busca de conexões não volta.
+  useEffect(() => {
+    setTemBancoConectado(false);
+    setOfCartoesPorConexao({});
+    setOfPendentes([]);
+  }, [householdId]);
   /** Item cujo card deve receber o foco ao abrir Gastos (vindo do Plano). */
   const [focusSpendingItemId, setFocusSpendingItemId] = useState<string | null>(null);
   /** Filtro inicial do Gastos quando o usuário navega de uma linha do Plano. */
@@ -593,7 +611,7 @@ const App: React.FC = () => {
    */
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get('testepush') !== '1') return;
-    if (!householdId || !user) return;
+    if (!householdId || !user || !hasOpenFinanceAccess(user)) return;
     diagnosticoPush().then(async (txt) => {
       let extra = '';
       try {
@@ -654,7 +672,9 @@ const App: React.FC = () => {
   }, [householdId, getToken]);
 
   useEffect(() => {
-    if (!householdId || coachViewHouseholdId || !user) return;
+    // Push é do Open Finance: cliente comum não pode ter o aparelho registrado
+    // no OneSignal por abrir o app.
+    if (!householdId || coachViewHouseholdId || !user || !hasOpenFinanceAccess(user)) return;
     initPush(registrarAparelho);
   }, [householdId, coachViewHouseholdId, user, registrarAparelho]);
 
@@ -2263,29 +2283,19 @@ const App: React.FC = () => {
     return result;
   }, [items, allCards, mobileMonthIdx, months]);
 
-  /**
-   * Quanto da fatura DESTE mês o cliente já explicou, por cartão.
-   *
-   * A fatura que vence em outubro é feita das compras de SETEMBRO — por isso a
-   * conta olha o mês anterior, não o corrente. Casando pelo mês da compra, o
-   * app comparava a fatura de setembro (compras de agosto) com o que foi
-   * categorizado em setembro, e o "a categorizar" virava um número que não
-   * existia: R$ 3.699 em outubro com zero transações pendentes (Eduardo,
-   * 2026-09-10).
-   *
-   * Repare que a compra no crédito conta em DOIS lugares com propósitos
-   * diferentes, e isso é de propósito: no teto do mês em que foi feita (é ali
-   * que a decisão de gastar aconteceu) e na fatura do mês seguinte (é dali que
-   * o dinheiro sai). Ver `compilacao-e-regime-de-caixa`.
-   */
+  // Total já categorizado pelo extrato bancário neste mês, por cardLast4.
+  // Reduz o "a categorizar" conforme o usuário confirma transações no Extrato.
   const categorizedByCardLast4 = useMemo((): Record<string, number> => {
-    const compras = months[mobileMonthIdx - 1];
-    if (!compras) return {};
-    const chave = `${compras.year}-${compras.index}`;
+    // VOLTOU ao mês corrente em 2026-09-10. O deslocamento para o mês anterior
+    // foi feito para o Open Finance e alterava o plano normal, que é quem usa
+    // este mapa — a linha do cartão no modo OF usa `aCategorizarPorCartaoMes`.
+    const curMonthData = months[mobileMonthIdx];
+    if (!curMonthData) return {};
+    const curMonthKey = `${curMonthData.year}-${curMonthData.index}`;
     const result: Record<string, number> = {};
     for (const item of items) {
       if (item.category === CategoryType.CREDIT_CARD) continue;
-      for (const p of (item.partialExpenses?.[chave] ?? [])) {
+      for (const p of (item.partialExpenses?.[curMonthKey] ?? [])) {
         if (p.paymentSource === 'credit' && p.cardLast4) {
           result[p.cardLast4] = (result[p.cardLast4] ?? 0) + p.value;
         }
@@ -2300,15 +2310,11 @@ const App: React.FC = () => {
   // mudo enquanto o Latam, com rastreamento antigo, mostrava a caixa).
   const categorizedByCardAllMonths = useMemo((): Record<string, Record<number, number>> => {
     const result: Record<string, Record<number, number>> = {};
-    // Mesmo deslocamento de um ciclo do `categorizedByCardLast4`: a fatura da
-    // coluna mIdx é composta pelas compras da coluna anterior.
-    months.forEach((_, mIdx) => {
-      const compras = months[mIdx - 1];
-      if (!compras) return;
-      const chave = `${compras.year}-${compras.index}`;
+    months.forEach((monthData, mIdx) => {
+      const monthKey = `${monthData.year}-${monthData.index}`;
       for (const item of items) {
         if (item.category === CategoryType.CREDIT_CARD) continue;
-        for (const p of (item.partialExpenses?.[chave] ?? [])) {
+        for (const p of (item.partialExpenses?.[monthKey] ?? [])) {
           if (p.paymentSource !== 'credit' || !p.cardLast4) continue;
           if (!result[p.cardLast4]) result[p.cardLast4] = {};
           result[p.cardLast4][mIdx] = (result[p.cardLast4][mIdx] ?? 0) + p.value;
@@ -2602,15 +2608,17 @@ const App: React.FC = () => {
              * só no ClientSettings, ele ficava num lugar que o admin nunca vê
              * (Eduardo, 2026-09-10).
              */}
-            <button
-              onClick={async () => {
-                const { diagnosticoPush } = await import('./lib/push');
-                alert(`Diagnóstico de push:\n\n${await diagnosticoPush()}`);
-              }}
-              className="w-full mb-2 bg-zinc-800 border border-zinc-700 active:bg-zinc-700 text-zinc-300 font-black py-3 rounded-2xl transition-all text-xs uppercase flex items-center justify-center gap-2"
-            >
-              <i className="fas fa-bell"></i> Testar push
-            </button>
+            {hasOpenFinanceAccess(user) && (
+              <button
+                onClick={async () => {
+                  const { diagnosticoPush } = await import('./lib/push');
+                  alert(`Diagnóstico de push:\n\n${await diagnosticoPush()}`);
+                }}
+                className="w-full mb-2 bg-zinc-800 border border-zinc-700 active:bg-zinc-700 text-zinc-300 font-black py-3 rounded-2xl transition-all text-xs uppercase flex items-center justify-center gap-2"
+              >
+                <i className="fas fa-bell"></i> Testar push
+              </button>
+            )}
             <button
               onClick={() => signOut()}
               className="w-full bg-red-500/10 border border-red-500/20 active:bg-red-500/20 text-red-400 font-black py-3.5 rounded-2xl transition-all text-sm uppercase flex items-center justify-center gap-2"
@@ -3333,6 +3341,7 @@ const App: React.FC = () => {
                   // pagamento pelo detalhamento por fonte. No plano normal o seletor
                   // é a única maneira de informar débito x cartão.
                   hasOpenFinance={hasOpenFinanceAccess(user)}
+                  modoOpenFinance={planoEmModoOF}
                 />
                 </React.Fragment>
               ))}
@@ -3376,15 +3385,19 @@ const App: React.FC = () => {
                           {celulaValor(
                             formatCurrency(s.totalCreditCard),
                             s.fixoNoCartao > 0 ? {
-                              linhas: [
+                              // Texto novo SÓ no modo Open Finance. No plano normal o
+                              // cliente DECLARA a forma de pagamento, e o texto
+                              // original ("você optou") é o correto para ele.
+                              linhas: planoEmModoOF ? [
                                 { rotulo: 'Fatura que vence neste mês:', valor: formatCurrency(s.totalCreditCard) },
                                 { rotulo: 'Contas suas dentro dela:', valor: formatCurrency(s.fixoNoCartao) },
+                              ] : [
+                                { rotulo: 'Sua fatura completa ao final desse mês:', valor: formatCurrency(s.totalCreditCard) },
+                                { rotulo: 'Contas fixas dentro da fatura:', valor: formatCurrency(s.fixoNoCartao) },
                               ],
-                              // Sem "você optou": no Open Finance o cliente não
-                              // escolhe forma de pagamento, o banco informa. O
-                              // texto antigo falava de uma decisão que ele nunca
-                              // tomou (Eduardo, 2026-09-10).
-                              corpo: `É o que sai da sua conta neste mês para pagar o cartão. Desse total, ${formatCurrency(s.fixoNoCartao)} são contas suas — mercado, gasolina, esse tipo de coisa — que caem no cartão. Elas aparecem inteiras na linha de baixo e são descontadas ali, para o mesmo dinheiro não contar duas vezes.`,
+                              corpo: planoEmModoOF
+                                ? `É o que sai da sua conta neste mês para pagar o cartão. Desse total, ${formatCurrency(s.fixoNoCartao)} são contas suas — mercado, gasolina, esse tipo de coisa — que caem no cartão. Elas aparecem inteiras na linha de baixo e são descontadas ali, para o mesmo dinheiro não contar duas vezes.`
+                                : `Além do valor que já existe na sua fatura atual, essa projeção já carrega as contas fixas que vão entrar, pois você optou em gastar ${formatCurrency(s.fixoNoCartao)} de contas fixas no cartão. Sendo assim, ele já é o valor que ela ficará ao final do período, após você ter gasto o valor que previu gastar.`,
                             } : undefined
                           )}
                         </td>
@@ -3401,10 +3414,12 @@ const App: React.FC = () => {
                             formatCurrency(s.totalFixed),
                             s.fixoNoCartao > 0 ? {
                               linhas: [
-                                { rotulo: 'Suas contas fixas do mês:', valor: formatCurrency(s.totalFixed) },
-                                { rotulo: 'A parte que o cartão paga:', valor: formatCurrency(s.fixoNoCartao) },
+                                { rotulo: planoEmModoOF ? 'Suas contas fixas do mês:' : 'Sua conta fixa completa:', valor: formatCurrency(s.totalFixed) },
+                                { rotulo: planoEmModoOF ? 'A parte que o cartão paga:' : 'No cartão:', valor: formatCurrency(s.fixoNoCartao) },
                               ],
-                              corpo: 'Todas as suas contas fixas do mês, inteiras. É este número que mostra o peso delas sobre o seu salário, e é ele que o seu diagnóstico usa. A parte que o cartão paga é descontada logo abaixo — ela já está somada dentro da fatura.',
+                              corpo: planoEmModoOF
+                                ? 'Todas as suas contas fixas do mês, inteiras. É este número que mostra o peso delas sobre o seu salário, e é ele que o seu diagnóstico usa. A parte que o cartão paga é descontada logo abaixo — ela já está somada dentro da fatura.'
+                                : 'Esse é o total das suas contas fixas no mês, independente de como você paga cada uma. Ele é fundamental para você entender o peso que suas contas fixas têm sobre seu salário, e isso é mostrado no seu diagnóstico financeiro. A parte que vai no cartão é abatida logo abaixo, para não ser contada duas vezes.',
                             } : undefined
                           )}
                         </td>
@@ -3428,9 +3443,13 @@ const App: React.FC = () => {
                                 // na lateral repetia o mesmo valor duas vezes na
                                 // mesma linha.
                                 linhas: [
-                                  { rotulo: 'Contas suas que o cartão paga:', valor: formatCurrency(s.jaNaFatura) },
+                                  planoEmModoOF
+                                    ? { rotulo: 'Contas suas que o cartão paga:', valor: formatCurrency(s.jaNaFatura) }
+                                    : { rotulo: 'Por que subtraímos esse valor de', valor: `${formatCurrency(s.jaNaFatura)}?` },
                                 ],
-                                corpo: 'Esse dinheiro aparece em dois lugares desta tela, mas só pode sair da sua conta uma vez. Ele está dentro da fatura, lá em cima, porque é o cartão que paga. E está nas contas fixas, porque elas precisam aparecer inteiras para o seu diagnóstico. Descontamos aqui para a conta fechar certo.',
+                                corpo: planoEmModoOF
+                                  ? 'Esse dinheiro aparece em dois lugares desta tela, mas só pode sair da sua conta uma vez. Ele está dentro da fatura, lá em cima, porque é o cartão que paga. E está nas contas fixas, porque elas precisam aparecer inteiras para o seu diagnóstico. Descontamos aqui para a conta fechar certo.'
+                                  : 'Essa subtração acontece para a conta bater corretamente, pois esse valor está em dois lugares, mas só pode somar uma vez. 1º Está na fatura, porque você decidiu passar parte das contas fixas no cartão. 2º Também está nas contas fixas, para que você saiba o total de contas fixas que você tem, independente da forma de pagamento.',
                               } : undefined,
                             'border-sky-500/40'
                           )}
@@ -3534,7 +3553,7 @@ const App: React.FC = () => {
             badge do botão central sai para cima. O respiro aqui é o que deixa
             ele aparecer inteiro (Eduardo, 2026-09-10). */}
         <div className="overflow-x-auto scrollbar-none">
-          <div className="flex min-w-max pt-2.5">
+          <div className={`flex min-w-max ${hasOpenFinanceAccess(user) ? 'pt-2.5' : ''}`}>
             <button
               onClick={() => setActiveTab('plan')}
               className={`min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'plan' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
@@ -3585,9 +3604,11 @@ const App: React.FC = () => {
                 <button
                   data-tour="tab-launch"
                   onClick={() => { if (pendentes > 0) { abrirExtrato(); } else { abrirLancamento(); } }}
-                  onContextMenu={(e) => { e.preventDefault(); abrirLancamento(); }}
+                  onContextMenu={hasOpenFinanceAccess(user) ? (e) => { e.preventDefault(); abrirLancamento(); } : undefined}
                   aria-label={pendentes > 0 ? `Categorizar ${pendentes} transações` : 'Lançar gasto'}
-                  className="k-halo min-w-[86px] flex flex-col items-center justify-center py-2 gap-0.5 mx-1 rounded-xl active:scale-95 transition-all k-btn-lime relative"
+                  // Tamanho novo só para quem tem Open Finance (o badge precisa do
+                  // espaço); o plano normal segue com o botão de sempre.
+                  className={`k-halo ${hasOpenFinanceAccess(user) ? 'min-w-[86px] py-2' : 'min-w-[72px] py-1.5'} flex flex-col items-center justify-center gap-0.5 mx-1 rounded-xl active:scale-95 transition-all k-btn-lime relative`}
                   style={{background:'linear-gradient(180deg,#c5f23a 0%,#a2d800 50%,#8cc400 100%)',boxShadow:'0 4px 14px rgba(130,192,0,0.4),inset 0 1px 0 rgba(255,255,255,0.45)',borderRadius:'14px'}}
                 >
                   {pendentes > 0 ? (

@@ -41,6 +41,17 @@ interface BlockSectionProps {
    * categorização de encargo que nunca vira lançamento.
    */
   aCategorizarPorCartaoMes?: Record<string, Record<number, number>>;
+  /**
+   * ESTE plano está no modo Open Finance: o usuário tem acesso E o household
+   * tem banco conectado.
+   *
+   * Todo recurso novo do Open Finance neste componente depende disto, nunca de
+   * `hasOpenFinance` (que diz só quem está LOGADO). Em 2026-09-10 a linha do
+   * cartão passou a mostrar "Categorizada" para todos os clientes, e o Eduardo,
+   * com acesso, via o mesmo selo ao abrir o plano de uma cliente sem banco
+   * nenhum. Sem este portão, cliente comum vê superfície de Open Finance.
+   */
+  modoOpenFinance?: boolean;
   /** Coach/assistente: pula os recados educativos (modal de instrução ao
       adicionar e aviso de parcelas) — eles são para o cliente. */
   isAdmin?: boolean;
@@ -69,7 +80,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
   title, subtitle, category, items, allCards = [], months, totalIncome, mobileMonthIdx = 0,
   onAddItem, onUpdateValue, onTogglePaid, onRemoveItem, onUpdateDescription, onReplicateValue, onLinkCard,
   onUpdateCardConfig, onMoveItem, trackedByCardId, trackedByCardAllMonths, categorizedByCardLast4, categorizedByCardAllMonths, aCategorizarPorCartaoMes, onRequestExpenseSheet, onAddLeisureItem,
-  isAdmin = false, onOpenSpending, onOpenExtrato, onNavigateToGastos, hasOpenFinance = false,
+  isAdmin = false, onOpenSpending, onOpenExtrato, onNavigateToGastos, hasOpenFinance = false, modoOpenFinance = false,
 }) => {
   const [showInstructionModal, setShowInstructionModal] = useState(false);
   const [installmentWarning, setInstallmentWarning] = useState<string | null>(null);
@@ -737,7 +748,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
          * api/of-cron.ts é pela data da compra), então cobrar categorização
          * levava a uma lista vazia.
          */}
-        {category === CategoryType.CREDIT_CARD && mobileMonthIdx === 0
+        {modoOpenFinance && category === CategoryType.CREDIT_CARD && mobileMonthIdx === 0
           && items.some((i) => (i.values[0] || 0) > 0) && (
           <div className="px-4 py-3 bg-[#f5f5f7]">
             <div className="flex items-start gap-2">
@@ -778,7 +789,8 @@ const BlockSection: React.FC<BlockSectionProps> = ({
           // Em Entradas o selo conta o que FOI RECEBIDO, e receber mais que o
           // previsto é notícia boa — nunca vermelho. A web já fazia essa
           // distinção; o celular pintava de vermelho quem recebeu a mais.
-          const isOverTeto = !isIncome && realSpent > teto && teto > 0;
+          // Só no modo Open Finance: o plano normal segue como sempre foi.
+          const isOverTeto = (!modoOpenFinance || !isIncome) && realSpent > teto && teto > 0;
 
           const canReplicate = category === CategoryType.INCOME || category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE || category === CategoryType.VARIABLE_EXPENSE;
           return (
@@ -826,7 +838,92 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   </div>
                 </div>
               )}
-              {(() => {
+              {!modoOpenFinance ? (() => {
+                // Plano SEM Open Finance: o bloco de sempre, restaurado byte a
+                // byte de 75ddb47 em 2026-09-10 depois de vazar para clientes.
+                const tracked = trackedByCardId?.[item.id] ?? 0;
+                const fatura = item.values[mobileMonthIdx] || 0;
+                const prevMonthName = mobileMonthIdx > 0 ? months[mobileMonthIdx - 1]?.monthName : null;
+                const last4 = item.description.match(/••(\d{4})/)?.[1];
+
+                const alreadyCategorized = categorizedByCardLast4?.[last4 ?? ''] ?? 0;
+
+                // Sem histórico rastreado: mostra só o CTA do Extrato se disponível
+                if (!tracked || !prevMonthName) {
+                  const remaining = Math.max(0, fatura - alreadyCategorized);
+                  if (!onOpenExtrato) return null;
+                  if (remaining <= 0 && fatura > 0) {
+                    return (
+                      <div className="mt-2 ml-7 px-2.5 py-2 bg-[#f0fad0] border border-[rgba(122,184,0,0.2)] rounded-xl text-[10px]">
+                        <div className="flex items-center gap-1.5 text-[#7ab800]">
+                          <i className="fas fa-check-circle text-xs" />
+                          <span className="font-black text-[9px] uppercase tracking-wider">Fatura categorizada</span>
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (!fatura) return null;
+                  return (
+                    <div className="mt-2 ml-7 px-2.5 py-2 bg-orange-50 border border-orange-200 rounded-xl text-[10px]">
+                      <div className="flex justify-between items-center">
+                        <span className="text-orange-600 font-black uppercase text-[9px] tracking-wider">A categorizar</span>
+                        <button
+                          onClick={() => onOpenExtrato(last4)}
+                          className="flex items-center gap-1 bg-orange-500 text-white font-black text-[9px] px-2 py-0.5 rounded-full active:opacity-70"
+                        >
+                          <span className="k-num">{formatCurrency(remaining > 0 ? remaining : fatura)}</span>
+                          <i className="fas fa-chevron-right text-[7px]" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                if (!fatura) {
+                  return (
+                    <div className="mt-2 ml-7 px-2.5 py-2 bg-[#f0fad0] border border-[rgba(122,184,0,0.2)] rounded-xl text-[10px]">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-[#6e6e73] leading-relaxed flex-1">
+                          <span className="font-black text-[#7ab800] k-num">{formatCurrency(tracked)}</span> rastreado de {prevMonthName} já vai nesta fatura. Lance o valor total acima.
+                        </p>
+                        <button onClick={() => setTrackedInfoCardId(item.id)} className="text-[#7ab800] shrink-0 mt-0.5">
+                          <i className="fas fa-question-circle text-sm"></i>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                const naoIdentificado = Math.max(0, fatura - tracked - alreadyCategorized);
+                return (
+                  <div className="mt-2 ml-7 px-2.5 py-2 bg-[#f0fad0] border border-[rgba(122,184,0,0.2)] rounded-xl space-y-1 text-[10px]">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[#6e6e73]">Rastreado ({prevMonthName})</span>
+                      <span className="text-[#7ab800] font-black k-num">− {formatCurrency(tracked)}</span>
+                    </div>
+                    {alreadyCategorized > 0 && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#6e6e73]">Extrato (este mês)</span>
+                        <span className="text-[#7ab800] font-black k-num">− {formatCurrency(alreadyCategorized)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center border-t border-[rgba(122,184,0,0.15)] pt-1">
+                      <span className="text-[#aeaeb2] font-black uppercase text-[9px] tracking-wider">A categorizar</span>
+                      {naoIdentificado > 0 && onOpenExtrato ? (
+                        <button
+                          onClick={() => onOpenExtrato(last4)}
+                          className="flex items-center gap-1 bg-orange-500 text-white font-black text-[9px] px-2 py-0.5 rounded-full active:opacity-70"
+                        >
+                          <span className="k-num">{formatCurrency(naoIdentificado)}</span>
+                          <i className="fas fa-chevron-right text-[7px]" />
+                        </button>
+                      ) : (
+                        <span className={`font-black k-num ${naoIdentificado === 0 ? 'text-[#7ab800]' : 'text-orange-500'}`}>{formatCurrency(naoIdentificado)}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })() : (() => {
                 /**
                  * UM número, e ele existe no Extrato.
                  *
@@ -952,8 +1049,8 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           const mobileVal = item.values[mobileMonthIdx];
                           const displayValue = realSpent > 0 ? realSpent : (isCardLinked && isCommitted && mobileVal > 0 ? mobileVal : 0);
                           if (!displayValue) return realSpent > 0 ? (
-                            <span className={`text-[10px] font-black px-2 py-1 rounded-xl k-num flex items-center gap-1 ${isIncome ? 'bg-[#f0fad0] text-[#5a8c00]' : isOverTeto ? 'bg-[#fff0f0] text-[#ff3b30]' : 'bg-[#f0f4ff] text-[#007aff]'}`}>
-                              {isIncome && <span className="text-[8px] font-bold opacity-70">RECEBIDO</span>}
+                            <span className={`text-[10px] font-black px-2 py-1 rounded-xl k-num ${modoOpenFinance ? 'flex items-center gap-1 ' : ''}${modoOpenFinance && isIncome ? 'bg-[#f0fad0] text-[#5a8c00]' : isOverTeto ? 'bg-[#fff0f0] text-[#ff3b30]' : 'bg-[#f0f4ff] text-[#007aff]'}`}>
+                              {modoOpenFinance && isIncome && <span className="text-[8px] font-bold opacity-70">RECEBIDO</span>}
                               {formatCurrency(realSpent)}
                             </span>
                           ) : null;
@@ -1428,7 +1525,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                               onClick={canOpen ? (e) => {
                                 e.stopPropagation();
                                 const md = months[mIdx];
-                                onOpenSpending!(item.id, md ? `${md.year}-${md.index}` : undefined);
+                                onOpenSpending!(item.id, modoOpenFinance && md ? `${md.year}-${md.index}` : undefined);
                               } : undefined}
                               title={canOpen ? 'Ver e recategorizar estes lançamentos' : undefined}
                               className={`text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-1 flex-wrap ${canOpen ? 'cursor-pointer active:opacity-70' : ''} ${realSpent > 0 && isOver ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}
@@ -1454,7 +1551,52 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           }
                           return <div className="text-[8px] text-zinc-400 italic mt-0.5">{faturaLabel}</div>;
                         })()}
-                        {category === CategoryType.CREDIT_CARD && mIdx > 0 && (() => {
+                        {category === CategoryType.CREDIT_CARD && mIdx > 0 && (!modoOpenFinance ? (() => {
+                          // Plano SEM Open Finance: bloco original, restaurado de 75ddb47.
+                          const tracked = trackedByCardAllMonths?.[item.id]?.[mIdx] ?? 0;
+                          const last4 = item.description.match(/••(\d{4})/)?.[1];
+                          // Cartao vindo do Open Finance nao tem rastreamento antigo: o que
+                          // ele tem e o categorizado do extrato. Sem somar os dois, o Bradesco
+                          // caia no `return null` e a web nao mostrava 'a categorizar' nenhum,
+                          // enquanto o aplicativo mostrava certo.
+                          const fromExtrato = categorizedByCardAllMonths?.[last4 ?? '']?.[mIdx] ?? 0;
+                          const identificado = tracked + fromExtrato;
+                          if (!identificado) return null;
+                          const prevMonthName = months[mIdx - 1]?.monthName;
+                          if (!prevMonthName) return null;
+                          if (!val) {
+                            return (
+                              <div className="mt-1 rounded-lg border border-dashed border-[rgba(122,184,0,0.5)] bg-[#f0fad0]/70 px-1.5 py-1 text-center">
+                                <div className="text-[7px] text-[#aeaeb2] font-bold uppercase tracking-wide">≈ estimado</div>
+                                <div className="text-[9px] text-[#7ab800] font-black k-num">{formatCurrency(identificado)}</div>
+                                <div className="text-[7px] text-[#aeaeb2]">de {prevMonthName}</div>
+                              </div>
+                            );
+                          }
+                          const aCategorizar = Math.max(0, val - identificado);
+                          return (
+                            <div className="mt-1 border border-[#e8e8ed] rounded-lg px-1.5 py-1 space-y-0.5">
+                              <div className="flex justify-between items-center gap-1">
+                                <span className="text-[7px] text-[#aeaeb2] font-bold uppercase">Identif.</span>
+                                <span className="text-[8px] text-[#7ab800] font-black k-num">{formatCurrency(identificado)}</span>
+                              </div>
+                              <div className="flex justify-between items-center gap-1 border-t border-[#f0f0f0] pt-0.5">
+                                <span className="text-[7px] text-[#aeaeb2] font-bold uppercase">A categ.</span>
+                                {aCategorizar > 0 && onOpenExtrato ? (
+                                  <button
+                                    onClick={() => onOpenExtrato(last4)}
+                                    className="flex items-center gap-0.5 bg-orange-500 text-white font-black text-[7px] px-1.5 py-0.5 rounded-full active:opacity-70"
+                                  >
+                                    <span className="k-num">{formatCurrency(aCategorizar)}</span>
+                                    <i className="fas fa-chevron-right text-[6px]" />
+                                  </button>
+                                ) : (
+                                  <span className={`text-[8px] font-black k-num ${aCategorizar === 0 ? 'text-[#7ab800]' : 'text-orange-500'}`}>{formatCurrency(aCategorizar)}</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })() : (() => {
                           // Mesma regra do celular: UM número, e ele existe no
                           // Extrato. Ver o comentário longo no bloco do celular.
                           const last4 = item.description.match(/••(\d{4})/)?.[1];
@@ -1487,7 +1629,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                               </div>
                             </div>
                           );
-                        })()}
+                        })())}
                         {!isIncome && (
                           <button
                             onClick={() => onTogglePaid(item.id, mIdx)}
