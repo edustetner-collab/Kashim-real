@@ -37,6 +37,11 @@ Aliased: https://kashim.com.br
 
 Sem essa linha, **não está publicado** — não importa quantos commits foram feitos.
 
+## 🗣️ Idioma
+
+**Fale com o Eduardo sempre em português** — resposta final, perguntas e também
+os recados curtos de andamento entre uma ferramenta e outra.
+
 ## 🔒 OPEN FINANCE — VISÍVEL SÓ PARA O EDUARDO
 
 **Nenhuma superfície de Open Finance pode aparecer para cliente nenhum.**
@@ -57,7 +62,22 @@ só então abre para todos. Nunca pular etapa.
 - O servidor repete a checagem em `api/of-connect.ts`. Esconder o botão não
   impede ninguém de chamar a rota.
 - Ampliar a lista é por `VITE_OF_BETA_USER_IDS` / `OF_BETA_USER_IDS` (IDs do
-  Clerk). Vazias, vale só o e-mail em código.
+  Clerk). Vazias, vale só o e-mail em código. O e-mail (`OF_BETA_EMAILS`) mora em
+  **4 lugares**: `lib/ofAccess.ts`, `api/of-connect.ts`, `api/of-cron.ts`,
+  `api/of-status.ts`. Quem ainda vai se cadastrar só pode ser liberado por
+  e-mail — o ID do Clerk não existe antes do cadastro.
+- **UI do plano usa `planoEmModoOF`, não `hasOpenFinanceAccess(user)`.** O
+  segundo diz só quem está LOGADO; o primeiro exige também banco conectado no
+  household aberto (vai ao `BlockSection` como `modoOpenFinance`). Sem isso o
+  coach vê modo Open Finance no plano de cliente sem banco.
+- Mudança em tela compartilhada é **`modoOpenFinance ? novo : antigo`**, nunca
+  troca pura. Ao encerrar uma sessão de Open Finance, rodar
+  `git diff <commit-inicial>` e conferir hunk a hunk o que chega em cliente comum.
+
+Em 2026-09-10 aconteceu de novo, e pior: uma sessão inteira mexeu na linha do
+cartão, nos tooltips da Compilação, no botão central e no registro de push sem
+portão. Uma cliente da consultoria viu "CATEGORIZADA" na fatura. Foi desfeito no
+commit `2dc37a0`.
 
 Em 2026-08-11 o botão **Extrato** estava no menu do desktop e na barra do celular
 **sem portão nenhum**, visível para todos os clientes em produção, enquanto o
