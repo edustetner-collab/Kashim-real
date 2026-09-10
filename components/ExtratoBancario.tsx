@@ -5,6 +5,7 @@ import type { BankTransaction } from '../lib/openfinance/types';
 import { merchantKey } from '../lib/openfinance/categoryMap';
 import ConectarBanco from './ConectarBanco';
 import Assinaturas from './Assinaturas';
+import { pedirPermissaoPush } from '../lib/push';
 
 /** Conexão bancária como a rota /api/of-connect devolve. */
 interface BankConn {
@@ -1261,7 +1262,22 @@ export default function ExtratoBancario({
         {showConectar && (
           <ConectarBanco
             householdId={householdId}
-            onClose={() => { setShowConectar(false); loadBanks(); }}
+            onClose={() => {
+              setShowConectar(false);
+              loadBanks();
+              /**
+               * A hora de pedir push é ESTA, e não a primeira abertura do app.
+               *
+               * O cliente acabou de conectar o banco: "a gente te avisa quando
+               * seus gastos chegarem" deixou de ser promessa abstrata e virou a
+               * próxima coisa que ele espera. No iOS o "não" é definitivo e só
+               * volta pelas Configurações do aparelho — pedir antes de o aviso
+               * significar algo é o jeito mais rápido de perder o canal.
+               *
+               * Sem await: a permissão é do sistema e não deve segurar a tela.
+               */
+              pedirPermissaoPush().catch(() => {});
+            }}
           />
         )}
 

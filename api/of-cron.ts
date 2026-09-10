@@ -55,6 +55,56 @@ const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com'];
  * entrada é superfície de Open Finance tanto quanto um botão na tela. Cliente
  * fora da lista não recebe nada, mesmo que a conexão dele exista no banco.
  */
+/**
+ * Push para os aparelhos daquela casa (OneSignal).
+ *
+ * Roda ao lado do e-mail, não no lugar dele: o e-mail alcança quem não instalou
+ * o app e serve de registro; o push é o que traz a pessoa de volta na hora. O
+ * cliente pediu exatamente isto — saber que chegou transação nova sem precisar
+ * abrir o app para descobrir (Eduardo, 2026-09-10).
+ *
+ * Silencioso de propósito quando não há credencial ou aparelho: até a build com
+ * push chegar na App Store, `push_devices` fica vazia e isto não faz nada. O
+ * aviso continua saindo por e-mail.
+ */
+async function pushParaCasa(householdId: string, titulo: string, corpo: string): Promise<boolean> {
+  const appId = process.env.ONESIGNAL_APP_ID;
+  const apiKey = process.env.ONESIGNAL_REST_API_KEY;
+  if (!appId || !apiKey) return false;
+
+  const { data: devices } = await db
+    .from('push_devices')
+    .select('onesignal_id')
+    .eq('household_id', householdId);
+
+  const ids = (devices ?? []).map((d) => d.onesignal_id as string).filter(Boolean);
+  if (ids.length === 0) return false;
+
+  try {
+    const r = await fetch('https://api.onesignal.com/notifications', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Key ${apiKey}`,
+      },
+      body: JSON.stringify({
+        app_id: appId,
+        include_subscription_ids: ids,
+        headings: { en: titulo, pt: titulo },
+        contents: { en: corpo, pt: corpo },
+        // Abre direto no Extrato em vez da home: o aviso é sobre a fila, e
+        // fazer o cliente procurar onde clicar desperdiça o clique que ele já deu.
+        url: 'https://app.kashim.com.br/?abrir=extrato',
+        ios_sound: 'kashim.wav',
+        android_channel_id: undefined,
+      }),
+    });
+    return r.ok;
+  } catch {
+    return false; // push é acessório: falha aqui nunca derruba a sincronização
+  }
+}
+
 async function notifyTargetFor(householdId: string): Promise<{ email: string; firstName: string } | null> {
   if (!CLERK_SECRET_KEY) return null;
 
@@ -1405,7 +1455,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // só conta o que entrou agora, então uma transação já importada nunca gera
     // um segundo e-mail.
     let notified = 0;
+    let pushed = 0;
     for (const [householdId, count] of newByHousehold) {
+      const plural2 = count === 1 ? '' : 's';
+      // Push primeiro: é o que chega na hora. O e-mail sai logo abaixo de
+      // qualquer jeito — quem não instalou o app depende só dele.
+      if (await pushParaCasa(
+        householdId,
+        `${count} lançamento${plural2} novo${plural2}`,
+        count === 1
+          ? 'Chegou um gasto do seu banco. Toque para categorizar.'
+          : `Chegaram ${count} gastos do seu banco. Toque para categorizar.`,
+      )) pushed++;
+
       const target = await notifyTargetFor(householdId);
       if (!target) continue;
       const plural = count === 1 ? '' : 's';
@@ -1426,7 +1488,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       ok: true,
       mode: allowGenerate ? 'generate' : 'monitor',
-      done, processing, errors, skipped, upserted, promoted, notified,
+      done, processing, errors, skipped, upserted, promoted, notified, pushed,
       // Sem isto, um contador de erro nao dizia QUAL conexao, QUAL cartao, nem
       // por que — e diagnosticar virava adivinhacao contra a producao.
       detalhes,

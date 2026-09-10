@@ -35,6 +35,7 @@ import { computeAccess, AccessInfo } from './lib/access';
 import { buildRaioXHtml, openRaioXWindow, RaioXSnapshot } from './lib/raioX';
 import { Quote, getQuoteForUser, getMondayKey } from './lib/quotes';
 import { refreshNotifications, scheduleTestNotification } from './lib/notifications';
+import { initPush, pedirPermissaoPush } from './lib/push';
 import { getNotifPrefs } from './lib/notifPrefs';
 import TermsGate from './components/TermsGate';
 import { hasAcceptedTerms, recordTermsAcceptance } from './lib/terms';
@@ -586,6 +587,36 @@ const App: React.FC = () => {
     }, 2500);
     return () => clearTimeout(t);
   }, [householdId, coachViewHouseholdId, needsTermsAcceptance, items, months, user, notifPrefsVersion]);
+
+  /**
+   * Push de servidor: liga e guarda o endereço deste aparelho.
+   *
+   * Fica ao lado do agendamento das notificações locais porque são coisas
+   * diferentes com o mesmo destino. A local é agendada aqui e dispara sozinha; o
+   * push depende de o servidor saber para onde mandar, e é esse endereço
+   * (`onesignal_id`) que o `push-register` grava.
+   *
+   * Não pede permissão nenhuma aqui — só registra quem JÁ aceitou. O pedido tem
+   * hora certa e vive em `pedirPermissaoPush()`, chamado quando o cliente
+   * conecta o banco: no iOS a recusa é definitiva, e perguntar antes de o aviso
+   * significar algo é o jeito mais rápido de perder o canal para sempre.
+   */
+  useEffect(() => {
+    if (!householdId || coachViewHouseholdId || !user) return;
+    initPush(user.id, (onesignalId, platform) => {
+      (async () => {
+        try {
+          const token = await getToken({ template: 'supabase' });
+          if (!token) return;
+          await fetch('/api/push-register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ householdId, onesignalId, platform }),
+          });
+        } catch { /* push é acessório */ }
+      })();
+    });
+  }, [householdId, coachViewHouseholdId, user, getToken]);
 
   // Heartbeat: marca "mexeu no app agora" (households.last_active_at). Base do
   // futuro push de reengajamento. Não conta a visualização do coach como
