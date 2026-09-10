@@ -64,6 +64,8 @@ interface Props {
   onBancoRemovido?: (bankName: string) => void;
   /** Guarda o aparelho para push, quando o cliente aceita ao conectar o banco. */
   onRegistrarPush?: (tokenApns: string, platform: string) => void;
+  /** Lançar um gasto do zero — dinheiro vivo, cartão de terceiro, banco de fora. */
+  onLancarManual?: () => void;
   onClose: () => void;
 }
 
@@ -458,6 +460,7 @@ export default function ExtratoBancario({
   onRenomearPartial,
   onBancoRemovido,
   onRegistrarPush,
+  onLancarManual,
   onClose,
 }: Props) {
   /**
@@ -1473,6 +1476,27 @@ export default function ExtratoBancario({
                 <i className="fas fa-plus mr-2" />
                 {banks.length === 0 ? 'Conectar meu banco' : 'Conectar outro banco'}
               </button>
+
+              {/**
+               * O lançamento à mão continua tendo porta, e ela mora aqui.
+               *
+               * Com fila pendente o botão central da barra vira "Categorizar", e
+               * sem esta saída o cliente ficaria sem caminho para o que o Open
+               * Finance nunca vai cobrir: dinheiro vivo, cartão de terceiro (o
+               * caso da tia) e banco não conectado.
+               */}
+              {onLancarManual && (
+                <button
+                  onClick={onLancarManual}
+                  className="w-full mt-1 py-3 rounded-2xl text-[#6e6e73] font-bold text-[13px] active:bg-[#ebebed] transition-colors"
+                >
+                  <i className="fas fa-pen mr-2 text-[11px]" />
+                  Lançar um gasto à mão
+                  <span className="block text-[11px] font-normal text-[#aeaeb2] mt-0.5">
+                    Dinheiro, cartão de outra pessoa ou banco que não está aqui
+                  </span>
+                </button>
+              )}
 
               {!semNadaAindaParaCategorizar && (
                 <p className="text-[11px] text-[#8e8e93] leading-relaxed text-center px-4 pt-1 pb-4">

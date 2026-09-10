@@ -3315,10 +3315,14 @@ const App: React.FC = () => {
                             formatCurrency(s.totalCreditCard),
                             s.fixoNoCartao > 0 ? {
                               linhas: [
-                                { rotulo: 'Sua fatura completa ao final desse mês:', valor: formatCurrency(s.totalCreditCard) },
-                                { rotulo: 'Contas fixas dentro da fatura:', valor: formatCurrency(s.fixoNoCartao) },
+                                { rotulo: 'Fatura que vence neste mês:', valor: formatCurrency(s.totalCreditCard) },
+                                { rotulo: 'Contas suas dentro dela:', valor: formatCurrency(s.fixoNoCartao) },
                               ],
-                              corpo: `Além do valor que já existe na sua fatura atual, essa projeção já carrega as contas fixas que vão entrar, pois você optou em gastar ${formatCurrency(s.fixoNoCartao)} de contas fixas no cartão. Sendo assim, ele já é o valor que ela ficará ao final do período, após você ter gasto o valor que previu gastar.`,
+                              // Sem "você optou": no Open Finance o cliente não
+                              // escolhe forma de pagamento, o banco informa. O
+                              // texto antigo falava de uma decisão que ele nunca
+                              // tomou (Eduardo, 2026-09-10).
+                              corpo: `É o que sai da sua conta neste mês para pagar o cartão. Desse total, ${formatCurrency(s.fixoNoCartao)} são contas suas — mercado, gasolina, esse tipo de coisa — que caem no cartão. Elas aparecem inteiras na linha de baixo e são descontadas ali, para o mesmo dinheiro não contar duas vezes.`,
                             } : undefined
                           )}
                         </td>
@@ -3335,10 +3339,10 @@ const App: React.FC = () => {
                             formatCurrency(s.totalFixed),
                             s.fixoNoCartao > 0 ? {
                               linhas: [
-                                { rotulo: 'Sua conta fixa completa:', valor: formatCurrency(s.totalFixed) },
-                                { rotulo: 'No cartão:', valor: formatCurrency(s.fixoNoCartao) },
+                                { rotulo: 'Suas contas fixas do mês:', valor: formatCurrency(s.totalFixed) },
+                                { rotulo: 'A parte que o cartão paga:', valor: formatCurrency(s.fixoNoCartao) },
                               ],
-                              corpo: 'Esse é o total das suas contas fixas no mês, independente de como você paga cada uma. Ele é fundamental para você entender o peso que suas contas fixas têm sobre seu salário, e isso é mostrado no seu diagnóstico financeiro. A parte que vai no cartão é abatida logo abaixo, para não ser contada duas vezes.',
+                              corpo: 'Todas as suas contas fixas do mês, inteiras. É este número que mostra o peso delas sobre o seu salário, e é ele que o seu diagnóstico usa. A parte que o cartão paga é descontada logo abaixo — ela já está somada dentro da fatura.',
                             } : undefined
                           )}
                         </td>
@@ -3362,9 +3366,9 @@ const App: React.FC = () => {
                                 // na lateral repetia o mesmo valor duas vezes na
                                 // mesma linha.
                                 linhas: [
-                                  { rotulo: 'Por que subtraímos esse valor de', valor: `${formatCurrency(s.jaNaFatura)}?` },
+                                  { rotulo: 'Contas suas que o cartão paga:', valor: formatCurrency(s.jaNaFatura) },
                                 ],
-                                corpo: 'Essa subtração acontece para a conta bater corretamente, pois esse valor está em dois lugares, mas só pode somar uma vez. 1º Está na fatura, porque você decidiu passar parte das contas fixas no cartão. 2º Também está nas contas fixas, para que você saiba o total de contas fixas que você tem, independente da forma de pagamento.',
+                                corpo: 'Esse dinheiro aparece em dois lugares desta tela, mas só pode sair da sua conta uma vez. Ele está dentro da fatura, lá em cima, porque é o cartão que paga. E está nas contas fixas, porque elas precisam aparecer inteiras para o seu diagnóstico. Descontamos aqui para a conta fechar certo.',
                               } : undefined,
                             'border-sky-500/40'
                           )}
@@ -3487,20 +3491,57 @@ const App: React.FC = () => {
               <span className="text-[9px] font-black uppercase tracking-wide">Gastos</span>
             </button>
 
-            {/* Central launch button */}
-            <button
-              data-tour="tab-launch"
-              onClick={() => {
+            {/**
+             * Botão central: mostra a próxima ação que VALE A PENA.
+             *
+             * Com fila pendente, o trabalho que gera valor é categorizar o que o
+             * banco já trouxe — não lançar de novo à mão. O número no botão faz
+             * a fila deixar de ser invisível: hoje ela só aparece no pop-up de
+             * abertura e some (Eduardo, 2026-09-10).
+             *
+             * Fila zerada, volta a ser "Lançar". E o lançamento manual NUNCA
+             * fica sem caminho, porque ele continua sendo necessário para o que
+             * o Open Finance não cobre: dinheiro vivo, cartão de terceiro
+             * (o caso da tia) e banco não conectado. Com fila pendente ele vive
+             * no toque longo e dentro do próprio Extrato.
+             */}
+            {(() => {
+              const pendentes = hasOpenFinanceAccess(user) ? categorizeCount : 0;
+              const abrirLancamento = () => {
                 const vm = months[mobileMonthIdx];
                 const isNow = vm.index === currentActualMonth && vm.year === currentActualYear;
                 setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1, isCredit: false, purchaseDate: { day: isNow ? new Date().getDate() : 1, month: vm.index, year: vm.year } });
-              }}
-              className="k-halo min-w-[72px] flex flex-col items-center justify-center py-1.5 gap-0.5 mx-1 rounded-xl active:scale-95 transition-all k-btn-lime"
-              style={{background:'linear-gradient(180deg,#c5f23a 0%,#a2d800 50%,#8cc400 100%)',boxShadow:'0 4px 14px rgba(130,192,0,0.4),inset 0 1px 0 rgba(255,255,255,0.45)',borderRadius:'14px'}}
-            >
-              <i className="fas fa-plus text-[#182200] text-lg font-black"></i>
-              <span className="text-[9px] font-black uppercase tracking-wide text-[#182200]">Lançar</span>
-            </button>
+              };
+              const abrirExtrato = async () => {
+                const t = await getToken({ template: 'supabase' });
+                if (t) { setOfAuthToken(t); setShowExtrato(true); }
+              };
+              return (
+                <button
+                  data-tour="tab-launch"
+                  onClick={() => { if (pendentes > 0) { abrirExtrato(); } else { abrirLancamento(); } }}
+                  onContextMenu={(e) => { e.preventDefault(); abrirLancamento(); }}
+                  aria-label={pendentes > 0 ? `Categorizar ${pendentes} transações` : 'Lançar gasto'}
+                  className="k-halo min-w-[72px] flex flex-col items-center justify-center py-1.5 gap-0.5 mx-1 rounded-xl active:scale-95 transition-all k-btn-lime relative"
+                  style={{background:'linear-gradient(180deg,#c5f23a 0%,#a2d800 50%,#8cc400 100%)',boxShadow:'0 4px 14px rgba(130,192,0,0.4),inset 0 1px 0 rgba(255,255,255,0.45)',borderRadius:'14px'}}
+                >
+                  {pendentes > 0 ? (
+                    <>
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1.5 rounded-full bg-[#ff3b30] text-white text-[11px] font-black flex items-center justify-center shadow-md">
+                        {pendentes > 99 ? '99+' : pendentes}
+                      </span>
+                      <i className="fas fa-list-check text-[#182200] text-lg font-black"></i>
+                      <span className="text-[9px] font-black uppercase tracking-wide text-[#182200]">Categorizar</span>
+                    </>
+                  ) : (
+                    <>
+                      <i className="fas fa-plus text-[#182200] text-lg font-black"></i>
+                      <span className="text-[9px] font-black uppercase tracking-wide text-[#182200]">Lançar</span>
+                    </>
+                  )}
+                </button>
+              );
+            })()}
 
             {hasOpenFinanceAccess(user) && (
             <button
@@ -3589,6 +3630,12 @@ const App: React.FC = () => {
           householdId={householdId}
           authToken={ofAuthToken}
           onRegistrarPush={registrarAparelho}
+          onLancarManual={() => {
+            const vm = months[mobileMonthIdx];
+            const isNow = vm.index === currentActualMonth && vm.year === currentActualYear;
+            setShowExtrato(false);
+            setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1, isCredit: false, purchaseDate: { day: isNow ? new Date().getDate() : 1, month: vm.index, year: vm.year } });
+          }}
           items={items}
           currentYear={currentActualYear}
           currentMonth={currentActualMonth}
