@@ -273,6 +273,19 @@ const App: React.FC = () => {
   const [categorizeCount, setCategorizeCount] = useState(0);
   const [showCategorizePopup, setShowCategorizePopup] = useState(false);
   const categorizeCheckedRef = useRef(false);
+  /**
+   * As transações pendentes CRUAS, não só a contagem.
+   *
+   * É delas que sai o "a categorizar" de cada fatura. O número tem de ser o
+   * somatório do que está de fato na fila — se a tela diz R$ 105, tem de haver
+   * um lançamento de R$ 105 para o cliente tocar (Eduardo, 2026-09-10).
+   */
+  const [ofPendentes, setOfPendentes] = useState<Array<{
+    connectionId: string | null; cardLast4: string | null;
+    billDueDate: string | null; transactionDate: string; amount: number;
+  }>>([]);
+  /** Cartões de cada conexão — resolve número virtual no cartão real. */
+  const [ofCartoesPorConexao, setOfCartoesPorConexao] = useState<Record<string, string[]>>({});
   /** Pop-up do diagnóstico no CELULAR (na web fica inline). */
   const [showDiagnosis, setShowDiagnosis] = useState(false);
   /** Transações do Extrato já lançadas nesta sessão — sai da lista sem recarregar. */
@@ -1087,6 +1100,7 @@ const App: React.FC = () => {
         if (!res.ok) return;
         const d = await res.json() as {
           connections?: Array<{
+            id: string;
             bankName: string;
             cardLast4: string | null;
             cards?: Array<{ last4: string }>;
@@ -1095,6 +1109,11 @@ const App: React.FC = () => {
         };
         if (cancelado) return;
         setTemBancoConectado((d.connections ?? []).length > 0);
+        // Compra em cartão virtual chega com um número que não é de cartão
+        // nenhum do cliente; este mapa devolve ela ao cartão real da conexão.
+        setOfCartoesPorConexao(Object.fromEntries(
+          (d.connections ?? []).map((c) => [c.id, (c.cards ?? []).map((x) => x.last4)]),
+        ));
 
         const MES = /^\d{4}-\d{2}$/;
 
@@ -1203,10 +1222,18 @@ const App: React.FC = () => {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!r.ok || cancelado) return;
-        const json = await r.json() as { transactions?: unknown[] };
-        const n = json.transactions?.length ?? 0;
-        if (n > 0 && !cancelado) {
-          setCategorizeCount(n);
+        const json = await r.json() as { transactions?: Array<Record<string, unknown>> };
+        const lista = json.transactions ?? [];
+        if (cancelado) return;
+        setOfPendentes(lista.map((t) => ({
+          connectionId: (t.connectionId as string) ?? null,
+          cardLast4: (t.cardLast4 as string) ?? null,
+          billDueDate: (t.billDueDate as string) ?? null,
+          transactionDate: String(t.transactionDate ?? ''),
+          amount: Number(t.amount ?? 0),
+        })));
+        if (lista.length > 0) {
+          setCategorizeCount(lista.length);
           setShowCategorizePopup(true);
         }
       } catch { /* aviso é acessório: falha nunca trava o app */ }
@@ -1677,10 +1704,17 @@ const App: React.FC = () => {
       const params = new URLSearchParams({ householdId, status: 'pending', limit: '200' });
       const r = await fetch(`/api/of-transactions?${params}`, { headers: { Authorization: `Bearer ${token}` } });
       if (!r.ok) return;
-      const json = await r.json() as { transactions?: unknown[] };
-      const n = json.transactions?.length ?? 0;
-      setCategorizeCount(n);
-      if (n === 0) setShowCategorizePopup(false);
+      const json = await r.json() as { transactions?: Array<Record<string, unknown>> };
+      const lista = json.transactions ?? [];
+      setCategorizeCount(lista.length);
+      setOfPendentes(lista.map((t) => ({
+        connectionId: (t.connectionId as string) ?? null,
+        cardLast4: (t.cardLast4 as string) ?? null,
+        billDueDate: (t.billDueDate as string) ?? null,
+        transactionDate: String(t.transactionDate ?? ''),
+        amount: Number(t.amount ?? 0),
+      })));
+      if (lista.length === 0) setShowCategorizePopup(false);
     } catch { /* aviso é acessório */ }
   }, [user, householdId, getToken]);
 
@@ -2103,6 +2137,52 @@ const App: React.FC = () => {
     });
     return result;
   }, [items, months]);
+
+  /**
+   * O que falta categorizar em cada fatura — vindo da FILA, não de subtração.
+   *
+   * Antes o número era um resíduo (fatura − rastreado − categorizado) e por
+   * isso não correspondia a nada: sobrava o encargo que o banco cobra e a
+   * Technospeed não entrega como lançamento, então novembro pedia R$ 105 com a
+   * fila vazia; e rastreado e categorizado contavam o MESMO dinheiro por dois
+   * caminhos (item vinculado ao cartão + parcela com o cartão carimbado),
+   * fazendo o "identificado" passar da própria fatura — R$ 6.335 numa fatura de
+   * R$ 4.092 (Eduardo, 2026-09-10).
+   *
+   * A regra agora é a que o Eduardo ditou: se a tela diz "a categorizar R$ X",
+   * existem transações somando X esperando no Extrato, e tocar no número leva
+   * até elas. Zero na fila = fatura categorizada, mesmo que a fatura tenha
+   * dentro dela um encargo que nunca vira lançamento.
+   *
+   * A fatura de uma compra no crédito é a do mês SEGUINTE ao da compra, salvo
+   * quando o banco carimba o vencimento — aí vale o que ele disse.
+   */
+  const aCategorizarPorCartaoMes = useMemo((): Record<string, Record<number, number>> => {
+    const result: Record<string, Record<number, number>> = {};
+    for (const t of ofPendentes) {
+      const daConexao = ofCartoesPorConexao[t.connectionId ?? ''] ?? [];
+      const cartao = t.cardLast4 && daConexao.includes(t.cardLast4)
+        ? t.cardLast4
+        : daConexao[0] ?? t.cardLast4;
+      if (!cartao) continue;
+
+      let ano: number, mes: number;
+      if (t.billDueDate) {
+        const [y, m] = t.billDueDate.split('-').map(Number);
+        ano = y; mes = m - 1;
+      } else {
+        const [y, m] = t.transactionDate.split('-').map(Number);
+        const d = new Date(Date.UTC(y, m, 1)); // mês seguinte ao da compra
+        ano = d.getUTCFullYear(); mes = d.getUTCMonth();
+      }
+
+      const mIdx = months.findIndex((x) => x.year === ano && x.index === mes);
+      if (mIdx < 0) continue;
+      if (!result[cartao]) result[cartao] = {};
+      result[cartao][mIdx] = Math.round(((result[cartao][mIdx] ?? 0) + t.amount) * 100) / 100;
+    }
+    return result;
+  }, [ofPendentes, ofCartoesPorConexao, months]);
 
   const trackedByCardAllMonths = useMemo((): Record<string, Record<number, number>> => {
     const result: Record<string, Record<number, number>> = {};
@@ -3040,6 +3120,7 @@ const App: React.FC = () => {
                   trackedByCardAllMonths={block.type === CategoryType.CREDIT_CARD ? trackedByCardAllMonths : undefined}
                   categorizedByCardLast4={block.type === CategoryType.CREDIT_CARD ? categorizedByCardLast4 : undefined}
                   categorizedByCardAllMonths={block.type === CategoryType.CREDIT_CARD ? categorizedByCardAllMonths : undefined}
+                  aCategorizarPorCartaoMes={block.type === CategoryType.CREDIT_CARD ? aCategorizarPorCartaoMes : undefined}
                   onRequestExpenseSheet={block.type === CategoryType.VARIABLE_EXPENSE
                     ? () => {
                         const vm = months[mobileMonthIdx];

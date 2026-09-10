@@ -32,6 +32,15 @@ interface BlockSectionProps {
   categorizedByCardLast4?: Record<string, number>;
   /** Mesmo dado por mes (indice da coluna) - a tabela da web mostra 12 meses. */
   categorizedByCardAllMonths?: Record<string, Record<number, number>>;
+  /**
+   * O que falta categorizar em cada fatura, por cardLast4 e coluna de mês.
+   *
+   * Vem da FILA de verdade, não de subtração: se aqui diz R$ 105, existem
+   * transações somando R$ 105 esperando no Extrato. É o único número que a
+   * linha do cartão usa para dizer o que falta — o antigo resíduo pedia
+   * categorização de encargo que nunca vira lançamento.
+   */
+  aCategorizarPorCartaoMes?: Record<string, Record<number, number>>;
   /** Coach/assistente: pula os recados educativos (modal de instrução ao
       adicionar e aviso de parcelas) — eles são para o cliente. */
   isAdmin?: boolean;
@@ -52,7 +61,7 @@ interface BlockSectionProps {
 const BlockSection: React.FC<BlockSectionProps> = ({
   title, subtitle, category, items, allCards = [], months, totalIncome, mobileMonthIdx = 0,
   onAddItem, onUpdateValue, onTogglePaid, onRemoveItem, onUpdateDescription, onReplicateValue, onLinkCard,
-  onUpdateCardConfig, onMoveItem, trackedByCardId, trackedByCardAllMonths, categorizedByCardLast4, categorizedByCardAllMonths, onRequestExpenseSheet, onAddLeisureItem,
+  onUpdateCardConfig, onMoveItem, trackedByCardId, trackedByCardAllMonths, categorizedByCardLast4, categorizedByCardAllMonths, aCategorizarPorCartaoMes, onRequestExpenseSheet, onAddLeisureItem,
   isAdmin = false, onOpenSpending, onOpenExtrato, onNavigateToGastos, hasOpenFinance = false,
 }) => {
   const [showInstructionModal, setShowInstructionModal] = useState(false);
@@ -808,89 +817,55 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                 </div>
               )}
               {(() => {
-                const tracked = trackedByCardId?.[item.id] ?? 0;
+                /**
+                 * UM número, e ele existe no Extrato.
+                 *
+                 * A caixa mostrava três valores para descrever a mesma coisa —
+                 * "Rastreado", "Extrato (este mês)" e "A categorizar" — e os
+                 * dois primeiros contavam o MESMO dinheiro por caminhos
+                 * diferentes (item vinculado ao cartão e parcela com o cartão
+                 * carimbado). Somados, passavam da própria fatura: R$ 6.335
+                 * "identificados" numa fatura de R$ 4.092.
+                 *
+                 * Agora a linha diz só o que falta, e o que falta é a soma das
+                 * transações que estão de fato na fila. Tocar no número abre o
+                 * Extrato naquele cartão e elas estão lá (Eduardo, 2026-09-10).
+                 */
                 const fatura = item.values[mobileMonthIdx] || 0;
-                const prevMonthName = mobileMonthIdx > 0 ? months[mobileMonthIdx - 1]?.monthName : null;
                 const last4 = item.description.match(/••(\d{4})/)?.[1];
+                const aCategorizar = aCategorizarPorCartaoMes?.[last4 ?? '']?.[mobileMonthIdx] ?? 0;
 
-                const alreadyCategorized = categorizedByCardLast4?.[last4 ?? ''] ?? 0;
+                if (!fatura && !aCategorizar) return null;
 
                 // Primeiro mês do plano: a fatura é herança, não decisão. O
-                // aviso vive no topo da seção, uma vez só — repetido por linha
-                // virava ruído (Eduardo, 2026-09-10).
-                if (mobileMonthIdx === 0 && fatura > 0 && alreadyCategorized <= 0) return null;
+                // aviso vive no topo da seção, uma vez só.
+                if (mobileMonthIdx === 0 && aCategorizar <= 0) return null;
 
-                // Sem histórico rastreado: mostra só o CTA do Extrato se disponível
-                if (!tracked || !prevMonthName) {
-                  const remaining = Math.max(0, fatura - alreadyCategorized);
-                  if (!onOpenExtrato) return null;
-                  if (remaining <= 0 && fatura > 0) {
-                    return (
-                      <div className="mt-2 ml-7 px-2.5 py-2 bg-[#f0fad0] border border-[rgba(122,184,0,0.2)] rounded-xl text-[10px]">
-                        <div className="flex items-center gap-1.5 text-[#7ab800]">
-                          <i className="fas fa-check-circle text-xs" />
-                          <span className="font-black text-[9px] uppercase tracking-wider">Fatura categorizada</span>
-                        </div>
-                      </div>
-                    );
-                  }
-                  if (!fatura) return null;
-                  return (
-                    <div className="mt-2 ml-7 px-2.5 py-2 bg-orange-50 border border-orange-200 rounded-xl text-[10px]">
-                      <div className="flex justify-between items-center">
-                        <span className="text-orange-600 font-black uppercase text-[9px] tracking-wider">A categorizar</span>
-                        <button
-                          onClick={() => onOpenExtrato(last4)}
-                          className="flex items-center gap-1 bg-orange-500 text-white font-black text-[9px] px-2 py-0.5 rounded-full active:opacity-70"
-                        >
-                          <span className="k-num">{formatCurrency(remaining > 0 ? remaining : fatura)}</span>
-                          <i className="fas fa-chevron-right text-[7px]" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                }
-
-                if (!fatura) {
+                if (aCategorizar <= 0) {
                   return (
                     <div className="mt-2 ml-7 px-2.5 py-2 bg-[#f0fad0] border border-[rgba(122,184,0,0.2)] rounded-xl text-[10px]">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-[#6e6e73] leading-relaxed flex-1">
-                          <span className="font-black text-[#7ab800] k-num">{formatCurrency(tracked)}</span> rastreado de {prevMonthName} já vai nesta fatura. Lance o valor total acima.
-                        </p>
-                        <button onClick={() => setTrackedInfoCardId(item.id)} className="text-[#7ab800] shrink-0 mt-0.5">
-                          <i className="fas fa-question-circle text-sm"></i>
-                        </button>
+                      <div className="flex items-center gap-1.5 text-[#7ab800]">
+                        <i className="fas fa-check-circle text-xs" />
+                        <span className="font-black text-[9px] uppercase tracking-wider">Fatura categorizada</span>
                       </div>
                     </div>
                   );
                 }
 
-                const naoIdentificado = Math.max(0, fatura - tracked - alreadyCategorized);
                 return (
-                  <div className="mt-2 ml-7 px-2.5 py-2 bg-[#f0fad0] border border-[rgba(122,184,0,0.2)] rounded-xl space-y-1 text-[10px]">
+                  <div className="mt-2 ml-7 px-2.5 py-2 bg-orange-50 border border-orange-200 rounded-xl text-[10px]">
                     <div className="flex justify-between items-center">
-                      <span className="text-[#6e6e73]">Rastreado ({prevMonthName})</span>
-                      <span className="text-[#7ab800] font-black k-num">− {formatCurrency(tracked)}</span>
-                    </div>
-                    {alreadyCategorized > 0 && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-[#6e6e73]">Extrato (este mês)</span>
-                        <span className="text-[#7ab800] font-black k-num">− {formatCurrency(alreadyCategorized)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between items-center border-t border-[rgba(122,184,0,0.15)] pt-1">
-                      <span className="text-[#aeaeb2] font-black uppercase text-[9px] tracking-wider">A categorizar</span>
-                      {naoIdentificado > 0 && onOpenExtrato ? (
+                      <span className="text-orange-600 font-black uppercase text-[9px] tracking-wider">A categorizar</span>
+                      {onOpenExtrato ? (
                         <button
                           onClick={() => onOpenExtrato(last4)}
                           className="flex items-center gap-1 bg-orange-500 text-white font-black text-[9px] px-2 py-0.5 rounded-full active:opacity-70"
                         >
-                          <span className="k-num">{formatCurrency(naoIdentificado)}</span>
+                          <span className="k-num">{formatCurrency(aCategorizar)}</span>
                           <i className="fas fa-chevron-right text-[7px]" />
                         </button>
                       ) : (
-                        <span className={`font-black k-num ${naoIdentificado === 0 ? 'text-[#7ab800]' : 'text-orange-500'}`}>{formatCurrency(naoIdentificado)}</span>
+                        <span className="font-black k-num text-orange-500">{formatCurrency(aCategorizar)}</span>
                       )}
                     </div>
                   </div>
@@ -1465,36 +1440,25 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           return <div className="text-[8px] text-zinc-400 italic mt-0.5">{faturaLabel}</div>;
                         })()}
                         {category === CategoryType.CREDIT_CARD && mIdx > 0 && (() => {
-                          const tracked = trackedByCardAllMonths?.[item.id]?.[mIdx] ?? 0;
+                          // Mesma regra do celular: UM número, e ele existe no
+                          // Extrato. Ver o comentário longo no bloco do celular.
                           const last4 = item.description.match(/••(\d{4})/)?.[1];
-                          // Cartao vindo do Open Finance nao tem rastreamento antigo: o que
-                          // ele tem e o categorizado do extrato. Sem somar os dois, o Bradesco
-                          // caia no `return null` e a web nao mostrava 'a categorizar' nenhum,
-                          // enquanto o aplicativo mostrava certo.
-                          const fromExtrato = categorizedByCardAllMonths?.[last4 ?? '']?.[mIdx] ?? 0;
-                          const identificado = tracked + fromExtrato;
-                          if (!identificado) return null;
-                          const prevMonthName = months[mIdx - 1]?.monthName;
-                          if (!prevMonthName) return null;
-                          if (!val) {
+                          const aCategorizar = aCategorizarPorCartaoMes?.[last4 ?? '']?.[mIdx] ?? 0;
+                          if (!val && !aCategorizar) return null;
+
+                          if (aCategorizar <= 0) {
                             return (
-                              <div className="mt-1 rounded-lg border border-dashed border-[rgba(122,184,0,0.5)] bg-[#f0fad0]/70 px-1.5 py-1 text-center">
-                                <div className="text-[7px] text-[#aeaeb2] font-bold uppercase tracking-wide">≈ estimado</div>
-                                <div className="text-[9px] text-[#7ab800] font-black k-num">{formatCurrency(identificado)}</div>
-                                <div className="text-[7px] text-[#aeaeb2]">de {prevMonthName}</div>
+                              <div className="mt-1 flex items-center justify-center gap-1 rounded-lg border border-[rgba(122,184,0,0.3)] bg-[#f0fad0]/70 px-1.5 py-1">
+                                <i className="fas fa-check-circle text-[#7ab800] text-[8px]" />
+                                <span className="text-[7px] text-[#7ab800] font-black uppercase tracking-wide">Categorizada</span>
                               </div>
                             );
                           }
-                          const aCategorizar = Math.max(0, val - identificado);
                           return (
-                            <div className="mt-1 border border-[#e8e8ed] rounded-lg px-1.5 py-1 space-y-0.5">
+                            <div className="mt-1 border border-orange-200 bg-orange-50 rounded-lg px-1.5 py-1">
                               <div className="flex justify-between items-center gap-1">
-                                <span className="text-[7px] text-[#aeaeb2] font-bold uppercase">Identif.</span>
-                                <span className="text-[8px] text-[#7ab800] font-black k-num">{formatCurrency(identificado)}</span>
-                              </div>
-                              <div className="flex justify-between items-center gap-1 border-t border-[#f0f0f0] pt-0.5">
-                                <span className="text-[7px] text-[#aeaeb2] font-bold uppercase">A categ.</span>
-                                {aCategorizar > 0 && onOpenExtrato ? (
+                                <span className="text-[7px] text-orange-600 font-bold uppercase">A categ.</span>
+                                {onOpenExtrato ? (
                                   <button
                                     onClick={() => onOpenExtrato(last4)}
                                     className="flex items-center gap-0.5 bg-orange-500 text-white font-black text-[7px] px-1.5 py-0.5 rounded-full active:opacity-70"
@@ -1503,7 +1467,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                                     <i className="fas fa-chevron-right text-[6px]" />
                                   </button>
                                 ) : (
-                                  <span className={`text-[8px] font-black k-num ${aCategorizar === 0 ? 'text-[#7ab800]' : 'text-orange-500'}`}>{formatCurrency(aCategorizar)}</span>
+                                  <span className="text-[8px] font-black k-num text-orange-500">{formatCurrency(aCategorizar)}</span>
                                 )}
                               </div>
                             </div>
