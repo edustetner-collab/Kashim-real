@@ -1070,6 +1070,9 @@ const App: React.FC = () => {
    * `Math.max(0, fatura - rastreado)` — o que foi categorizado nas despesas e
    * descontado da fatura automaticamente.
    */
+  /** Cartões cuja linha já foi criada nesta sessão — ver o comentário no uso. */
+  const cartoesCriadosRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     if (!hasOpenFinanceAccess(user) || !householdId || items.length === 0 || months.length === 0) return;
     let cancelado = false;
@@ -1140,6 +1143,22 @@ const App: React.FC = () => {
             );
 
             if (!alvo) {
+              /**
+               * Uma linha por cartão, mesmo se o efeito rodar duas vezes.
+               *
+               * `items` aqui é a cópia do render; entre criar a linha e ela
+               * aparecer em `items` existe uma janela, e o efeito rodando de
+               * novo nessa janela não encontra o que acabou de criar. Em
+               * 2026-09-10 o Eduardo terminou com TRÊS linhas "Itaú ••7212",
+               * duas delas criadas com 0,4 milissegundo de diferença.
+               *
+               * O ref sobrevive ao render e fecha a janela. Nome de cartão que
+               * o cliente apagar de propósito não volta nesta sessão — volta no
+               * próximo carregamento, que é o comportamento esperado.
+               */
+              const chaveCartao = `${conn.bankName}|${last4 ?? ''}`;
+              if (cartoesCriadosRef.current.has(chaveCartao)) continue;
+              cartoesCriadosRef.current.add(chaveCartao);
               // Cartao identificado e sem linha no plano: cria ja preenchida.
               handleAddItem(CategoryType.CREDIT_CARD, {
                 description: apelido,
