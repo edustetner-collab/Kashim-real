@@ -77,7 +77,11 @@ async function pushParaCasa(householdId: string, titulo: string, corpo: string):
     .select('onesignal_id')
     .eq('household_id', householdId);
 
-  const ids = (devices ?? []).map((d) => d.onesignal_id as string).filter(Boolean);
+  // `apns:...` é o registro de reserva que o push-register grava quando o
+  // OneSignal não devolveu o id da inscrição. Não serve para disparar.
+  const ids = (devices ?? [])
+    .map((d) => d.onesignal_id as string)
+    .filter((x) => x && !x.startsWith('apns:'));
   if (ids.length === 0) return false;
 
   try {

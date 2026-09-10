@@ -1,5 +1,5 @@
-// Push de servidor (OneSignal). Complementa — não substitui — as notificações
-// LOCAIS de lib/notifications.ts.
+// Push de servidor. Complementa — não substitui — as notificações LOCAIS de
+// lib/notifications.ts.
 //
 // A diferença que motivou isto: notificação local só sabe o que o app sabia na
 // última vez que foi aberto. Quando o cron importa transações às 11h e o app
@@ -7,73 +7,50 @@
 // lançamentos novos" nasce no servidor, então só push entrega (Eduardo,
 // 2026-09-10).
 //
-// Só roda no app nativo. Na web o objeto do plugin não existe e todas as
-// funções aqui saem calladas.
+// POR QUE O PLUGIN OFICIAL E NÃO O SDK DO ONESIGNAL: o projeto iOS usa Swift
+// Package Manager (ios/App/CapApp-SPM, sem Podfile) e o plugin do OneSignal é
+// Cordova, sem Package.swift — `npx cap sync ios` morre com erro fatal e a
+// build no Codemagic nem começaria. O caminho é o `@capacitor/push-notifications`
+// pegar o token da APNs e o SERVIDOR registrar esse token no OneSignal. O painel
+// e a segmentação continuam valendo; o que muda é quem faz a ponte.
 
+import { PushNotifications } from '@capacitor/push-notifications';
 import { isNativeApp } from './onboarding/platform';
 
-const APP_ID = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_ONESIGNAL_APP_ID ?? '';
-
-/** O plugin entra via Cordova e vive no window. Tipado pelo que usamos. */
-interface OneSignalGlobal {
-  initialize: (appId: string) => void;
-  Notifications: {
-    requestPermission: (fallbackToSettings: boolean) => Promise<boolean>;
-    addEventListener: (evt: string, cb: (e: unknown) => void) => void;
-  };
-  User: {
-    pushSubscription: {
-      id: string | null;
-      addEventListener: (evt: string, cb: (e: unknown) => void) => void;
-    };
-    addAlias?: (label: string, id: string) => void;
-  };
-  login: (externalId: string) => void;
-  logout: () => void;
-}
-
-function sdk(): OneSignalGlobal | null {
-  const w = window as unknown as { plugins?: { OneSignal?: OneSignalGlobal }; OneSignal?: OneSignalGlobal };
-  return w.plugins?.OneSignal ?? w.OneSignal ?? null;
-}
-
-let iniciado = false;
+let ligado = false;
 
 /**
- * Liga o push e manda o endereço do aparelho para o servidor.
+ * Liga o push e entrega o token da APNs a quem souber guardá-lo.
  *
- * `registrar` é chamado com o id do OneSignal assim que ele existir. Ele pode
- * demorar: a Apple devolve o token de forma assíncrona, e no primeiro uso só
- * depois de a pessoa aceitar. Por isso ouvimos a mudança em vez de ler uma vez.
+ * `registrar` é chamado quando o token chega — e ele chega de forma assíncrona:
+ * a Apple responde depois, e no primeiro uso só depois de a pessoa aceitar. Por
+ * isso ouvimos o evento em vez de tentar ler uma vez.
+ *
+ * NÃO pede permissão aqui. Só reativa quem já aceitou antes; o pedido tem hora
+ * certa e vive em `pedirPermissaoPush()`.
  */
 export async function initPush(
-  clerkUserId: string,
-  registrar: (onesignalId: string, platform: string) => void,
+  registrar: (token: string, platform: string) => void,
 ): Promise<void> {
-  if (!isNativeApp || !APP_ID || iniciado) return;
-  const os = sdk();
-  if (!os) return;
-  iniciado = true;
+  if (!isNativeApp || ligado) return;
+  ligado = true;
 
   try {
-    os.initialize(APP_ID);
-
-    // Amarra o aparelho ao usuário do Clerk. Sem isto, trocar de conta no mesmo
-    // celular faria a segunda pessoa receber os avisos da primeira.
-    os.login(clerkUserId);
+    const perm = await PushNotifications.checkPermissions();
+    if (perm.receive !== 'granted') return; // ainda não aceitou: nada a fazer
 
     const plataforma = /iPad|iPhone|iPod/.test(navigator.userAgent) ? 'ios' : 'android';
 
-    const enviar = () => {
-      const id = os.User.pushSubscription.id;
-      if (id) registrar(id, plataforma);
-    };
+    await PushNotifications.addListener('registration', (t) => {
+      if (t?.value) registrar(t.value, plataforma);
+    });
+    await PushNotifications.addListener('registrationError', () => {
+      // Sem token não há push. O e-mail continua cobrindo o aviso.
+    });
 
-    os.User.pushSubscription.addEventListener('change', enviar);
-    enviar(); // pode já existir, se a pessoa aceitou numa sessão anterior
+    await PushNotifications.register();
   } catch {
-    // Push é acessório: nada aqui pode impedir o app de abrir.
-    iniciado = false;
+    ligado = false; // push é acessório: nada aqui pode impedir o app de abrir
   }
 }
 
@@ -82,22 +59,26 @@ export async function initPush(
  *
  * Pedir na primeira abertura é o jeito mais rápido de tomar um "não" definitivo
  * — no iOS a recusa é permanente e só volta pelas Configurações do aparelho. O
- * lugar certo é depois de o cliente ver valor: ao conectar o banco, quando o
- * aviso de "chegaram lançamentos" passa a significar algo para ele.
+ * lugar certo é depois de o cliente ver valor: ao conectar o banco, quando
+ * "a gente te avisa quando seus gastos chegarem" passa a significar algo.
  */
-export async function pedirPermissaoPush(): Promise<boolean> {
-  if (!isNativeApp || !APP_ID) return false;
-  const os = sdk();
-  if (!os) return false;
+export async function pedirPermissaoPush(
+  registrar?: (token: string, platform: string) => void,
+): Promise<boolean> {
+  if (!isNativeApp) return false;
   try {
-    return await os.Notifications.requestPermission(true);
+    const r = await PushNotifications.requestPermissions();
+    if (r.receive !== 'granted') return false;
+
+    if (registrar) {
+      const plataforma = /iPad|iPhone|iPod/.test(navigator.userAgent) ? 'ios' : 'android';
+      await PushNotifications.addListener('registration', (t) => {
+        if (t?.value) registrar(t.value, plataforma);
+      });
+    }
+    await PushNotifications.register();
+    return true;
   } catch {
     return false;
   }
-}
-
-/** Desliga este aparelho no servidor — o cliente saiu ou recusou. */
-export function idDoAparelho(): string | null {
-  const os = sdk();
-  return os?.User?.pushSubscription?.id ?? null;
 }

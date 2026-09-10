@@ -47,10 +47,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { householdId, onesignalId, platform } = req.body as {
-    householdId?: string; onesignalId?: string; platform?: string;
+  const { householdId, token, platform } = req.body as {
+    householdId?: string; token?: string; platform?: string;
   };
-  if (!onesignalId) return res.status(400).json({ error: 'onesignalId obrigatório' });
+  if (!token) return res.status(400).json({ error: 'token obrigatório' });
 
   /**
    * O household vem do BANCO, não do corpo do pedido.
@@ -70,14 +70,56 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
+  /**
+   * A ponte com o OneSignal é feita AQUI, no servidor.
+   *
+   * O app entrega o token da APNs (é o que o `@capacitor/push-notifications`
+   * sabe dar) e nós o registramos no OneSignal, que devolve o id da inscrição.
+   * É esse id que o `of-cron` usa para disparar.
+   *
+   * Por que não no app: a REST API Key manda notificação para qualquer cliente
+   * do app. Ela não pode existir dentro do bundle, que é lido por qualquer um
+   * que baixe o aplicativo.
+   */
+  const appId = process.env.ONESIGNAL_APP_ID;
+  const apiKey = process.env.ONESIGNAL_REST_API_KEY;
+  if (!appId || !apiKey) return res.status(503).json({ error: 'push não configurado' });
+
+  let subscriptionId: string | null = null;
+  try {
+    const r = await fetch(`https://api.onesignal.com/apps/${appId}/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Key ${apiKey}` },
+      body: JSON.stringify({
+        // `external_id` amarra a inscrição ao usuário do Clerk. Sem isso,
+        // trocar de conta no mesmo celular faria a segunda pessoa receber os
+        // avisos da primeira.
+        identity: { external_id: claims.sub },
+        subscriptions: [{
+          type: platform === 'android' ? 'AndroidPush' : 'iOSPush',
+          token,
+          enabled: true,
+        }],
+      }),
+    });
+    if (r.ok) {
+      const j = await r.json() as { subscriptions?: Array<{ id?: string; token?: string }> };
+      subscriptionId = j.subscriptions?.find((s) => s.token === token)?.id
+        ?? j.subscriptions?.[0]?.id ?? null;
+    }
+  } catch { /* cai no fallback abaixo */ }
+
+  // Sem id do OneSignal, guardamos o token mesmo assim: a inscrição pode ter
+  // sido criada e a resposta se perdido, e o registro local permite reprocessar
+  // depois. Só não dá para disparar por ele enquanto o id não existir.
   const { error } = await db.from('push_devices').upsert({
     clerk_user_id: claims.sub,
     household_id: casa,
-    onesignal_id: onesignalId,
+    onesignal_id: subscriptionId ?? `apns:${token}`,
     platform: platform ?? null,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'clerk_user_id,onesignal_id' });
 
   if (error) return res.status(500).json({ error: error.message });
-  return res.status(200).json({ ok: true });
+  return res.status(200).json({ ok: true, registrado: !!subscriptionId });
 }

@@ -62,6 +62,8 @@ interface Props {
   onRenomearPartial?: (itemId: string, partialId: string, nome: string, ano: number, mes: number) => void;
   /** Banco removido — o Plano precisa soltar as linhas de fatura que vieram dele. */
   onBancoRemovido?: (bankName: string) => void;
+  /** Guarda o aparelho para push, quando o cliente aceita ao conectar o banco. */
+  onRegistrarPush?: (tokenApns: string, platform: string) => void;
   onClose: () => void;
 }
 
@@ -455,6 +457,7 @@ export default function ExtratoBancario({
   onCreateItem,
   onRenomearPartial,
   onBancoRemovido,
+  onRegistrarPush,
   onClose,
 }: Props) {
   /**
@@ -1276,7 +1279,7 @@ export default function ExtratoBancario({
                *
                * Sem await: a permissão é do sistema e não deve segurar a tela.
                */
-              pedirPermissaoPush().catch(() => {});
+              pedirPermissaoPush(onRegistrarPush).catch(() => {});
             }}
           />
         )}

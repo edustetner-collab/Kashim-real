@@ -601,22 +601,24 @@ const App: React.FC = () => {
    * conecta o banco: no iOS a recusa é definitiva, e perguntar antes de o aviso
    * significar algo é o jeito mais rápido de perder o canal para sempre.
    */
+  const registrarAparelho = useCallback((tokenApns: string, platform: string) => {
+    (async () => {
+      try {
+        const jwt = await getToken({ template: 'supabase' });
+        if (!jwt) return;
+        await fetch('/api/push-register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+          body: JSON.stringify({ householdId, token: tokenApns, platform }),
+        });
+      } catch { /* push é acessório */ }
+    })();
+  }, [householdId, getToken]);
+
   useEffect(() => {
     if (!householdId || coachViewHouseholdId || !user) return;
-    initPush(user.id, (onesignalId, platform) => {
-      (async () => {
-        try {
-          const token = await getToken({ template: 'supabase' });
-          if (!token) return;
-          await fetch('/api/push-register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ householdId, onesignalId, platform }),
-          });
-        } catch { /* push é acessório */ }
-      })();
-    });
-  }, [householdId, coachViewHouseholdId, user, getToken]);
+    initPush(registrarAparelho);
+  }, [householdId, coachViewHouseholdId, user, registrarAparelho]);
 
   // Heartbeat: marca "mexeu no app agora" (households.last_active_at). Base do
   // futuro push de reengajamento. Não conta a visualização do coach como
@@ -3483,6 +3485,7 @@ const App: React.FC = () => {
         <ExtratoBancario
           householdId={householdId}
           authToken={ofAuthToken}
+          onRegistrarPush={registrarAparelho}
           items={items}
           currentYear={currentActualYear}
           currentMonth={currentActualMonth}

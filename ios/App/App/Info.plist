@@ -55,5 +55,12 @@
 	<string>O Kashim usa a câmera para você fotografar comprovantes e lançar gastos automaticamente.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- Push de servidor (OneSignal). O `npx cap sync ios` pede exatamente
+	     isto; sem o modo remote-notification o iOS não entrega o aviso quando
+	     o app está em segundo plano, que é justamente quando ele importa. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 </dict>
 </plist>

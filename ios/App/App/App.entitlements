@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Autoriza o app a se registrar na APNs. Sem esta chave o iOS recusa o
+	     registro em silêncio e nenhum push chega, mesmo com tudo o mais certo.
+
+	     "production" é o valor correto para build da App Store e TestFlight. O
+	     Xcode usa "development" ao rodar direto do Mac; como aqui quem builda é
+	     o Codemagic, e sempre para distribuição, fica fixo. A chave APNs do
+	     Eduardo é Sandbox & Production, então cobre os dois casos. -->
+	<key>aps-environment</key>
+	<string>production</string>
+</dict>
+</plist>
