@@ -1118,6 +1118,9 @@ const App: React.FC = () => {
    */
   /** Cartões cuja linha já foi criada nesta sessão — ver o comentário no uso. */
   const cartoesCriadosRef = useRef<Set<string>>(new Set());
+  /** Linhas de cartão já casadas nesta passada: dois cartões do mesmo banco não
+   *  podem cair na mesma linha, senão o segundo sobrescreve o primeiro. */
+  const linhasUsadas = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!hasOpenFinanceAccess(user) || !householdId || items.length === 0 || months.length === 0) return;
@@ -1187,12 +1190,60 @@ const App: React.FC = () => {
             // Item daquele cartao especifico. Sem os 4 digitos no nome, nao
             // reaproveitamos qualquer linha de cartao: dois cartoes cairiam na
             // mesma e um sobrescreveria o outro.
-            const alvo = items.find((i) =>
-              i.category === CategoryType.CREDIT_CARD &&
-              (last4
-                ? (i.description ?? '').includes(last4)
-                : (i.description ?? '').toLowerCase().includes(conn.bankName.toLowerCase().split(' ')[0])),
-            );
+            /**
+             * Achar a linha que o COACH já criou, em vez de criar outra.
+             *
+             * Ele monta o planejamento antes de o cliente conectar e já lança a
+             * fatura à mão, com o nome do banco ("Itaú", ou "Itaú Master" e
+             * "Itaú Visa" quando há dois). Não pede os 4 dígitos ao cliente —
+             * seria invasivo. Se o casamento falha, nasce uma segunda linha e a
+             * fatura aparece dobrada: foi o que produziu "Latam" ao lado de
+             * "Itaú ••7212" em 2026-09-10.
+             *
+             * A cascata vai do sinal mais forte ao mais fraco, e só cria linha
+             * nova quando não há nenhuma candidata livre:
+             *   1. os 4 dígitos no nome — casamento definitivo
+             *   2. o nome do banco, numa linha ainda não usada nesta passada
+             *   3. uma única linha de cartão órfã para um único cartão sem dono
+             *
+             * Casando por 2 ou 3, os dígitos são carimbados no nome ("Itaú
+             * Master" → "Itaú Master ••7212"), preservando o nome que o coach
+             * escolheu e tornando o casamento definitivo dali em diante.
+             *
+             * Duas linhas órfãs para dois cartões NÃO casam: não há como saber
+             * qual é qual, e duas linhas certas para o cliente juntar é melhor
+             * que um casamento errado que ninguém percebe.
+             */
+            const cartoes = items.filter((i) => i.category === CategoryType.CREDIT_CARD);
+            const temDigitos = (d: string) => /••\d{4}/.test(d);
+            const primeiroNome = conn.bankName.toLowerCase().split(' ')[0];
+
+            let alvo = last4
+              ? cartoes.find((i) => (i.description ?? '').includes(last4))
+              : undefined;
+
+            if (!alvo) {
+              const doBanco = cartoes.filter((i) =>
+                !temDigitos(i.description ?? '')
+                && (i.description ?? '').toLowerCase().includes(primeiroNome)
+                && !linhasUsadas.current.has(i.id));
+              alvo = doBanco[0];
+            }
+
+            if (!alvo && last4) {
+              const orfas = cartoes.filter((i) =>
+                !temDigitos(i.description ?? '') && !linhasUsadas.current.has(i.id));
+              const cartoesDaConexao = (conn.cards ?? []).length || 1;
+              if (orfas.length === 1 && cartoesDaConexao === 1) alvo = orfas[0];
+            }
+
+            if (alvo) {
+              linhasUsadas.current.add(alvo.id);
+              // Carimba os dígitos para o casamento virar definitivo.
+              if (last4 && !temDigitos(alvo.description ?? '')) {
+                handleUpdateDescription(alvo.id, `${alvo.description} ••${last4}`.trim());
+              }
+            }
 
             if (!alvo) {
               /**
@@ -1887,6 +1938,15 @@ const App: React.FC = () => {
     const summaries: SummaryData[] = [];
     const creditCardItems = items.filter(i => i.category === CategoryType.CREDIT_CARD);
     let accumulated = 0;
+    /**
+     * Tem cartão vindo do banco? Então a fatura é fato, não estimativa.
+     *
+     * Muda o que a projeção da fatura seguinte pode somar — ver
+     * `vemDoMesAnterior`. Basta um cartão conectado: quem tem Open Finance tem a
+     * fatura real preenchida pelo efeito de `billTotals`.
+     */
+    const temFaturaDoBanco = Object.values(ofCartoesPorConexao)
+      .some((l) => Array.isArray(l) && l.length > 0);
 
     /**
      * O CUSTO não distingue mais mês corrente de mês futuro: o que está no
@@ -1930,6 +1990,33 @@ const App: React.FC = () => {
       return lancadoNoCartao + (declaradoCartao ? planejadoRestante : 0);
     };
 
+    /**
+     * Só o que AINDA VAI passar no cartão — o banco não sabe disso.
+     *
+     * A diferença para `cartaoDoItemNoMes` é o gasto que JÁ aconteceu. Ele
+     * pertence às duas contas por motivos opostos:
+     *   - no ABATIMENTO, precisa entrar (está dentro da fatura, não pode contar
+     *     de novo na linha de conta fixa);
+     *   - na PROJEÇÃO da fatura seguinte, não pode entrar — a fatura que veio do
+     *     Open Finance já o contém.
+     *
+     * Somar os dois inflava outubro do Eduardo em R$ 3.955,61: a Compilação
+     * mostrava R$ 10.747,38 numa fatura de R$ 4.092,51, e a sobra do mês
+     * aparecia em vermelho (−R$ 891,35) num mês que fecha positivo
+     * (2026-09-10).
+     */
+    const aindaVaiProCartao = (item: FinanceItem, mIdx: number): number => {
+      const md = months[mIdx];
+      if (!md) return 0;
+      const declaradoCartao = !!item.linkedCardId && item.linkType !== LinkType.DEBIT;
+      if (!declaradoCartao) return 0;
+      const mk = `${md.year}-${md.index}`;
+      const partials = (item.partialExpenses?.[mk] || []) as PartialExpense[];
+      const gastoReal = partials.reduce((sum, p) => sum + p.value, 0);
+      const fechadaNoReal = item.paidStatus?.[mIdx] === true && partials.length > 0;
+      return fechadaNoReal ? 0 : Math.max(0, (item.values[mIdx] || 0) - gastoReal);
+    };
+
     const CATEGORIAS_DE_CUSTO = [
       CategoryType.FIXED_EXPENSE,
       CategoryType.VARIABLE_EXPENSE,
@@ -1941,6 +2028,12 @@ const App: React.FC = () => {
       mIdx < 0 || mIdx >= months.length ? 0
         : items.reduce((sum, i) =>
             CATEGORIAS_DE_CUSTO.includes(i.category) ? sum + cartaoDoItemNoMes(i, mIdx) : sum, 0);
+
+    /** Igual ao anterior, mas só com o que o banco ainda não viu. */
+    const cartaoProjetadoDoMes = (mIdx: number): number =>
+      mIdx < 0 || mIdx >= months.length ? 0
+        : items.reduce((sum, i) =>
+            CATEGORIAS_DE_CUSTO.includes(i.category) ? sum + aindaVaiProCartao(i, mIdx) : sum, 0);
 
     for (let m = 0; m < 12; m++) {
       const monthData = months[m];
@@ -2042,7 +2135,17 @@ const App: React.FC = () => {
 
       const anteriorAindaNaoTerminou = m > 0 && !!months[m - 1] &&
         absMonth(months[m - 1].year, months[m - 1].index) >= hojeAbs;
-      const vemDoMesAnterior = anteriorAindaNaoTerminou ? cartaoDoMes(m - 1) : 0;
+      /**
+       * Com fatura do banco, projeta-se só o que ele AINDA não viu.
+       *
+       * Sem Open Finance a fatura é um palpite do cliente e não contém o que ele
+       * lançou à mão — aí somar o gasto já lançado está certo. Com Open Finance
+       * a fatura JÁ é o valor real e o gasto está dentro dela; somar de novo é
+       * contar duas vezes.
+       */
+      const vemDoMesAnterior = anteriorAindaNaoTerminou
+        ? (temFaturaDoBanco ? cartaoProjetadoDoMes(m - 1) : cartaoDoMes(m - 1))
+        : 0;
 
       const totalCreditCard = faturaInformada + vemDoMesAnterior;
 
@@ -2064,7 +2167,7 @@ const App: React.FC = () => {
       summaries.push({ totalIncome, totalCreditCard, totalFixed, totalVariable, totalLeisure, jaNaFatura, fixoNoCartao, totalCost, balance, accumulated });
     }
     return summaries;
-  }, [items, months, currentActualMonth, currentActualYear]);
+  }, [items, months, currentActualMonth, currentActualYear, ofCartoesPorConexao]);
 
   // Backup automático: snapshot do PLANO INTEIRO (todos os itens) marcado no mês
   // vigente. Rede de segurança contra perda de dados — o saveSnapshot existia mas

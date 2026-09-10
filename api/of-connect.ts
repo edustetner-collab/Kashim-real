@@ -508,6 +508,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             card_last4: cardLast4 ?? null,
             openfinance_id: openfinanceId,
             openfinance_status: openfinanceStatus,
+            /**
+             * Marco: daqui para frente é que se categoriza.
+             *
+             * O que já existe está dentro das faturas, que entram cheias como
+             * dívida assumida — o método da consultoria olha para frente
+             * (Eduardo, 2026-09-10). Carimbado só em conexão NOVA; as que já
+             * existiam ficam nulas e seguem cortando pelo mês do plano.
+             */
+            categorize_from: new Date().toISOString(),
           },
           { onConflict: 'household_id,account_hash', ignoreDuplicates: false },
         )

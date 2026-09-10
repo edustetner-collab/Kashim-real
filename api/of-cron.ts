@@ -674,6 +674,8 @@ interface Conn {
   cards?: StoredCard[] | null;
   /** Fatura por cartão: {"7212": {"2026-09": 7863.04}}. Formato antigo era plano. */
   bill_totals?: Record<string, unknown> | null;
+  /** Marco do primeiro acesso: nada anterior entra na fila. Nulo = regra antiga. */
+  categorize_from?: string | null;
 }
 
 /** Cartão guardado em  (ver migrations-v9.sql). */
@@ -803,13 +805,26 @@ async function syncOne(
   }
   if (status === 'PROCESSING' || status === 'PENDING') return { status: 'processing' };
 
-  // Mês em que o plano deste cliente começa — é ele que corta a fila abaixo.
+  /**
+   * O corte da fila: a data da conexão manda, quando existe.
+   *
+   * O cliente da consultoria chega com faturas que já existem. Elas são dívida
+   * assumida — entram cheias na linha de fatura e ninguém categoriza o que está
+   * dentro delas. A consultoria olha para frente, e o marco é o instante em que
+   * o sistema passou a enxergar o banco (Eduardo, 2026-09-10).
+   *
+   * `categorize_from` nulo = conexão anterior a esta regra (o Eduardo e os
+   * testers). Essas seguem cortando pelo primeiro dia do mês do plano, como
+   * sempre fizeram — mudar agora mexeria no que já está categorizado.
+   */
   const { data: casa } = await db
     .from('households')
     .select('start_month, start_year')
     .eq('id', conn.household_id)
     .maybeSingle();
-  const cutoff = cutoffDoPlano(casa?.start_month ?? null, casa?.start_year ?? null);
+  const cutoff = conn.categorize_from
+    ? String(conn.categorize_from).slice(0, 10)
+    : cutoffDoPlano(casa?.start_month ?? null, casa?.start_year ?? null);
   const todasAsTx = parseStatement(env);
 
   // A fatura por mes usa o extrato INTEIRO, antes do corte do mes corrente:
@@ -1327,7 +1342,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // needs_resync primeiro (webhook sinalizou transação nova), depois as mais antigas
     const { data: conns, error } = await db
       .from('bank_connections')
-      .select('id, household_id, bank_name, account_hash, payer_cpf, account_type, card_last4, last_synced_at, last_protocol_id, last_protocol_at, needs_resync, card_import_enabled, card_protocol_id, card_protocol_at, account_import_enabled, cards, bill_totals')
+      .select('id, household_id, bank_name, account_hash, payer_cpf, account_type, card_last4, last_synced_at, last_protocol_id, last_protocol_at, needs_resync, card_import_enabled, card_protocol_id, card_protocol_at, account_import_enabled, cards, bill_totals, categorize_from')
       .eq('consent_status', 'active')
       .order('needs_resync', { ascending: false })
       .order('last_synced_at', { ascending: true, nullsFirst: true })
