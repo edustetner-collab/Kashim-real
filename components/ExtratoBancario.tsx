@@ -750,11 +750,26 @@ export default function ExtratoBancario({
   function proceedToLaunch(tx: BankTransaction) {
     const dateStr = tx.billDueDate ?? tx.transactionDate;
     const [y, rawM, rawD] = dateStr.split('-').map(Number);
+    /**
+     * Parcelas que FALTAM, não o total da compra.
+     *
+     * Uma compra 9/10 tem duas parcelas pela frente (a de agora e mais uma) —
+     * as oito anteriores já foram pagas e não pertencem a este plano. Mandando
+     * o total, o lançamento criava dez parcelas a partir de hoje e inventava
+     * quase um ano de dívida que não existe. Foi o que gerou "Monitor trabalho"
+     * e "Luz e filtro" com R$ 202,90 em todos os meses (Eduardo, 2026-09-10).
+     *
+     * Mesma conta do `confirmarRapido` logo acima — as duas portas para o mesmo
+     * gasto precisam produzir o mesmo lançamento.
+     */
+    const totalParcelas = tx.installmentTotal ?? 1;
+    const parcelaAtual = tx.installmentCurrent ?? 1;
+    const faltam = totalParcelas > 1 ? totalParcelas - parcelaAtual + 1 : 1;
     onLaunchExpense({
       itemId: '',
       value: Number(tx.amount),
       description: tx.merchant || tx.description || '',
-      installments: tx.installmentTotal ?? 1,
+      installments: faltam,
       isCredit: tx.accountType === 'credit_card',
       // O extrato sabe como foi pago — o ExpenseSheet nao pergunta de novo.
       knownPayMethod: tx.accountType === 'credit_card' ? 'credit' as const : 'debit' as const,

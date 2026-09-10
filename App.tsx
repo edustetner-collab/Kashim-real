@@ -2030,16 +2030,29 @@ const App: React.FC = () => {
     return result;
   }, [items, allCards, mobileMonthIdx, months]);
 
-  // Total já categorizado pelo extrato bancário neste mês, por cardLast4.
-  // Reduz o "a categorizar" conforme o usuário confirma transações no Extrato.
+  /**
+   * Quanto da fatura DESTE mês o cliente já explicou, por cartão.
+   *
+   * A fatura que vence em outubro é feita das compras de SETEMBRO — por isso a
+   * conta olha o mês anterior, não o corrente. Casando pelo mês da compra, o
+   * app comparava a fatura de setembro (compras de agosto) com o que foi
+   * categorizado em setembro, e o "a categorizar" virava um número que não
+   * existia: R$ 3.699 em outubro com zero transações pendentes (Eduardo,
+   * 2026-09-10).
+   *
+   * Repare que a compra no crédito conta em DOIS lugares com propósitos
+   * diferentes, e isso é de propósito: no teto do mês em que foi feita (é ali
+   * que a decisão de gastar aconteceu) e na fatura do mês seguinte (é dali que
+   * o dinheiro sai). Ver `compilacao-e-regime-de-caixa`.
+   */
   const categorizedByCardLast4 = useMemo((): Record<string, number> => {
-    const curMonthData = months[mobileMonthIdx];
-    if (!curMonthData) return {};
-    const curMonthKey = `${curMonthData.year}-${curMonthData.index}`;
+    const compras = months[mobileMonthIdx - 1];
+    if (!compras) return {};
+    const chave = `${compras.year}-${compras.index}`;
     const result: Record<string, number> = {};
     for (const item of items) {
       if (item.category === CategoryType.CREDIT_CARD) continue;
-      for (const p of (item.partialExpenses?.[curMonthKey] ?? [])) {
+      for (const p of (item.partialExpenses?.[chave] ?? [])) {
         if (p.paymentSource === 'credit' && p.cardLast4) {
           result[p.cardLast4] = (result[p.cardLast4] ?? 0) + p.value;
         }
@@ -2054,11 +2067,15 @@ const App: React.FC = () => {
   // mudo enquanto o Latam, com rastreamento antigo, mostrava a caixa).
   const categorizedByCardAllMonths = useMemo((): Record<string, Record<number, number>> => {
     const result: Record<string, Record<number, number>> = {};
-    months.forEach((monthData, mIdx) => {
-      const monthKey = `${monthData.year}-${monthData.index}`;
+    // Mesmo deslocamento de um ciclo do `categorizedByCardLast4`: a fatura da
+    // coluna mIdx é composta pelas compras da coluna anterior.
+    months.forEach((_, mIdx) => {
+      const compras = months[mIdx - 1];
+      if (!compras) return;
+      const chave = `${compras.year}-${compras.index}`;
       for (const item of items) {
         if (item.category === CategoryType.CREDIT_CARD) continue;
-        for (const p of (item.partialExpenses?.[monthKey] ?? [])) {
+        for (const p of (item.partialExpenses?.[chave] ?? [])) {
           if (p.paymentSource !== 'credit' || !p.cardLast4) continue;
           if (!result[p.cardLast4]) result[p.cardLast4] = {};
           result[p.cardLast4][mIdx] = (result[p.cardLast4][mIdx] ?? 0) + p.value;
@@ -3421,7 +3438,7 @@ const App: React.FC = () => {
         knownPayMethod={pendingExpense?.knownPayMethod}
         knownCardLast4={pendingExpense?.knownCardLast4}
         defaultPurchaseDate={pendingExpense?.purchaseDate}
-        onConfirm={(data) => {
+        onConfirm={async (data) => {
           if (data.itemId) fireConfetti();
           // O cartao do extrato viaja junto ate o lancamento: sem isto, o gasto
           // herdava o cartao da LINHA e um gasto do Bradesco aparecia como Latam.
@@ -3430,22 +3447,52 @@ const App: React.FC = () => {
           }
           handleConfirmExpense(data);
 
-          // Veio do Extrato: fecha o ciclo marcando a transação e ensinando o
-          // estabelecimento, exatamente como o seletor antigo fazia.
+          /**
+           * Fecha o ciclo: marca a transação e ensina o estabelecimento.
+           *
+           * TOKEN NOVO, NÃO O DA ABERTURA. `ofAuthToken` é capturado quando o
+           * Extrato abre e o token do Clerk é curto — categorizar dez minutos
+           * depois mandava um token vencido, o servidor recusava com 401, e o
+           * `.catch(() => {})` engolia. O gasto entrava no plano, a transação
+           * continuava pendente, e ela VOLTAVA na lista. Foi o que aconteceu com
+           * o Eduardo em 2026-09-10: "Habibs" e "Las alitas" já lançados e ainda
+           * na fila, e o mesmo gasto de R$ 202,90 categorizado duas vezes com
+           * nomes diferentes ("Monitor trabalho" e "Luz e filtro"), cada um
+           * gerando dez parcelas fantasma.
+           *
+           * Mesma lição do `marcarNoServidor` no ExtratoBancario: falha de
+           * gravação tem de aparecer. Aqui ela avisa e devolve a transação para
+           * a fila, em vez de fingir que deu certo.
+           */
           const ofTx = pendingExpense?.ofTx;
-          if (ofTx && data.itemId && ofAuthToken) {
-            const auth = { 'Content-Type': 'application/json', Authorization: `Bearer ${ofAuthToken}` };
-            fetch('/api/of-transactions', {
-              method: 'PATCH', headers: auth,
-              body: JSON.stringify({ householdId, transactionId: ofTx.transactionId, action: 'categorize', itemId: data.itemId, category: data.category, partialId: null }),
-            }).catch(() => {});
-            if (ofTx.merchantKey) {
-              fetch('/api/of-merchant-memory', {
-                method: 'POST', headers: auth,
-                body: JSON.stringify({ householdId, merchantKey: ofTx.merchantKey, category: data.category, itemId: data.itemId }),
-              }).catch(() => {});
+          if (ofTx && data.itemId) {
+            const token = await getToken({ template: 'supabase' }).catch(() => null);
+            const auth = { 'Content-Type': 'application/json', Authorization: `Bearer ${token ?? ofAuthToken ?? ''}` };
+            let marcou = false;
+            try {
+              const res = await fetch('/api/of-transactions', {
+                method: 'PATCH', headers: auth,
+                body: JSON.stringify({ householdId, transactionId: ofTx.transactionId, action: 'categorize', itemId: data.itemId, category: data.category, partialId: null }),
+              });
+              marcou = res.ok;
+              if (!res.ok) {
+                alert(res.status === 401 || res.status === 403
+                  ? 'O gasto entrou no seu plano, mas sua sessão expirou e a transação continua na fila do Extrato. Feche e abra o Extrato para não lançar duas vezes.'
+                  : `O gasto entrou no seu plano, mas não consegui tirar a transação da fila (erro ${res.status}). Confira no Extrato antes de lançar de novo.`);
+              }
+            } catch {
+              alert('O gasto entrou no seu plano, mas não consegui tirar a transação da fila — sem conexão. Confira no Extrato antes de lançar de novo.');
             }
-            setOfCategorized((prev) => [...prev, ofTx.transactionId]);
+
+            if (marcou) {
+              if (ofTx.merchantKey) {
+                fetch('/api/of-merchant-memory', {
+                  method: 'POST', headers: auth,
+                  body: JSON.stringify({ householdId, merchantKey: ofTx.merchantKey, category: data.category, itemId: data.itemId }),
+                }).catch(() => {/* memória é acessória */});
+              }
+              setOfCategorized((prev) => [...prev, ofTx.transactionId]);
+            }
           }
         }}
         onClose={() => setPendingExpense(null)}
