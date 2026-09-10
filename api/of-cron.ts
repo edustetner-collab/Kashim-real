@@ -1370,8 +1370,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
      * `allowGenerate = false` e só acompanham o protocolo aberto, o que casa
      * exatamente com o cache de 1h deles.
      */
-    const GENERATE_HOUR_UTC = 10;
-    const allowGenerate = new Date().getUTCHours() === GENERATE_HOUR_UTC
+    /**
+     * QUATRO geracoes por dia, nas horas em que a Technospeed atualiza.
+     *
+     * Gerar so as 10h deixava o app cego 18 horas por dia: o protocolo vale 6h,
+     * entao a partir das 16h UTC as rodadas de monitoramento caiam em `skipped`
+     * e nada entrava ate as 10h do dia seguinte. Medido em 2026-09-10: as 17h30
+     * o ultimo sync era das 15h01, e as compras do dia anterior nao tinham
+     * chegado.
+     *
+     * Eles batem na Pluggy as 4h, 10h, 16h e 22h; a cota e de 4 protocolos por
+     * dia por conta. Uma geracao em cada uma dessas horas usa a cota inteira e
+     * respeita o limite de 1 protocolo a cada 6 horas — e nenhuma janela do dia
+     * fica descoberta.
+     */
+    const GENERATE_HOURS_UTC = [4, 10, 16, 22];
+    const allowGenerate = GENERATE_HOURS_UTC.includes(new Date().getUTCHours())
       || String(req.query.force ?? '') === 'generate';
     // Manutenção: reprocessa o protocolo em aberto descartando as pendentes.
     // Só por chamada explícita — o cron agendado nunca faz isto.

@@ -2596,6 +2596,21 @@ const App: React.FC = () => {
                 </div>
               </div>
             )}
+            {/**
+             * O consultor tem a própria folha de Configurações, sem as abas do
+             * cliente — então o "Testar push" precisa existir aqui também. Posto
+             * só no ClientSettings, ele ficava num lugar que o admin nunca vê
+             * (Eduardo, 2026-09-10).
+             */}
+            <button
+              onClick={async () => {
+                const { diagnosticoPush } = await import('./lib/push');
+                alert(`Diagnóstico de push:\n\n${await diagnosticoPush()}`);
+              }}
+              className="w-full mb-2 bg-zinc-800 border border-zinc-700 active:bg-zinc-700 text-zinc-300 font-black py-3 rounded-2xl transition-all text-xs uppercase flex items-center justify-center gap-2"
+            >
+              <i className="fas fa-bell"></i> Testar push
+            </button>
             <button
               onClick={() => signOut()}
               className="w-full bg-red-500/10 border border-red-500/20 active:bg-red-500/20 text-red-400 font-black py-3.5 rounded-2xl transition-all text-sm uppercase flex items-center justify-center gap-2"
@@ -2608,6 +2623,9 @@ const App: React.FC = () => {
             >
               Fechar
             </button>
+            <p className="text-center text-zinc-700 text-[10px] mt-3">
+              versão {typeof __BUILD_STAMP__ !== 'undefined' ? __BUILD_STAMP__ : '—'}
+            </p>
           </div>
         </div>
       ) : showSettings && db && householdId ? (
@@ -3512,8 +3530,11 @@ const App: React.FC = () => {
         <div className="pointer-events-none absolute right-0 top-0 bottom-0 z-10 flex items-center pr-1" style={{width:'28px',background:'linear-gradient(to right,transparent,rgba(245,245,247,0.96))'}}>
           <i className="fas fa-chevron-right text-[8px] text-zinc-400"></i>
         </div>
+        {/* `overflow-x-auto` faz o navegador cortar na VERTICAL também, e o
+            badge do botão central sai para cima. O respiro aqui é o que deixa
+            ele aparecer inteiro (Eduardo, 2026-09-10). */}
         <div className="overflow-x-auto scrollbar-none">
-          <div className="flex min-w-max">
+          <div className="flex min-w-max pt-2.5">
             <button
               onClick={() => setActiveTab('plan')}
               className={`min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'plan' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
@@ -3566,12 +3587,14 @@ const App: React.FC = () => {
                   onClick={() => { if (pendentes > 0) { abrirExtrato(); } else { abrirLancamento(); } }}
                   onContextMenu={(e) => { e.preventDefault(); abrirLancamento(); }}
                   aria-label={pendentes > 0 ? `Categorizar ${pendentes} transações` : 'Lançar gasto'}
-                  className="k-halo min-w-[72px] flex flex-col items-center justify-center py-1.5 gap-0.5 mx-1 rounded-xl active:scale-95 transition-all k-btn-lime relative"
+                  className="k-halo min-w-[86px] flex flex-col items-center justify-center py-2 gap-0.5 mx-1 rounded-xl active:scale-95 transition-all k-btn-lime relative"
                   style={{background:'linear-gradient(180deg,#c5f23a 0%,#a2d800 50%,#8cc400 100%)',boxShadow:'0 4px 14px rgba(130,192,0,0.4),inset 0 1px 0 rgba(255,255,255,0.45)',borderRadius:'14px'}}
                 >
                   {pendentes > 0 ? (
                     <>
-                      <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1.5 rounded-full bg-[#ff3b30] text-white text-[11px] font-black flex items-center justify-center shadow-md">
+                      {/* A borda branca é o que dá o relevo: sem ela o vermelho
+                          encosta no verde e o badge parece parte do botão. */}
+                      <span className="absolute -top-2 -right-2 min-w-[22px] h-[22px] px-1.5 rounded-full bg-[#ff3b30] text-white text-[11px] font-black flex items-center justify-center ring-2 ring-white shadow-lg">
                         {pendentes > 99 ? '99+' : pendentes}
                       </span>
                       <i className="fas fa-list-check text-[#182200] text-lg font-black"></i>
