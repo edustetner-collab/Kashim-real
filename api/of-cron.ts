@@ -605,6 +605,7 @@ function syncRange(lastSyncedAt: string | null, wide = false) {
 interface Conn {
   id: string;
   household_id: string;
+  bank_name?: string | null;
   account_hash: string;
   payer_cpf: string;
   account_type: string;
@@ -659,31 +660,60 @@ async function syncOne(
     // sobrar orçamento ao "sincronizar agora" disparado pelo cliente.
     return { status: 'skipped', reason: 'sem protocolo na janela; rodada de monitoramento' };
   } else {
-    const { dateStart, dateEnd } = syncRange(conn.last_synced_at, isCard);
-    const r = await tsReq<Record<string, unknown>>('POST', '/api/v1/statement/openfinance', conn.payer_cpf, {
-      accountHash: conn.account_hash,
-      dateStart,
-      dateEnd,
-      statementType,
-      ...(isCard ? { cardNumber: card?.last4 ?? conn.card_last4 } : {}),
-    });
-    const id = r?.uniqueId ?? r?.uniqueid;
-    if (typeof id !== 'string' || !id) return { status: 'error', reason: 'sem uniqueId no protocolo' };
-    protocolId = id;
-    if (isCard && card) {
-      // Grava o protocolo DENTRO do cartão — com uma coluna só, o segundo
-      // cartão apagaria a janela do primeiro.
-      const nextCards = (conn.cards ?? []).map((c) => (c.last4 === card.last4
-        ? { ...c, protocolId, protocolAt: new Date().toISOString() }
-        : c));
-      conn.cards = nextCards;
-      await db.from('bank_connections').update({ cards: nextCards }).eq('id', conn.id);
+    /**
+     * Protocolo velho que FUNCIONOU vale mais que nenhum.
+     *
+     * A Technospeed limita geração (1 por 6h por conta, 4 por dia). Quando o
+     * limite bate, a geração estoura e a sincronização inteira morria — mesmo
+     * havendo um protocolo anterior com status SUCCESS, pronto para ler.
+     *
+     * Foi o que travou o Eduardo em 2026-09-10: os protocolos dos cartões 7212
+     * e 6256 estavam SUCCESS com 907 e 33 lançamentos, mas tinham 5 horas a
+     * mais que a janela de reaproveitamento. O cron recusava o que servia,
+     * tentava gerar, tomava erro, e importava zero — todo dia, sem sair do
+     * lugar.
+     *
+     * Dado de ontem é pior que o de hoje e MUITO melhor que nenhum. A janela de
+     * 6h continua valendo para o caminho feliz; isto é só a rede de segurança.
+     */
+    let gerado: string | null = null;
+    try {
+      const { dateStart, dateEnd } = syncRange(conn.last_synced_at, isCard);
+      const r = await tsReq<Record<string, unknown>>('POST', '/api/v1/statement/openfinance', conn.payer_cpf, {
+        accountHash: conn.account_hash,
+        dateStart,
+        dateEnd,
+        statementType,
+        ...(isCard ? { cardNumber: card?.last4 ?? conn.card_last4 } : {}),
+      });
+      const id = r?.uniqueId ?? r?.uniqueid;
+      if (typeof id === 'string' && id) gerado = id;
+    } catch (e) {
+      if (!prevId) throw e; // sem rede de segurança: o erro é o resultado
+    }
+
+    if (!gerado) {
+      if (!prevId) return { status: 'error', reason: 'sem uniqueId no protocolo' };
+      // Cai no anterior sem gravar nada: a janela de 6h fica como está, para a
+      // próxima rodada tentar gerar de novo.
+      protocolId = prevId;
     } else {
-      await db.from('bank_connections')
-        .update(isCard
-          ? { card_protocol_id: protocolId, card_protocol_at: new Date().toISOString() }
-          : { last_protocol_id: protocolId, last_protocol_at: new Date().toISOString() })
-        .eq('id', conn.id);
+      protocolId = gerado;
+      if (isCard && card) {
+        // Grava o protocolo DENTRO do cartão — com uma coluna só, o segundo
+        // cartão apagaria a janela do primeiro.
+        const nextCards = (conn.cards ?? []).map((c) => (c.last4 === card.last4
+          ? { ...c, protocolId, protocolAt: new Date().toISOString() }
+          : c));
+        conn.cards = nextCards;
+        await db.from('bank_connections').update({ cards: nextCards }).eq('id', conn.id);
+      } else {
+        await db.from('bank_connections')
+          .update(isCard
+            ? { card_protocol_id: protocolId, card_protocol_at: new Date().toISOString() }
+            : { last_protocol_id: protocolId, last_protocol_at: new Date().toISOString() })
+          .eq('id', conn.id);
+      }
     }
   }
 
@@ -760,6 +790,18 @@ async function syncOne(
       porCartao[k] = v;
     }
     porCartao[card.last4] = totals;
+
+    /**
+     * A cópia em memória tem de acompanhar, senão o cartão seguinte apaga este.
+     *
+     * `conn` é o MESMO objeto para os dois cartões da conexão — foi carregado
+     * uma vez no início da rodada. Sem esta linha, o 6256 montava o novo mapa a
+     * partir do `bill_totals` velho (o de antes do 7212 gravar) e regravava sem
+     * a chave do 7212. Era a sobrescrita de novo, um nível abaixo da que já
+     * arrumamos no banco: o formato por cartão estava certo, e mesmo assim só o
+     * último cartão sobrevivia (Eduardo, 2026-09-10).
+     */
+    conn.bill_totals = porCartao;
 
     const nextCards = (conn.cards ?? []).map((c) => (c.last4 === card.last4 ? { ...c } : c));
     conn.cards = nextCards;
@@ -1231,7 +1273,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // needs_resync primeiro (webhook sinalizou transação nova), depois as mais antigas
     const { data: conns, error } = await db
       .from('bank_connections')
-      .select('id, household_id, account_hash, payer_cpf, account_type, card_last4, last_synced_at, last_protocol_id, last_protocol_at, needs_resync, card_import_enabled, card_protocol_id, card_protocol_at, account_import_enabled, cards, bill_totals')
+      .select('id, household_id, bank_name, account_hash, payer_cpf, account_type, card_last4, last_synced_at, last_protocol_id, last_protocol_at, needs_resync, card_import_enabled, card_protocol_id, card_protocol_at, account_import_enabled, cards, bill_totals')
       .eq('consent_status', 'active')
       .order('needs_resync', { ascending: false })
       .order('last_synced_at', { ascending: true, nullsFirst: true })
@@ -1254,6 +1296,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const reimport = String(req.query.reimport ?? '') === '1';
 
     let done = 0, processing = 0, errors = 0, upserted = 0, skipped = 0;
+    /** Uma linha por extrato tentado: qual, o que deu, e por quê. */
+    const detalhes: Array<Record<string, unknown>> = [];
     // Um aviso por household, não um por conexão: quem tem 3 bancos sincronizados
     // na mesma rodada receberia 3 e-mails idênticos.
     const newByHousehold = new Map<string, number>();
@@ -1263,10 +1307,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try {
         // Conta corrente desligada: pula direto para os cartões. Desligar tem
         // que parar de puxar de verdade, senão a chave é decorativa.
+        /**
+         * A conta corrente não pode levar os cartões junto quando cai.
+         *
+         * Estourando aqui, o `catch` lá de baixo abortava a conexão inteira e o
+         * laço dos cartões nunca rodava. No Eduardo (2026-09-10) a conta não
+         * tinha protocolo e a geração batia no limite da Technospeed: a falha
+         * dela sozinha impedia a fatura do Latam de importar, com o protocolo
+         * do cartão pronto e SUCCESS esperando ao lado.
+         *
+         * São extratos independentes, com protocolos próprios. Um cair não diz
+         * nada sobre o outro.
+         */
         const wantsAccount = (conn as Conn).account_import_enabled !== false;
-        const r = wantsAccount
-          ? await syncOne(conn as Conn, allowGenerate, reimport)
-          : { status: 'skipped' as const, reason: 'conta corrente desligada pelo cliente' };
+        let r: { status: string; upserted?: number; reason?: string };
+        if (!wantsAccount) {
+          r = { status: 'skipped', reason: 'conta corrente desligada pelo cliente' };
+        } else {
+          try {
+            r = await syncOne(conn as Conn, allowGenerate, reimport);
+          } catch (e) {
+            r = { status: 'error', reason: `conta corrente: ${e instanceof Error ? e.message : 'falha'}` };
+          }
+        }
+        detalhes.push({
+          banco: (conn as Conn).bank_name ?? '?',
+          extrato: 'conta corrente',
+          status: r.status,
+          upserted: r.upserted ?? 0,
+          motivo: r.reason ?? null,
+        });
 
         // Uma passada por CARTÃO ligado. Cada protocolo custa 1 dos 4 diários
         // da conta, e a conta corrente já gastou 1 — por isso o teto de 3.
@@ -1280,12 +1350,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           await new Promise((r2) => setTimeout(r2, READ_GAP_MS));
           try {
             const rc = await syncOne(c, allowGenerate, reimport, 'CREDIT_CARD', card);
+            detalhes.push({
+              banco: c.bank_name ?? '?', extrato: `cartao ${card.last4}`,
+              status: rc.status, upserted: rc.upserted ?? 0, motivo: rc.reason ?? null,
+            });
             if (rc.status === 'done') {
               const n = rc.upserted ?? 0;
               upserted += n;
               if (n > 0) newByHousehold.set(c.household_id, (newByHousehold.get(c.household_id) ?? 0) + n);
             } else if (rc.status === 'processing') processing++;
-          } catch { errors++; }
+          } catch (e) {
+            detalhes.push({
+              banco: c.bank_name ?? '?', extrato: `cartao ${card.last4}`,
+              status: 'error', upserted: 0,
+              motivo: e instanceof Error ? e.message : 'falha',
+            });
+            errors++;
+          }
         }
 
         if (r.status === 'skipped') { skipped++; continue; }
@@ -1329,7 +1410,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       notified++;
     }
 
-    return res.status(200).json({ ok: true, mode: allowGenerate ? 'generate' : 'monitor', done, processing, errors, skipped, upserted, promoted, notified });
+    return res.status(200).json({
+      ok: true,
+      mode: allowGenerate ? 'generate' : 'monitor',
+      done, processing, errors, skipped, upserted, promoted, notified,
+      // Sem isto, um contador de erro nao dizia QUAL conexao, QUAL cartao, nem
+      // por que — e diagnosticar virava adivinhacao contra a producao.
+      detalhes,
+    });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Internal server error';
     return res.status(500).json({ error: msg });
