@@ -1284,10 +1284,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ ok: true, connections: 0, promoted });
     }
 
-    // Cadência recomendada pela Tecnospeed (kick-off 2026-08-11): eles batem na
-    // Pluggy às 4h, 10h, 16h e 22h. Checar fora desses horários é olhar para
-    // dado que não mudou. Geramos protocolo só na rodada das 10h; as outras três
-    // apenas acompanham o protocolo em aberto até ele virar SUCCESS.
+    /**
+     * GERAR é caro; LER é barato. Por isso as duas cadências são diferentes.
+     *
+     * Gerar protocolo consome a cota da Technospeed (4 por dia por conta), e
+     * eles atualizam a Pluggy às 4h, 10h, 16h e 22h — então uma geração por dia,
+     * na rodada das 10h, é o que faz sentido.
+     *
+     * LER, não: o protocolo fica pronto em minutos e a leitura só esbarra em
+     * 3 por minuto, com cache de 1 hora do lado deles. Mesmo assim o cron rodava
+     * de 6 em 6 horas, e o protocolo do Eduardo ficou SUCCESS às 7h da manhã
+     * esperando até as 13h para alguém olhar — seis horas de atraso somadas ao
+     * atraso que o banco já tem (2026-09-10).
+     *
+     * Agora o vercel.json chama de hora em hora. As outras 23 rodadas caem no
+     * `allowGenerate = false` e só acompanham o protocolo aberto, o que casa
+     * exatamente com o cache de 1h deles.
+     */
     const GENERATE_HOUR_UTC = 10;
     const allowGenerate = new Date().getUTCHours() === GENERATE_HOUR_UTC
       || String(req.query.force ?? '') === 'generate';

@@ -766,9 +766,12 @@ const BlockSection: React.FC<BlockSectionProps> = ({
             ? items.reduce((sum, i) => sum + (i.values[mobileMonthIdx] || 0), 0)
             : item.values[mobileMonthIdx];
           const realSpent = partials.reduce((acc: number, p: any) => acc + p.value, 0);
-          const isOverTeto = realSpent > teto && teto > 0;
           const isPaid = item.paidStatus[mobileMonthIdx];
           const isIncome = category === CategoryType.INCOME;
+          // Em Entradas o selo conta o que FOI RECEBIDO, e receber mais que o
+          // previsto é notícia boa — nunca vermelho. A web já fazia essa
+          // distinção; o celular pintava de vermelho quem recebeu a mais.
+          const isOverTeto = !isIncome && realSpent > teto && teto > 0;
 
           const canReplicate = category === CategoryType.INCOME || category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE || category === CategoryType.VARIABLE_EXPENSE;
           return (
@@ -942,7 +945,8 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           const mobileVal = item.values[mobileMonthIdx];
                           const displayValue = realSpent > 0 ? realSpent : (isCardLinked && isCommitted && mobileVal > 0 ? mobileVal : 0);
                           if (!displayValue) return realSpent > 0 ? (
-                            <span className={`text-[10px] font-black px-2 py-1 rounded-xl k-num ${isOverTeto ? 'bg-[#fff0f0] text-[#ff3b30]' : 'bg-[#f0f4ff] text-[#007aff]'}`}>
+                            <span className={`text-[10px] font-black px-2 py-1 rounded-xl k-num flex items-center gap-1 ${isIncome ? 'bg-[#f0fad0] text-[#5a8c00]' : isOverTeto ? 'bg-[#fff0f0] text-[#ff3b30]' : 'bg-[#f0f4ff] text-[#007aff]'}`}>
+                              {isIncome && <span className="text-[8px] font-bold opacity-70">RECEBIDO</span>}
                               {formatCurrency(realSpent)}
                             </span>
                           ) : null;

@@ -678,16 +678,36 @@ export default function ExtratoBancario({
      * pertence. Criar linha nova volta a ser decisão do cliente, no fluxo
      * completo.
      */
+    /**
+     * RENDA também tem guarda-chuva, e é a linha de renda que já existe.
+     *
+     * Sem ela, cada PIX recebido virava uma LINHA nova de renda com o nome cru
+     * do banco ("PIX RECEBIDO - REM EMSHOPCOMERCIAL LTDA 03/09 - DOCTO:
+     * 857452"), planejado zero. Na tela isso aparecia como renda R$ 0,00 e o
+     * cliente concluía, com razão, que o recebimento não tinha entrado
+     * (Eduardo, 2026-09-10).
+     *
+     * O recebimento é um LANÇAMENTO dentro da renda planejada, do mesmo jeito
+     * que uma compra de mercado é um lançamento dentro do teto de Mercado: o
+     * planejado continua sendo a base dos pilares e o recebido vai somando
+     * embaixo até compor o mês.
+     */
     const GUARDA_CHUVA: Partial<Record<CategoryType, string>> = {
+      [CategoryType.INCOME]: 'Renda',
       [CategoryType.PERSONAL_LEISURE]: 'Lazer e Despesas Pessoais',
       [CategoryType.VARIABLE_EXPENSE]: 'Gastos Variáveis',
       [CategoryType.FIXED_EXPENSE]: 'Outras Contas Fixas',
     };
+    // Lazer e Renda caem na primeira linha da categoria quando não existe uma
+    // com o nome exato: as duas são linha única por natureza, e criar outra só
+    // fragmentaria o que o cliente lê como um número só.
+    const CAI_NA_PRIMEIRA = categoria === CategoryType.PERSONAL_LEISURE
+      || categoria === CategoryType.INCOME;
     const daCategoria = items.filter((i) => i.category === categoria);
     const nomeGuardaChuva = GUARDA_CHUVA[categoria];
     const guardaChuva = nomeGuardaChuva
       ? (daCategoria.find((i) => i.description === nomeGuardaChuva)?.id
-         ?? (categoria === CategoryType.PERSONAL_LEISURE ? daCategoria[0]?.id : undefined))
+         ?? (CAI_NA_PRIMEIRA ? daCategoria[0]?.id : undefined))
       : undefined;
 
     const itemId = tx.suggestedItemId && items.some((i) => i.id === tx.suggestedItemId)
@@ -1709,18 +1729,38 @@ export default function ExtratoBancario({
 
       {/* Aviso de teto atingido */}
       {renomear && (
-        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/50 p-4">
+        /* Clicar fora fecha. Sem isso o cliente ficava preso: os dois botões
+           decidiam o nome, e quem só queria sair da tela não tinha por onde
+           (Eduardo, 2026-09-10). */
+        <div
+          className="fixed inset-0 z-[85] flex items-center justify-center bg-black/50 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setRenomear(null); }}
+        >
           {/* Centralizada, não colada embaixo: com o teclado aberto o iOS
               encolhe a área visível e uma folha ancorada no rodapé fica atrás
               dele — foi o que cortou o botão "Salvar nome". */}
-          <div className="max-h-[85dvh] w-full max-w-sm overflow-y-auto rounded-3xl bg-white p-5">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#5a8c00]">Gasto salvo</p>
-            <h3 className="mb-1 mt-1 text-[19px] font-black leading-tight text-[#1d1d1f]">
+          <div className="relative max-h-[85dvh] w-full max-w-sm overflow-y-auto rounded-3xl bg-white p-5">
+            <button
+              onClick={() => setRenomear(null)}
+              aria-label="Fechar"
+              className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-[#f2f2f7] text-[#8e8e93] active:bg-[#e5e5ea]"
+            >
+              <i className="fas fa-xmark text-sm" />
+            </button>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#5a8c00]">Gasto já salvo</p>
+            <h3 className="mb-1 mt-1 pr-10 text-[19px] font-black leading-tight text-[#1d1d1f]">
               Quer dar um nome que você reconheça?
             </h3>
-            <p className="mb-4 text-[13px] leading-snug text-[#6e6e73]">
+            <p className="mb-3 text-[13px] leading-snug text-[#6e6e73]">
               O banco chamou de <strong className="text-[#1d1d1f]">{renomear.original}</strong>. Daqui a um
               mês esse nome pode não dizer nada.
+            </p>
+            {/* Sem este recado o cliente achava que estava perdendo a única
+                chance de nomear, e fechar a tela dava aflição. */}
+            <p className="mb-4 rounded-xl bg-[#f5f5f7] px-3 py-2 text-[12px] leading-snug text-[#6e6e73]">
+              O lançamento <strong className="text-[#1d1d1f]">já entrou no seu plano</strong> — isto aqui é só
+              o apelido. Dá para mudar quando quiser em <strong className="text-[#1d1d1f]">Gastos</strong> →
+              toque no lançamento → <strong className="text-[#1d1d1f]">Editar</strong>.
             </p>
             <input
               autoFocus
@@ -1745,7 +1785,7 @@ export default function ExtratoBancario({
               onClick={() => setRenomear(null)}
               className="w-full py-3 text-[12px] font-bold uppercase tracking-widest text-[#8e8e93]"
             >
-              Manter como está
+              Agora não
             </button>
           </div>
         </div>
