@@ -303,6 +303,8 @@ const App: React.FC = () => {
   const [focusSpendingItemId, setFocusSpendingItemId] = useState<string | null>(null);
   /** Filtro inicial do Gastos quando o usuário navega de uma linha do Plano. */
   const [tetoInitialFilter, setTetoInitialFilter] = useState<{ linkedItemId: string; sourceKey: string } | null>(null);
+  /** Mês em que o Gastos deve abrir — vem do clique no selo do Plano. */
+  const [tetoInitialMonthKey, setTetoInitialMonthKey] = useState<string | null>(null);
   const [ofAuthToken, setOfAuthToken] = useState<string | null>(null);
   const [goals, setGoals] = useState<Goal[]>(() => {
     try { return JSON.parse(localStorage.getItem('kashim_goals') || '[]'); } catch { return []; }
@@ -739,7 +741,13 @@ const App: React.FC = () => {
   }, [db, coachViewHouseholdId]);
 
   // Fecha overlay do Extrato ao navegar para qualquer outra aba
-  useEffect(() => { setShowExtrato(false); setOfInitialCardLast4(undefined); }, [activeTab]);
+  useEffect(() => {
+    setShowExtrato(false);
+    setOfInitialCardLast4(undefined);
+    // O mês pedido só vale para a visita que veio do Plano. Saindo do Gastos ele
+    // é descartado, senão a próxima abertura herdaria um mês que ninguém pediu.
+    if (activeTab !== 'teto') setTetoInitialMonthKey(null);
+  }, [activeTab]);
 
   // Quando coach sai da visão de cliente, restaura os próprios dados
   useEffect(() => {
@@ -3246,7 +3254,7 @@ const App: React.FC = () => {
                   mobileMonthIdx={mobileMonthIdx}
                   // Tocar no "Realizado" leva aos lançamentos que formam aquele
                   // número, onde dá para recategorizar um a um.
-                  onOpenSpending={(itemId) => { setFocusSpendingItemId(itemId); setTetoInitialFilter(null); setActiveTab('teto'); }}
+                  onOpenSpending={(itemId, monthKey) => { setFocusSpendingItemId(itemId); setTetoInitialFilter(null); setTetoInitialMonthKey(monthKey ?? null); setActiveTab('teto'); }}
                   onNavigateToGastos={(itemId, sourceKey) => { setFocusSpendingItemId(itemId); setTetoInitialFilter({ linkedItemId: itemId, sourceKey }); setActiveTab('teto'); }}
                   onAddItem={handleAddItem} onUpdateValue={handleUpdateValue} onTogglePaid={handleTogglePaid}
                   onRemoveItem={handleRemoveItem} onUpdateDescription={handleUpdateDescription}
@@ -3457,7 +3465,7 @@ const App: React.FC = () => {
             </div>
           </>
         ) : (
-          <TetoGastos focusItemId={focusSpendingItemId} onFocusHandled={() => setFocusSpendingItemId(null)} initialFilter={tetoInitialFilter} onInitialFilterHandled={() => setTetoInitialFilter(null)} items={items} currentMonthIdx={currentActualMonth} currentYear={currentActualYear} months={months} onAddPartial={handleAddPartial} onRemovePartial={handleRemovePartial} db={db} householdId={householdId} resolveDbId={(localId) => itemIdMapRef.current[localId] ?? localId} tetoAlert={user ? (() => { const p = getNotifPrefs(user.id); return { enabled: p.tetoAlert, pct: p.tetoPct }; })() : undefined} onCreateItem={handleCreateItem} />
+          <TetoGastos focusItemId={focusSpendingItemId} onFocusHandled={() => setFocusSpendingItemId(null)} initialFilter={tetoInitialFilter} onInitialFilterHandled={() => setTetoInitialFilter(null)} initialMonthKey={tetoInitialMonthKey} items={items} currentMonthIdx={currentActualMonth} currentYear={currentActualYear} months={months} onAddPartial={handleAddPartial} onRemovePartial={handleRemovePartial} db={db} householdId={householdId} resolveDbId={(localId) => itemIdMapRef.current[localId] ?? localId} tetoAlert={user ? (() => { const p = getNotifPrefs(user.id); return { enabled: p.tetoAlert, pct: p.tetoPct }; })() : undefined} onCreateItem={handleCreateItem} />
         )}
       </main>
 

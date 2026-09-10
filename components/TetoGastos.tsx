@@ -39,6 +39,8 @@ interface TetoGastosProps {
   onCreateItem?: (description: string, category: CategoryType) => string;
   /** Vindo do Plano: filtra este item nesta fonte de pagamento ao abrir. */
   initialFilter?: { linkedItemId: string; sourceKey: string } | null;
+  /** Mês em que abrir, vindo do clique no selo do Plano ("2027-4"). */
+  initialMonthKey?: string | null;
   /** Chamado depois de aplicar o filtro inicial, para limpar o estado no pai. */
   onInitialFilterHandled?: () => void;
 }
@@ -68,7 +70,7 @@ function describeSaveError(err: unknown): string {
   return 'Verifique a conexão — o app segue tentando sozinho.';
 }
 
-const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, currentYear, months, onAddPartial, onRemovePartial, db, householdId, resolveDbId, tetoAlert, focusItemId, onFocusHandled, onCreateItem, initialFilter, onInitialFilterHandled }) => {
+const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, currentYear, months, onAddPartial, onRemovePartial, db, householdId, resolveDbId, tetoAlert, focusItemId, onFocusHandled, onCreateItem, initialFilter, onInitialFilterHandled, initialMonthKey }) => {
   const currentMonthKey = `${currentYear}-${currentMonthIdx}`;
 
   // MÊS DE TRABALHO: normalmente o mês corrente do calendário — mas o plano do
@@ -97,7 +99,16 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   const [selectedMonthKey, setSelectedMonthKey] = useState(workingMonthKey);
   const [columnsLoaded, setColumnsLoaded] = useState(false);
 
-  useEffect(() => { setSelectedMonthKey(workingMonthKey); }, [workingMonthKey]);
+  /**
+   * O mês pedido pelo Plano vence o mês de trabalho.
+   *
+   * Clicar no selo de uma parcela de maio/2027 tem de abrir maio/2027 — cair no
+   * mês corrente deixava o cliente procurando um lançamento que não estava ali
+   * (Eduardo, 2026-09-10). Sem pedido, segue o mês de trabalho, como sempre.
+   */
+  useEffect(() => {
+    setSelectedMonthKey(initialMonthKey ?? workingMonthKey);
+  }, [workingMonthKey, initialMonthKey]);
 
   const availableMonths = useMemo(() => {
     const keys = new Set<string>();

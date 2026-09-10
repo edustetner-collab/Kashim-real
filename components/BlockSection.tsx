@@ -45,7 +45,14 @@ interface BlockSectionProps {
       adicionar e aviso de parcelas) — eles são para o cliente. */
   isAdmin?: boolean;
   /** Abre os lançamentos que compõem o Realizado deste item, em Gastos. */
-  onOpenSpending?: (itemId: string) => void;
+  /**
+   * Abre os lançamentos daquele item — no MÊS em que foi clicado.
+   *
+   * O mês precisa viajar junto: clicar na parcela de maio/2027 e cair em
+   * setembro deixava o cliente procurando um lançamento que não estava ali
+   * (Eduardo, 2026-09-10).
+   */
+  onOpenSpending?: (itemId: string, monthKey?: string) => void;
   /** Abre o Extrato pré-filtrado para um cartão específico (Open Finance). */
   onOpenExtrato?: (cardLast4?: string) => void;
   /** Navega para a aba Gastos pré-filtrada por este item e fonte de pagamento. */
@@ -1418,7 +1425,11 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           return (
                             <div
                               role={canOpen ? 'button' : undefined}
-                              onClick={canOpen ? (e) => { e.stopPropagation(); onOpenSpending!(item.id); } : undefined}
+                              onClick={canOpen ? (e) => {
+                                e.stopPropagation();
+                                const md = months[mIdx];
+                                onOpenSpending!(item.id, md ? `${md.year}-${md.index}` : undefined);
+                              } : undefined}
                               title={canOpen ? 'Ver e recategorizar estes lançamentos' : undefined}
                               className={`text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-1 flex-wrap ${canOpen ? 'cursor-pointer active:opacity-70' : ''} ${realSpent > 0 && isOver ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}
                             >
