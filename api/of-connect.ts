@@ -483,6 +483,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         accountNumberDigit,
       });
 
+      /**
+       * Marco de categorização: SÓ para cliente da consultoria, e só na 1ª vez.
+       *
+       * O cliente da consultoria chega com faturas que já existem; elas entram
+       * cheias como dívida assumida e o método olha para frente a partir da
+       * conexão. Quem se cadastrou sozinho começa do zero no mês do plano e
+       * segue a regra de sempre (nulo = corta pelo 1º dia do mês do plano) —
+       * "isso só vai acontecer com os clientes da consultoria" (Eduardo,
+       * 2026-09-10). A primeira versão carimbava em qualquer conexão nova.
+       *
+       * "Primeiro acesso" = a casa NUNCA teve conexão nenhuma (qualquer status).
+       * Olhar só `coach_access` não basta: a casa do Eduardo tem vínculo de
+       * coach desde abril, e o botão Ativar do painel também cria um. Casa que
+       * já conectou antes herda o marco da primeira conexão — o segundo banco de
+       * um cliente segue a mesma régua do primeiro, e as conexões do Eduardo e
+       * dos testers (todas nulas) continuam nulas.
+       *
+       * Reconexão da mesma conta (upsert no mesmo account_hash) mantém o que já
+       * estava gravado: carimbar de novo esconderia da fila tudo o que chegou
+       * entre a primeira conexão e hoje.
+       */
+      const [{ data: conexoesDaCasa }, { data: vinculosCoach }] = await Promise.all([
+        db.from('bank_connections')
+          .select('account_hash, categorize_from, created_at')
+          .eq('household_id', householdId)
+          .order('created_at', { ascending: true }),
+        db.from('coach_access')
+          .select('status')
+          .eq('household_id', householdId),
+      ]);
+      const anteriores = conexoesDaCasa ?? [];
+      const mesmaConta = anteriores.find((c) => c.account_hash === accountHash);
+      const ehClienteConsultoria = (vinculosCoach ?? []).length > 0;
+      const categorizeFrom = mesmaConta
+        ? (mesmaConta.categorize_from ?? null)
+        : anteriores.length > 0
+          ? (anteriores[0].categorize_from ?? null)
+          : (ehClienteConsultoria ? new Date().toISOString() : null);
+
       // 4. Salvar conexão
       const bankName = BANK_NAMES[bankCode] ?? `Banco ${bankCode}`;
       const displayName = accountType === 'credit_card'
@@ -508,15 +547,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             card_last4: cardLast4 ?? null,
             openfinance_id: openfinanceId,
             openfinance_status: openfinanceStatus,
-            /**
-             * Marco: daqui para frente é que se categoriza.
-             *
-             * O que já existe está dentro das faturas, que entram cheias como
-             * dívida assumida — o método da consultoria olha para frente
-             * (Eduardo, 2026-09-10). Carimbado só em conexão NOVA; as que já
-             * existiam ficam nulas e seguem cortando pelo mês do plano.
-             */
-            categorize_from: new Date().toISOString(),
+            // Ver o comentário de `categorizeFrom` acima.
+            categorize_from: categorizeFrom,
           },
           { onConflict: 'household_id,account_hash', ignoreDuplicates: false },
         )
