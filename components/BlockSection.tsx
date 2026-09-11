@@ -5,6 +5,7 @@ import { getSourceInfo } from '../lib/paymentSource';
 import { formatCurrency } from '../constants';
 import { isEducationItem } from '../lib/educationUtils';
 import CurrencyInput from './CurrencyInput';
+import { isNativeApp } from '../lib/onboarding/platform';
 
 interface BlockSectionProps {
   title: string;
@@ -86,6 +87,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
   const [installmentWarning, setInstallmentWarning] = useState<string | null>(null);
   const [paidToast, setPaidToast] = useState<string | null>(null);
   const [replicateToast, setReplicateToast] = useState(false);
+  const [replicateConfirm, setReplicateConfirm] = useState<{ id: string; monthIdx: number } | null>(null);
   const [cardInstallModal, setCardInstallModal] = useState<{
     itemId: string; cardId: string; totalInput: string; currentInput: string;
   } | null>(null);
@@ -164,6 +166,14 @@ const BlockSection: React.FC<BlockSectionProps> = ({
     onReplicateValue(itemId, monthIdx);
     setReplicateToast(true);
     setTimeout(() => setReplicateToast(false), 2200);
+  };
+
+  const handleReplicateClick = (itemId: string, monthIdx: number) => {
+    if (isNativeApp) {
+      setReplicateConfirm({ id: itemId, monthIdx });
+    } else {
+      handleReplicateWithToast(itemId, monthIdx);
+    }
   };
 
   const handleCardInstallConfirm = () => {
@@ -310,6 +320,51 @@ const BlockSection: React.FC<BlockSectionProps> = ({
           <div className="bg-orange-500 text-white font-black text-xs uppercase tracking-widest px-5 py-3 rounded-2xl shadow-2xl shadow-orange-500/40 flex items-center gap-2">
             <i className="fas fa-copy text-sm"></i>
             Replicado para todos os meses!
+          </div>
+        </div>
+      )}
+
+      {/* Modal de confirmação do replicar — só aparece no app nativo, onde o
+          botão é pequeno e fácil de apertar sem querer. Na web o efeito é
+          visível na tabela na hora, então a confirmação seria ruído. */}
+      {replicateConfirm && (
+        <div
+          className="fixed inset-0 z-[500] flex items-end justify-center bg-black/40"
+          onClick={() => setReplicateConfirm(null)}
+        >
+          <div
+            className="w-full max-w-sm bg-white rounded-t-2xl p-6 pb-10 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 bg-[#e5e5ea] rounded-full mx-auto mb-5" />
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+                style={{background:'linear-gradient(180deg,#c5f23a,#8cc400)'}}>
+                <i className="fas fa-copy text-[#182200] text-sm" />
+              </div>
+              <div>
+                <p className="font-black text-[#1d1d1f] text-[15px] leading-snug">Replicar para todos os meses?</p>
+                <p className="text-[12px] text-[#6e6e73] mt-0.5 leading-snug">
+                  O valor atual será copiado para todos os meses seguintes.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                handleReplicateWithToast(replicateConfirm.id, replicateConfirm.monthIdx);
+                setReplicateConfirm(null);
+              }}
+              className="w-full py-3.5 rounded-2xl font-black text-[#182200] text-sm active:opacity-80 mb-2"
+              style={{background:'linear-gradient(180deg,#c5f23a 0%,#8cc400 100%)'}}
+            >
+              Sim, replicar
+            </button>
+            <button
+              onClick={() => setReplicateConfirm(null)}
+              className="w-full py-3 rounded-2xl font-semibold text-[#6e6e73] text-sm active:bg-[#f2f2f7]"
+            >
+              Cancelar
+            </button>
           </div>
         </div>
       )}
@@ -808,6 +863,17 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   placeholder="Nome do item..."
                 />
                 <div className="flex items-center gap-1.5 shrink-0">
+                  {/* Botão de zerar — só para o coach (isAdmin) acessando o perfil
+                      do cliente. Evita ter que selecionar e apagar dígito por dígito. */}
+                  {isAdmin && (item.values[mobileMonthIdx] ?? 0) > 0 && (
+                    <button
+                      onClick={() => onUpdateValue(item.id, mobileMonthIdx, '0')}
+                      className="w-5 h-5 rounded-full bg-[#ff3b30]/10 text-[#ff3b30] flex items-center justify-center active:bg-[#ff3b30]/20 shrink-0"
+                      title="Zerar valor"
+                    >
+                      <i className="fas fa-xmark text-[8px]" />
+                    </button>
+                  )}
                   <CurrencyInput
                     value={item.values[mobileMonthIdx]}
                     onChange={(float) => {
@@ -1191,7 +1257,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
               {canReplicate && (
                 <button
                   data-tour="replicate-btn"
-                  onClick={() => handleReplicateWithToast(item.id, mobileMonthIdx)}
+                  onClick={() => handleReplicateClick(item.id, mobileMonthIdx)}
                   className="absolute bottom-2 right-3 w-5 h-5 rounded-full flex items-center justify-center shrink-0 active:scale-90 shadow-sm"
                   style={{background:'linear-gradient(180deg,#c5f23a,#8cc400)',boxShadow:'0 2px 6px rgba(130,192,0,0.4)'}}
                   title="Replicar para todos os meses"
