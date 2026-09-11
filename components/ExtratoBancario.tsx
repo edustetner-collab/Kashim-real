@@ -1295,26 +1295,6 @@ export default function ExtratoBancario({
               mais frequente da tela não pode ficar onde ninguém rola. Some
               sozinho quando já há o que categorizar — a essa altura ele virou
               ruído. */}
-          {banksLoaded && banks.length > 0 && semNadaAindaParaCategorizar && (
-            <div className="rounded-2xl border border-[#c9e88a] bg-[#f0fad0] p-4">
-              <div className="flex items-start gap-3">
-                <i className="fas fa-hourglass-half mt-0.5 text-[#5a8c00]" />
-                <div className="min-w-0">
-                  <p className="text-[14px] font-black leading-snug text-[#2f4a00]">
-                    Estamos esperando seu banco
-                  </p>
-                  <p className="mt-1 text-[12.5px] leading-relaxed text-[#4a5c2a]">
-                    Seus gastos não chegam na hora da compra: o banco leva de <strong>6 a 24 horas</strong>
-                    {' '}para liberar. É regra do Open Finance, não do Kashim.
-                  </p>
-                  <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#4a5c2a]">
-                    <strong>Você não precisa fazer nada agora.</strong> Pode fechar o app — a gente te
-                    avisa assim que chegarem.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
 
           {banksLoaded && banks.length > 0 && (
             <button
@@ -1493,12 +1473,19 @@ export default function ExtratoBancario({
                         <p className="text-[11px] text-[#6e6e73] leading-snug">
                           {etapaLabel}
                         </p>
-                        {/* Lembrete permanente: o ciclo nunca para. Evita que o
-                            cliente pense que o "Pronto!" é um estado final. */}
-                        <p className="mt-2 text-[10px] text-[#aeaeb2] leading-snug flex items-start gap-1">
-                          <i className="fas fa-arrows-rotate mt-[1px] flex-shrink-0" />
-                          Sincronizamos automaticamente várias vezes ao dia. Novas transações aparecem aqui sozinhas — você só precisa categorizar quando chegar a notificação.
-                        </p>
+                        {/* Balão azul permanente: deixa claro que o ciclo nunca
+                            para e que o usuário não precisa fazer nada. */}
+                        <div className="mt-3 flex items-start gap-2.5 bg-[#e8f4fd] border border-[#7ab8e8] rounded-xl px-3 py-2.5">
+                          <i className="fas fa-arrows-rotate text-[#1a6fa8] text-[12px] mt-[2px] flex-shrink-0" />
+                          <div>
+                            <p className="text-[12px] font-bold text-[#0d2d44] leading-snug">
+                              Isso acontece automaticamente, várias vezes ao dia
+                            </p>
+                            <p className="mt-1 text-[11px] text-[#1a3d5c] leading-snug">
+                              Seus gastos não chegam na hora da compra — cada banco tem o próprio ritmo e pode levar até 24h. Assim que os dados chegarem, você recebe uma notificação e as transações aparecem aqui sozinhas. <strong>Pode fechar o app.</strong>
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     );
                   })()}
