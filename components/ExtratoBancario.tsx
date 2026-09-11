@@ -1428,6 +1428,75 @@ export default function ExtratoBancario({
                     </button>
                   </div>
 
+                  {/* Barra de progresso tipo iFood — só quando o banco já autorizou.
+                      Cada etapa tem uma frase tranquilizadora para o usuário entender
+                      que o processo está andando e não depende de nenhuma ação dele. */}
+                  {ready && (() => {
+                    type Etapa = { label: string; detalhe: string; icone: string };
+                    const etapas: Etapa[] = [
+                      {
+                        label: 'Conectado',
+                        detalhe: 'Banco autorizou o acesso. Já estamos buscando seus dados — isso leva alguns minutos.',
+                        icone: 'fa-link',
+                      },
+                      {
+                        label: 'Sincronizando',
+                        detalhe: 'Estamos fazendo a primeira busca das suas transações. Pode levar de alguns minutos a algumas horas, dependendo do banco. Você receberá uma notificação quando os dados chegarem.',
+                        icone: 'fa-rotate',
+                      },
+                      {
+                        label: 'Aguardando banco',
+                        detalhe: 'Pedido enviado ao banco. Cada banco tem o próprio tempo de resposta — pode levar até 24h. É normal. Assim que os dados chegarem, avisamos você.',
+                        icone: 'fa-clock',
+                      },
+                      {
+                        label: 'Pronto!',
+                        detalhe: pendentesNoBanco === 1
+                          ? '1 transação chegou e está esperando você categorizar.'
+                          : `${pendentesNoBanco} transações chegaram e estão esperando você categorizar.`,
+                        icone: 'fa-circle-check',
+                      },
+                    ];
+                    const etapaAtual = !b.lastSyncedAt ? 1
+                      : pendentesNoBanco === 0 ? 2
+                      : 3;
+                    const etapaLabel = etapas[etapaAtual].detalhe;
+                    return (
+                      <div className="px-4 pt-2 pb-3 border-t border-[#f0f0f0]">
+                        {/* Bolinhas + linhas */}
+                        <div className="flex items-center gap-0 mb-2">
+                          {etapas.map((e, i) => {
+                            const feito = i <= etapaAtual;
+                            const atual = i === etapaAtual;
+                            return (
+                              <React.Fragment key={i}>
+                                <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${feito ? (atual ? 'bg-[#7ab800] shadow-sm shadow-[#7ab800]/40' : 'bg-[#c5f23a]') : 'bg-[#f2f2f7]'}`}>
+                                  <i className={`fas ${e.icone} text-[9px] ${feito ? (atual ? 'text-white' : 'text-[#4a7000]') : 'text-[#c7c7cc]'}`} />
+                                </div>
+                                {i < etapas.length - 1 && (
+                                  <div className={`flex-1 h-[2px] transition-colors ${i < etapaAtual ? 'bg-[#c5f23a]' : 'bg-[#f2f2f7]'}`} />
+                                )}
+                              </React.Fragment>
+                            );
+                          })}
+                        </div>
+                        {/* Rótulos */}
+                        <div className="flex justify-between mb-2">
+                          {etapas.map((e, i) => (
+                            <span key={i} className={`text-[9px] font-semibold text-center leading-tight ${i === etapaAtual ? 'text-[#7ab800]' : i < etapaAtual ? 'text-[#8e8e93]' : 'text-[#c7c7cc]'}`}
+                              style={{ width: `${100 / etapas.length}%` }}>
+                              {e.label}
+                            </span>
+                          ))}
+                        </div>
+                        {/* Frase explicativa do estágio atual */}
+                        <p className="text-[11px] text-[#6e6e73] leading-snug">
+                          {etapaLabel}
+                        </p>
+                      </div>
+                    );
+                  })()}
+
                   {ready && (
                     <>
                       <LinhaMetodo
