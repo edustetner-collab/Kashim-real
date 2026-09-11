@@ -1493,6 +1493,12 @@ export default function ExtratoBancario({
                         <p className="text-[11px] text-[#6e6e73] leading-snug">
                           {etapaLabel}
                         </p>
+                        {/* Lembrete permanente: o ciclo nunca para. Evita que o
+                            cliente pense que o "Pronto!" é um estado final. */}
+                        <p className="mt-2 text-[10px] text-[#aeaeb2] leading-snug flex items-start gap-1">
+                          <i className="fas fa-arrows-rotate mt-[1px] flex-shrink-0" />
+                          Sincronizamos automaticamente várias vezes ao dia. Novas transações aparecem aqui sozinhas — você só precisa categorizar quando chegar a notificação.
+                        </p>
                       </div>
                     );
                   })()}
