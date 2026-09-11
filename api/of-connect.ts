@@ -320,7 +320,7 @@ const BANK_NAMES: Record<string, string> = {
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? '';
 const OF_BETA_USER_IDS = (process.env.OF_BETA_USER_IDS ?? '')
   .split(',').map((s) => s.trim()).filter(Boolean);
-const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com'];
+const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com', 'remmachado@gmail.com'];
 
 /**
  * Espelha `lib/ofAccess.ts` no servidor. Esconder o botão não impede ninguém de

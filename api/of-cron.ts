@@ -46,7 +46,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? '';
 const OF_BETA_USER_IDS = (process.env.OF_BETA_USER_IDS ?? '')
   .split(',').map((s) => s.trim()).filter(Boolean);
-const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com'];
+const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com', 'remmachado@gmail.com'];
 
 /**
  * Destinatário do aviso — já filtrado pelo portão do Open Finance.

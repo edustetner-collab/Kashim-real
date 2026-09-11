@@ -23,7 +23,7 @@ const BETA_USER_IDS: string[] = (import.meta.env.VITE_OF_BETA_USER_IDS ?? '')
   .filter(Boolean);
 
 /** Mantido em código para o portão nunca depender de configuração existir. */
-export const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com'];
+export const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com', 'remmachado@gmail.com'];
 
 interface ClerkLikeUser {
   id?: string | null;
