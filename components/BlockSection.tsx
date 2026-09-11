@@ -1520,6 +1520,17 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           >
                             <i className="fas fa-copy"></i>
                           </button>
+                          {/* Botão zerar — só para coach acessando perfil do cliente.
+                              Aparece no hover, canto esquerdo, mesmo padrão do replicar. */}
+                          {isAdmin && val > 0 && (
+                            <button
+                              onClick={() => onUpdateValue(item.id, mIdx, '0')}
+                              title="Zerar valor"
+                              className="absolute -left-1 -top-1 opacity-0 group-hover:opacity-100 bg-red-400 text-white w-4 h-4 rounded-full flex items-center justify-center text-[8px] shadow-sm transition-opacity hover:scale-110 z-10"
+                            >
+                              <i className="fas fa-xmark"></i>
+                            </button>
+                          )}
                         </div>
                         {/* SELO DE GASTO.
                             Open Finance: responde "quanto ja gastei com isto neste
