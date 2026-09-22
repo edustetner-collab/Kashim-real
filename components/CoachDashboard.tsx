@@ -6,6 +6,8 @@ import { parseFormText, ParsedField } from '../lib/parseFormText';
 import { formatCurrency } from '../constants';
 import ConsultorSettings from './ConsultorSettings';
 import AdminMetrics from './AdminMetrics';
+import CoachInsights from './CoachInsights';
+import ExtratoDiagnostico from './ExtratoDiagnostico';
 
 interface ClientProfile {
   householdId: string;
@@ -54,7 +56,7 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
   const { signOut } = useClerk();
   const db = useSupabase();
 
-  const [view, setView] = useState<'clients' | 'metrics'>('clients');
+  const [view, setView] = useState<'clients' | 'metrics' | 'insights' | 'extrato'>('clients');
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'new' | 'antigos'>('all');
@@ -318,11 +320,31 @@ const CoachDashboard: React.FC<CoachDashboardProps> = ({ onEnterClient, isSuperA
             >
               <i className="fas fa-chart-line mr-2"></i>Métricas
             </button>
+            <button
+              onClick={() => setView('insights')}
+              className={`flex-1 md:flex-none md:px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-wide transition-all border ${
+                view === 'insights' ? 'bg-green-500 text-black border-green-500' : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+              }`}
+            >
+              <i className="fas fa-comments mr-2"></i>Perguntas
+            </button>
+            <button
+              onClick={() => setView('extrato')}
+              className={`flex-1 md:flex-none md:px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-wide transition-all border ${
+                view === 'extrato' ? 'bg-green-500 text-black border-green-500' : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+              }`}
+            >
+              <i className="fas fa-stethoscope mr-2"></i>Extrato
+            </button>
           </div>
         )}
 
         {view === 'metrics' && isSuperAdmin ? (
           <AdminMetrics />
+        ) : view === 'insights' && isSuperAdmin ? (
+          <CoachInsights />
+        ) : view === 'extrato' && isSuperAdmin ? (
+          <ExtratoDiagnostico />
         ) : (
         <>
         {/* Topo */}

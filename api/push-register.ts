@@ -36,9 +36,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const claims = verifyAuthToken(req.headers.authorization as string | undefined);
   if (!claims) return res.status(401).json({ error: 'Unauthorized' });
 
+  /**
+   * GET — esta pessoa recebe aviso neste household?
+   *
+   * O botao de ligar/desligar precisa saber o estado atual, e o estado real e
+   * "existe aparelho registrado", nao uma preferencia guardada a parte: e o que
+   * o cron consulta na hora de enviar (Eduardo, 2026-09-20).
+   */
+  if (req.method === 'GET') {
+    const householdId = req.query.householdId as string | undefined;
+    if (!householdId) return res.status(400).json({ error: 'householdId obrigatório' });
+    const { count } = await db
+      .from('push_devices')
+      .select('id', { count: 'exact', head: true })
+      .eq('clerk_user_id', claims.sub)
+      .eq('household_id', householdId);
+    return res.status(200).json({ aparelhos: count ?? 0, ligado: (count ?? 0) > 0 });
+  }
+
   // ── DELETE — o cliente desligou o push ou saiu deste aparelho ──────────────
   if (req.method === 'DELETE') {
-    const { onesignalId } = req.body as { onesignalId?: string };
+    const { onesignalId, householdId, todos } = req.body as {
+      onesignalId?: string; householdId?: string; todos?: boolean;
+    };
+    // Desligar os avisos = tirar os aparelhos desta pessoa nesta casa. Sem
+    // aparelho, `pushParaCasa` nao envia nada — e o parceiro, que tem registro
+    // proprio, continua recebendo.
+    if (todos) {
+      if (!householdId) return res.status(400).json({ error: 'householdId obrigatório' });
+      await db.from('push_devices').delete()
+        .eq('clerk_user_id', claims.sub).eq('household_id', householdId);
+      return res.status(200).json({ ok: true, desligado: true });
+    }
     if (!onesignalId) return res.status(400).json({ error: 'onesignalId obrigatório' });
     await db.from('push_devices').delete()
       .eq('clerk_user_id', claims.sub).eq('onesignal_id', onesignalId);

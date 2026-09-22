@@ -19,6 +19,8 @@ interface BlockSectionProps {
   onAddItem: (category: CategoryType, customData?: Partial<FinanceItem>) => void;
   onRequestExpenseSheet?: () => void;
   onAddLeisureItem?: (value: number) => void;
+  /** Abre o Stets com a pergunta já digitada. */
+  onPerguntarStets?: (pergunta: string) => void;
   onUpdateValue: (id: string, monthIdx: number, value: string) => void;
   onTogglePaid: (id: string, monthIdx: number) => void;
   onRemoveItem: (id: string) => void;
@@ -68,7 +70,14 @@ interface BlockSectionProps {
   /** Abre o Extrato pré-filtrado para um cartão específico (Open Finance). */
   onOpenExtrato?: (cardLast4?: string) => void;
   /** Navega para a aba Gastos pré-filtrada por este item e fonte de pagamento. */
-  onNavigateToGastos?: (itemId: string, sourceKey: string) => void;
+  /** `monthKey` ("2026-9"): abre a aba Gastos no mês que o cliente olhava. */
+  onNavigateToGastos?: (itemId: string, sourceKey: string, monthKey?: string) => void;
+  /** Meses já publicados pelo banco, por cartão — o resto é estimativa. */
+  faturasPublicadas?: Record<string, string[]>;
+  /** Apaga um lancamento (usado na lista de entradas recebidas). */
+  onRemovePartial?: (itemId: string, expenseId: string) => void;
+  /** Move um lancamento de linha - "isto nao era renda, era gasto". */
+  onMovePartial?: (origemItemId: string, destinoItemId: string, partial: PartialExpense, ano: number, mes: number) => void;
   /** Cliente com Open Finance ligado (portão em lib/ofAccess.ts).
       Só ele troca o seletor manual de forma de pagamento pelo detalhamento
       por fonte vindo do extrato. No plano normal (R$10/ano) o cliente
@@ -80,11 +89,11 @@ interface BlockSectionProps {
 const BlockSection: React.FC<BlockSectionProps> = ({
   title, subtitle, category, items, allCards = [], months, totalIncome, mobileMonthIdx = 0,
   onAddItem, onUpdateValue, onTogglePaid, onRemoveItem, onUpdateDescription, onReplicateValue, onLinkCard,
-  onUpdateCardConfig, onMoveItem, trackedByCardId, trackedByCardAllMonths, categorizedByCardLast4, categorizedByCardAllMonths, aCategorizarPorCartaoMes, onRequestExpenseSheet, onAddLeisureItem,
-  isAdmin = false, onOpenSpending, onOpenExtrato, onNavigateToGastos, hasOpenFinance = false, modoOpenFinance = false,
+  onUpdateCardConfig, onMoveItem, trackedByCardId, trackedByCardAllMonths, categorizedByCardLast4, categorizedByCardAllMonths, aCategorizarPorCartaoMes, onRequestExpenseSheet, onAddLeisureItem, onPerguntarStets,
+  isAdmin = false, onOpenSpending, onOpenExtrato, onNavigateToGastos, faturasPublicadas, onRemovePartial, onMovePartial, hasOpenFinance = false, modoOpenFinance = false,
 }) => {
   const [showInstructionModal, setShowInstructionModal] = useState(false);
-  const [installmentWarning, setInstallmentWarning] = useState<string | null>(null);
+  const [installmentWarning, setInstallmentWarning] = useState<{ message: string; itemId: string } | null>(null);
   const [paidToast, setPaidToast] = useState<string | null>(null);
   const [replicateToast, setReplicateToast] = useState(false);
   const [replicateConfirm, setReplicateConfirm] = useState<{ id: string; monthIdx: number } | null>(null);
@@ -96,9 +105,83 @@ const BlockSection: React.FC<BlockSectionProps> = ({
   const [breakdown, setBreakdown] = useState<{ itemId: string; mIdx: number } | null>(null);
   const [leisureModal, setLeisureModal] = useState<{ suggested: number; input: string } | null>(null);
   const [trackedInfoCardId, setTrackedInfoCardId] = useState<string | null>(null);
+  /**
+   * Entradas já recebidas no mês, abertas uma a uma.
+   *
+   * A renda nunca entrou na régua dos selos (`showLinkOption` só cobre despesa),
+   * então no celular não havia nem o "recebido até agora" nem lugar nenhum para
+   * conferir o que já caiu na conta (Eduardo, 2026-09-20).
+   */
+  const [entradasDoMes, setEntradasDoMes] = useState<{ itemId: string; monthKey: string } | null>(null);
+  /** Lancamento de renda em conferencia: foi renda mesmo? */
+  const [entradaEmEdicao, setEntradaEmEdicao] = useState<PartialExpense | null>(null);
+  const [escolhendoLinha, setEscolhendoLinha] = useState(false);
   const timersRef = useRef<Record<string, number>>({});
   const itemsRef = useRef<FinanceItem[]>(items);
   useEffect(() => { itemsRef.current = items; }, [items]);
+
+  /**
+   * Dois cartões do mesmo banco PRECISAM dos 4 últimos dígitos no nome.
+   *
+   * Quando o cliente conecta o banco, o app casa cada fatura com a linha do
+   * plano pelo nome. Com os dígitos o casamento é definitivo; sem eles, e
+   * havendo duas linhas do mesmo banco, não há como saber qual é qual — o app
+   * desiste, cria uma linha nova e a fatura aparece duplicada. Foi o que
+   * produziu "Latam" ao lado de "Itaú ••7212" em 2026-09-10.
+   *
+   * O aviso nasce na hora de escrever o nome, para o coach não descobrir o
+   * problema semanas depois (Eduardo, 2026-09-17).
+   */
+  const [porQueDigitos, setPorQueDigitos] = useState(false);
+  const cartoesPedindoDigitos = React.useMemo(() => {
+    const ids = new Set<string>();
+    if (category !== CategoryType.CREDIT_CARD) return ids;
+    const temDigitos = (d?: string) => /••\s*\d{4}/.test(d ?? '');
+    const primeiraPalavra = (d?: string) => (d ?? '')
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/••\s*\d{4}/g, '')
+      .trim().toLowerCase().split(/\s+/)[0] ?? '';
+    const porBanco = new Map<string, FinanceItem[]>();
+    for (const i of items) {
+      const chave = primeiraPalavra(i.description);
+      if (!chave) continue;
+      porBanco.set(chave, [...(porBanco.get(chave) ?? []), i]);
+    }
+    for (const lista of porBanco.values()) {
+      if (lista.length < 2) continue;
+      for (const i of lista) if (!temDigitos(i.description)) ids.add(i.id);
+    }
+    return ids;
+  }, [items, category]);
+
+  const avisoDigitos = (itemId: string) => {
+    if (!cartoesPedindoDigitos.has(itemId)) return null;
+    return (
+      <div className="mt-1 px-2.5 py-2 bg-[#fff8e6] border border-[rgba(224,155,0,0.3)] rounded-xl flex flex-col gap-1">
+        <div className="flex items-start gap-2">
+          <i className="fas fa-triangle-exclamation text-[#b07500] text-[11px] mt-0.5" />
+          <p className="text-[11px] text-[#8a5c00] leading-snug flex-1">
+            Dois cartões com o mesmo nome. Escreva os <b>4 últimos dígitos</b> no fim — por exemplo <b>Itaú ••4132</b>.
+          </p>
+          <button
+            type="button"
+            onClick={() => setPorQueDigitos((v) => !v)}
+            className="text-[#b07500] text-[11px] shrink-0"
+            title="Por que isso é necessário?"
+          >
+            <i className="fas fa-circle-question" />
+          </button>
+        </div>
+        {porQueDigitos && (
+          <p className="text-[11px] text-[#8a5c00] leading-snug pl-5">
+            Quando o cliente conecta o banco, o app precisa saber de qual cartão é cada fatura. Ele descobre pelo nome da linha.
+            Com dois cartões do mesmo banco sem os dígitos, ele não consegue distinguir e acaba criando uma linha nova —
+            a fatura aparece duas vezes no plano. Os 4 dígitos resolvem de uma vez e nunca mais mudam.
+          </p>
+        )}
+      </div>
+    );
+  };
 
   const hiddenStorageKey = `kashim_hidden_rows_${category}`;
   const [hiddenItemIds, setHiddenItemIds] = useState<Set<string>>(() => {
@@ -208,9 +291,10 @@ const BlockSection: React.FC<BlockSectionProps> = ({
       if (!currentItem) return;
       const filledCount = currentItem.values.filter(v => v > 0).length;
       if (filledCount > 0 && filledCount < 10) {
-        setInstallmentWarning(
-          `Este lançamento "${currentItem.description || 'sem nome'}" tem apenas ${filledCount} mês${filledCount > 1 ? 'es' : ''} preenchido${filledCount > 1 ? 's' : ''}. Contas fixas são recorrentes sem fim ou parceladas em mais de 18x. Considere movê-lo para Contas Variáveis.`
-        );
+        setInstallmentWarning({
+          itemId,
+          message: `"${currentItem.description || 'sem nome'}" tem apenas ${filledCount} mês${filledCount > 1 ? 'es' : ''} preenchido${filledCount > 1 ? 's' : ''}. Contas fixas são recorrentes ou parceladas em mais de 18x.`,
+        });
       }
     }, 8000);
   };
@@ -233,6 +317,21 @@ const BlockSection: React.FC<BlockSectionProps> = ({
   };
 
   const tooltip = getTooltipContent();
+  /**
+   * No Open Finance, a CONTA FIXA ainda precisa dizer se é paga no cartão.
+   *
+   * O custo do mês soma a fatura inteira do banco mais as contas do plano, e só
+   * consegue abater o que sabe estar dentro da fatura. A internet que ninguém
+   * categorizou ainda conta duas vezes: cheia na linha e dentro da fatura — foi
+   * o "Sai da conta" de R$ 13 mil com R$ 9 mil de contas (Mariane, 2026-09-20).
+   *
+   * O extrato só responde isso DEPOIS que a pessoa categoriza. Uma resposta por
+   * linha, dada uma vez, resolve o mês inteiro — inclusive o que ainda vai
+   * vencer. Vale só para conta fixa: variável e lazer não se repetem.
+   */
+  const perguntarFormaNoOF = (item: FinanceItem) =>
+    hasOpenFinance && category === CategoryType.FIXED_EXPENSE && !!onLinkCard;
+
   const showLinkOption = category === CategoryType.FIXED_EXPENSE ||
                         category === CategoryType.VARIABLE_EXPENSE ||
                         category === CategoryType.PERSONAL_LEISURE;
@@ -459,7 +558,24 @@ const BlockSection: React.FC<BlockSectionProps> = ({
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-green-400 font-black text-xs uppercase tracking-widest mb-1">Aviso de classificação</p>
-              <p className="text-zinc-300 text-xs leading-relaxed">{installmentWarning}</p>
+              <p className="text-zinc-300 text-xs leading-relaxed mb-3">{installmentWarning.message}</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    handleReplicateWithToast(installmentWarning.itemId, mobileMonthIdx);
+                    setInstallmentWarning(null);
+                  }}
+                  className="flex-1 bg-green-400 active:bg-green-300 text-black font-black text-[11px] py-2 px-3 rounded-xl uppercase"
+                >
+                  Replicar para todos os meses
+                </button>
+                <button
+                  onClick={() => setInstallmentWarning(null)}
+                  className="bg-zinc-800 active:bg-zinc-700 text-zinc-300 font-bold text-[11px] py-2 px-3 rounded-xl"
+                >
+                  Entendi
+                </button>
+              </div>
             </div>
             <button onClick={() => setInstallmentWarning(null)} className="text-zinc-500 hover:text-white transition-colors shrink-0">
               <i className="fas fa-times text-sm"></i>
@@ -612,6 +728,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
         </div>
       </div>
 
+
       {/* Por que vale fixar a forma de pagamento.
           Não é preferência de organização: alternar débito e cartão na mesma
           conta faz o caixa oscilar de verdade. Um gasto constante de R$ 1.500
@@ -713,7 +830,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className={`text-[9px] font-black uppercase tracking-[1px] ${detOk ? 'text-[#007aff]' : 'text-[#ff3b30]'}`}>Realizado</span>
+                    <span className={`text-[9px] font-black uppercase tracking-[1px] ${detOk ? 'text-[#007aff]' : 'text-[#ff3b30]'}`}>Planejado</span>
                     <span className={`text-[9px] font-black rounded-full px-2 py-0.5 leading-none ${detOk ? 'bg-[#f0f4ff] border border-[rgba(0,122,255,0.25)] text-[#007aff]' : 'bg-[#fff0f0] border border-[rgba(255,59,48,0.2)] text-[#ff3b30]'}`}>{toBarPct(determinedValue).toFixed(0)}%</span>
                   </div>
                   <span className={`text-[10px] font-black k-num ${detOk ? 'text-[#007aff]' : 'text-[#ff3b30]'}`}>{formatCurrency(determinedValue)}</span>
@@ -768,7 +885,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                 lançamentos sai do card do item, em Gastos. */}
             <div className="flex items-center justify-between mt-1">
               <div className="flex items-center gap-2">
-                <span className={`text-[9px] font-black uppercase tracking-[1px] ${missing ? 'text-[#ff9500]' : ok ? 'text-[#007aff]' : 'text-[#ff3b30]'}`}>Realizado</span>
+                <span className={`text-[9px] font-black uppercase tracking-[1px] ${missing ? 'text-[#ff9500]' : ok ? 'text-[#007aff]' : 'text-[#ff3b30]'}`}>Planejado</span>
                 <span className={`text-[9px] font-black rounded-full px-2 py-0.5 leading-none ${missing ? 'bg-[#fff8f0] border border-[rgba(255,149,0,0.25)] text-[#ff9500]' : ok ? 'bg-[#f0f4ff] border border-[rgba(0,122,255,0.25)] text-[#007aff]' : 'bg-[#fff0f0] border border-[rgba(255,59,48,0.2)] text-[#ff3b30]'}`}>
                   {toBarPct(realVal).toFixed(0)}%
                 </span>
@@ -845,7 +962,12 @@ const BlockSection: React.FC<BlockSectionProps> = ({
           // previsto é notícia boa — nunca vermelho. A web já fazia essa
           // distinção; o celular pintava de vermelho quem recebeu a mais.
           // Só no modo Open Finance: o plano normal segue como sempre foi.
-          const isOverTeto = (!modoOpenFinance || !isIncome) && realSpent > teto && teto > 0;
+          // Conta variável é imprevisto: não tem teto nem ideal. O valor da linha
+          // nasce do primeiro lançamento e cada imprevisto seguinte o "estourava",
+          // pintando de vermelho algo que não tinha limite a respeitar
+          // (Mariane, 2026-09-17).
+          const isOverTeto = category !== CategoryType.VARIABLE_EXPENSE
+            && (!modoOpenFinance || !isIncome) && realSpent > teto && teto > 0;
 
           const canReplicate = category === CategoryType.INCOME || category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE || category === CategoryType.VARIABLE_EXPENSE;
           return (
@@ -892,6 +1014,55 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   )}
                 </div>
               </div>
+              {category === CategoryType.CREDIT_CARD && (
+                <div className="ml-7">{avisoDigitos(item.id)}</div>
+              )}
+              {/* Fatura ainda não publicada pelo banco: o número é estimativa e
+                  pode vir alto, porque entram compras da fatura seguinte
+                  (Renata, 2026-09-17: R$11.010 virou R$8.788 na publicação). */}
+              {category === CategoryType.CREDIT_CARD && hasOpenFinance && (() => {
+                const last4 = (item.description ?? '').match(/••\s*(\d{4})/)?.[1];
+                if (!last4 || !faturasPublicadas) return null;
+                const publicadas = faturasPublicadas[last4];
+                if (!publicadas || publicadas.length === 0) return null;
+                const md = months[mobileMonthIdx];
+                if (!md || !((item.values[mobileMonthIdx] ?? 0) > 0)) return null;
+                const chave = `${md.year}-${String(md.index + 1).padStart(2, '0')}`;
+                if (publicadas.includes(chave)) return null;
+                return (
+                  <div className="mt-1.5 ml-7 px-2.5 py-2 rounded-xl bg-[#fff8e6] border border-[rgba(224,155,0,0.28)]">
+                    <p className="text-[11px] leading-snug text-[#8a5c00]">
+                      <i className="fas fa-hourglass-half mr-1.5" />
+                      <b>Estimativa.</b> O banco ainda não publicou esta fatura. O valor pode mudar quando ele
+                      publicar — normalmente para menos.
+                    </p>
+                  </div>
+                );
+              })()}
+              {isIncome && hasOpenFinance && partials.length > 0 && (() => {
+                const recebido = partials.reduce((soma: number, p: { value: number }) => soma + p.value, 0);
+                const previsto = item.values[mobileMonthIdx] || 0;
+                const diferenca = recebido - previsto;
+                return (
+                  <div className="mt-1.5 ml-7 flex flex-col gap-1">
+                    <p className="text-[8px] font-black text-[#aeaeb2] uppercase tracking-wider">Recebido até agora</p>
+                    <button
+                      onClick={() => setEntradasDoMes({ itemId: item.id, monthKey })}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-black border bg-[#f0fad0] border-[rgba(122,184,0,0.3)] text-[#5a8c00] active:opacity-70 w-fit"
+                    >
+                      <i className="fas fa-arrow-down text-[8px]" />
+                      <span className="k-num">{formatCurrency(recebido)}</span>
+                      <span className="text-[#7ab800]">· {partials.length} entrada{partials.length === 1 ? '' : 's'}</span>
+                      <i className="fas fa-chevron-right text-[7px] opacity-60" />
+                    </button>
+                    {previsto > 0 && Math.abs(diferenca) >= 0.01 && (
+                      <span className={`text-[9px] font-black k-num ${diferenca >= 0 ? 'text-[#5a8c00]' : 'text-[#b07500]'}`}>
+                        {diferenca >= 0 ? '+' : '−'} {formatCurrency(Math.abs(diferenca))} vs. previsto
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
               {category === CategoryType.CREDIT_CARD && onUpdateCardConfig && (
                 <div className="mt-2 ml-7 flex gap-4" data-tour="card-config">
                   <div className="flex items-center gap-2">
@@ -990,6 +1161,9 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   </div>
                 );
               })() : (() => {
+                // Bloco de acompanhamento de fatura — só para cartões de crédito.
+                if (category !== CategoryType.CREDIT_CARD) return null;
+
                 /**
                  * UM número, e ele existe no Extrato.
                  *
@@ -1063,7 +1237,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
               {/* Plano normal (R$10/ano): o cliente informa na mão como pagou.
                   Este seletor é a ÚNICA forma dele registrar débito x cartão —
                   esconder aqui apaga o recurso para quem não tem Open Finance. */}
-              {showLinkOption && onLinkCard && !hasOpenFinance && (() => {
+              {showLinkOption && onLinkCard && (!hasOpenFinance || perguntarFormaNoOF(item)) && (() => {
                 const hasPayment = !!(item.linkType || item.linkedCardId);
                 const isOpen = openPaymentItemId === item.id;
                 let paymentLabel = '';
@@ -1093,7 +1267,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           }`}
                         >
                           <i className={`fas ${hasPayment ? 'fa-check-circle' : 'fa-circle-question'} text-[10px]`}></i>
-                          {hasPayment ? paymentLabel : 'Paga de que forma?'}
+                          {hasPayment ? paymentLabel : (hasOpenFinance ? 'Esta conta é paga no cartão?' : 'Paga de que forma?')}
                           <i className="fas fa-chevron-down text-[8px] opacity-50 ml-0.5"></i>
                         </button>
                         {category === CategoryType.VARIABLE_EXPENSE && (() => {
@@ -1108,7 +1282,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           }
                           return <span className="text-[9px] text-[#aeaeb2] italic">{faturaLabel}</span>;
                         })()}
-                        {category !== CategoryType.VARIABLE_EXPENSE && (() => {
+                        {category !== CategoryType.VARIABLE_EXPENSE && !hasOpenFinance && (() => {
                           const linkedCard = item.linkedCardId ? allCards.find(c => c.id === item.linkedCardId) : null;
                           const isCardLinked = !!(linkedCard && item.linkType !== LinkType.DEBIT);
                           const isCommitted = item.linkType === LinkType.INSTALLMENT;
@@ -1223,9 +1397,32 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                 }
                 const rows = Array.from(srcMap.values());
                 const totalSpent = rows.reduce((sum, r) => sum + r.total, 0);
-                const isOver = teto > 0 && totalSpent > teto;
+                // Variável não tem teto (imprevisto) — nunca "acima do teto".
+                const isOver = category !== CategoryType.VARIABLE_EXPENSE && teto > 0 && totalSpent > teto;
+                /**
+                 * "Gasto até agora" só em linha que ACUMULA ao longo do mês.
+                 *
+                 * Mercado, gasolina, lazer: vários lançamentos somam e o número
+                 * embaixo precisa dizer o que é. Luz, internet, celular: um
+                 * pagamento só, e o rótulo ali confundiria (Eduardo, 2026-09-17).
+                 * A regra não depende do nome que o cliente deu: linha que já
+                 * recebeu dois lançamentos num mesmo mês é acumulativa — o mesmo
+                 * critério que cria o card na aba Gastos.
+                 */
+                const acumula = isLeisureBlock
+                  || Object.values(item.partialExpenses ?? {}).some((lista) => ((lista as unknown[] | undefined)?.length ?? 0) > 1);
+                const md = months[mobileMonthIdx];
+                const hoje = new Date();
+                const ehMesCorrente = !!md && md.year === hoje.getFullYear() && md.index === hoje.getMonth();
+                const ehPassado = !!md && (md.year * 12 + md.index) < (hoje.getFullYear() * 12 + hoje.getMonth());
+                const rotuloGasto = ehMesCorrente ? 'Gasto até agora' : ehPassado ? 'Gasto no mês' : 'Já lançado';
                 return (
                   <div className={`mt-1.5 ml-7 flex flex-col gap-1 ${isOver ? 'rounded-xl bg-[#fff0f0] p-1.5 border border-[rgba(255,59,48,0.2)]' : ''}`}>
+                    {acumula && !isIncome && (
+                      <p className="text-[8px] font-black text-[#aeaeb2] uppercase tracking-wider">
+                        {rotuloGasto}{rows.length > 1 && <span className="k-num text-[#1d1d1f]"> · {formatCurrency(totalSpent)}</span>}
+                      </p>
+                    )}
                     {isOver && (
                       <p className="text-[8px] font-black text-[#ff3b30] uppercase tracking-wider flex items-center gap-1">
                         <i className="fas fa-exclamation-circle text-[9px]" />
@@ -1235,7 +1432,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                     {rows.map(r => (
                       <button
                         key={r.key}
-                        onClick={() => onNavigateToGastos?.(item.id, r.key)}
+                        onClick={() => onNavigateToGastos?.(item.id, r.key, md ? `${md.year}-${md.index}` : undefined)}
                         className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[9px] font-black border active:opacity-70 w-fit ${
                           isOver
                             ? 'bg-[#fff0f0] border-[rgba(255,59,48,0.15)] text-[#ff3b30]'
@@ -1251,7 +1448,123 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   </div>
                 );
               })()}
-              {/* Replicate button — only for categories that repeat every month. Fixed to the
+              {entradasDoMes && (() => {
+        const item = items.find(i => i.id === entradasDoMes.itemId);
+        const lista = ((item?.partialExpenses?.[entradasDoMes.monthKey] ?? []) as PartialExpense[])
+          .slice()
+          .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+        const total = lista.reduce((soma, p) => soma + p.value, 0);
+        return (
+          <div className="fixed inset-0 z-[80] flex items-end justify-center" onClick={() => setEntradasDoMes(null)}>
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+            <div
+              onClick={e => e.stopPropagation()}
+              className="relative w-full max-w-lg bg-white rounded-t-3xl p-5 pb-8 shadow-2xl animate-in slide-in-from-bottom duration-300"
+            >
+              <div className="w-10 h-1 bg-[#e8e8ed] rounded-full mx-auto mb-4" />
+              <p className="text-[10px] font-black uppercase tracking-widest text-[#aeaeb2]">Entradas recebidas</p>
+              <h3 className="text-[#1d1d1f] font-black text-lg leading-tight mb-1">{item?.description || 'Renda'}</h3>
+              <p className="text-[#5a8c00] font-black k-num text-2xl mb-4">{formatCurrency(total)}</p>
+              <div className="flex flex-col gap-1.5 max-h-[50vh] overflow-y-auto">
+                {lista.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => { setEntradaEmEdicao(p); setEscolhendoLinha(false); }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-[#f5f5f7] text-left active:scale-[0.99]"
+                  >
+                    <span className="text-[11px] font-black text-[#aeaeb2] shrink-0 tabular-nums">{p.date}</span>
+                    <span className="flex-1 min-w-0 text-[13px] text-[#1d1d1f] truncate">{p.description}</span>
+                    <span className="shrink-0 text-[13px] font-black text-[#1d1d1f] k-num">{formatCurrency(p.value)}</span>
+                    <i className="fas fa-pen text-[10px] text-[#aeaeb2] shrink-0" />
+                  </button>
+                ))}
+                {lista.length === 0 && (
+                  <p className="text-[#aeaeb2] text-sm text-center py-6">Nenhuma entrada neste mês ainda.</p>
+                )}
+              </div>
+              <button
+                onClick={() => setEntradasDoMes(null)}
+                className="mt-4 w-full py-3 rounded-2xl bg-[#f5f5f7] text-[#1d1d1f] font-black text-sm active:scale-[0.98]"
+              >
+                Fechar
+              </button>
+
+              {/* Corrigir sem sair da tela: o lancamento automatico erra, e sem
+                  isto a entrada errada ficava presa na renda (Eduardo, 2026-09-20). */}
+              {entradaEmEdicao && (() => {
+                const [ano, mes] = entradasDoMes.monthKey.split('-').map(Number);
+                const destinos = itemsRef.current.filter(i => i.category !== CategoryType.INCOME && i.category !== CategoryType.CREDIT_CARD);
+                return (
+                  <div className="absolute inset-0 rounded-t-3xl bg-white p-5 flex flex-col">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-[#aeaeb2]">Conferir lancamento</p>
+                    <h4 className="text-[#1d1d1f] font-black text-base leading-tight">{entradaEmEdicao.description}</h4>
+                    <p className="text-[#6e6e73] text-sm mb-4 k-num">{formatCurrency(entradaEmEdicao.value)} - {entradaEmEdicao.date}</p>
+
+                    {!escolhendoLinha ? (
+                      <div className="flex flex-col gap-2">
+                        <button
+                          onClick={() => setEntradaEmEdicao(null)}
+                          className="w-full py-3 rounded-2xl bg-[#f0fad0] border border-[rgba(122,184,0,0.3)] text-[#5a8c00] font-black text-sm active:scale-[0.98]"
+                        >
+                          Foi renda mesmo
+                        </button>
+                        <button
+                          onClick={() => setEscolhendoLinha(true)}
+                          disabled={!onMovePartial}
+                          className="w-full py-3 rounded-2xl bg-[#f5f5f7] text-[#1d1d1f] font-black text-sm active:scale-[0.98] disabled:opacity-40"
+                        >
+                          Nao e renda, e um gasto
+                        </button>
+                        <button
+                          onClick={() => {
+                            onRemovePartial?.(entradasDoMes.itemId, entradaEmEdicao.id);
+                            setEntradaEmEdicao(null);
+                          }}
+                          disabled={!onRemovePartial}
+                          className="w-full py-3 rounded-2xl text-[#ff3b30] font-black text-sm active:scale-[0.98] disabled:opacity-40"
+                        >
+                          Excluir este lancamento
+                        </button>
+                        <button onClick={() => setEntradaEmEdicao(null)} className="w-full py-2 text-[#aeaeb2] font-bold text-[13px]">
+                          Cancelar
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-[#6e6e73] text-[13px] mb-2">Em qual linha ele entra?</p>
+                        <div className="flex-1 overflow-y-auto flex flex-col gap-1.5">
+                          {destinos.map(d => (
+                            <button
+                              key={d.id}
+                              onClick={() => {
+                                onMovePartial?.(entradasDoMes.itemId, d.id, entradaEmEdicao, ano, mes);
+                                setEntradaEmEdicao(null);
+                                setEscolhendoLinha(false);
+                                setEntradasDoMes(null);
+                              }}
+                              className="w-full text-left px-3 py-2.5 rounded-xl bg-[#f5f5f7] text-[13px] text-[#1d1d1f] font-bold active:scale-[0.99]"
+                            >
+                              {d.description}
+                            </button>
+                          ))}
+                          {destinos.length === 0 && (
+                            <p className="text-[#aeaeb2] text-sm text-center py-6">Nenhuma linha de gasto no plano ainda.</p>
+                          )}
+                        </div>
+                        <button onClick={() => setEscolhendoLinha(false)} className="w-full py-2 mt-2 text-[#aeaeb2] font-bold text-[13px]">
+                          Voltar
+                        </button>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Replicate button — only for categories that repeat every month. Fixed to the
                   card's bottom-right corner, slightly above the edge so it doesn't collide
                   with the payment-method row or future per-card spent totals. */}
               {canReplicate && (
@@ -1355,6 +1668,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                       className="w-full bg-transparent border-b border-transparent focus:border-green-400 outline-none p-2 text-gray-900 font-medium"
                       placeholder="Nome do item..."
                     />
+                    {category === CategoryType.CREDIT_CARD && avisoDigitos(item.id)}
                     {category === CategoryType.CREDIT_CARD && onUpdateCardConfig && (
                       <div className="flex gap-2 px-2 pb-1" data-tour="card-config">
                         <div className="flex flex-col">
@@ -1396,7 +1710,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                       </div>
                     )}
                     {/* Plano normal (R$10/ano): seletor manual de forma de pagamento. */}
-                    {showLinkOption && onLinkCard && !hasOpenFinance && (() => {
+                    {showLinkOption && onLinkCard && (!hasOpenFinance || perguntarFormaNoOF(item)) && (() => {
                       const hasPayment = !!(item.linkType || item.linkedCardId);
                       const isOpen = openPaymentItemId === item.id;
                       let paymentLabel = '';
@@ -1878,7 +2192,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                   return (
                     <button
                       key={r.key}
-                      onClick={() => { setBreakdown(null); onNavigateToGastos?.(item.id, r.key); }}
+                      onClick={() => { const mb = months[breakdown.mIdx]; setBreakdown(null); onNavigateToGastos?.(item.id, r.key, mb ? `${mb.year}-${mb.index}` : undefined); }}
                       className={`w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-left hover:bg-[#f5f5f7] transition-colors ${idx > 0 ? 'border-t border-[#f0f0f0]' : ''}`}
                     >
                       <span className={`shrink-0 w-[30px] h-[30px] rounded-[9px] grid place-items-center text-[13px] ${r.isCredit ? 'bg-orange-50 text-orange-500' : 'bg-blue-50 text-blue-500'}`}>

@@ -7,6 +7,7 @@ import { saveNotificationPrefs, loadNotificationPrefs } from '../lib/db';
 import { MONTHS_BR } from '../constants';
 import { NotifPrefs, getNotifPrefs, saveNotifPrefs, DEFAULT_NOTIF_PREFS } from '../lib/notifPrefs';
 import { scheduleTestNotification, scheduleTestQuoteNotification } from '../lib/notifications';
+import { diagnosticoPush, pedirPermissaoPush } from '../lib/push';
 import InvitePartner from './InvitePartner';
 import ConectarBanco from './ConectarBanco';
 import { hasOpenFinanceAccess } from '../lib/ofAccess';
@@ -43,6 +44,80 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
   const { signIn, setActive } = useSignIn();
   const { getToken } = useAuth();
   const [tab, setTab] = useState<SettingsTab>('conta');
+  const [testandoPush, setTestandoPush] = useState(false);
+  /**
+   * Avisos do banco: ligado = existe aparelho registrado nesta casa.
+   *
+   * O estado real e esse — e o que o cron consulta na hora de enviar. Guardar
+   * uma preferencia separada criaria duas verdades (Eduardo, 2026-09-20).
+   */
+  const [avisosBanco, setAvisosBanco] = useState<boolean | null>(null);
+  const [mexendoAvisos, setMexendoAvisos] = useState(false);
+  /** Quem divide esta conta (nome e e-mail), para o Modo Casal deixar de ser anonimo. */
+  const [pessoasDaConta, setPessoasDaConta] = useState<Array<{ clerkUserId: string; papel: string; nome: string | null; email: string | null; ehVoce: boolean }>>([]);
+  const [convitesPendentes, setConvitesPendentes] = useState<Array<{ email: string; enviadoEm: string }>>([]);
+
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      try {
+        const jwt = await getToken({ template: 'supabase' });
+        if (!jwt) return;
+        const [rPush, rMembros] = await Promise.all([
+          fetch(`/api/push-register?householdId=${encodeURIComponent(householdId)}`, { headers: { Authorization: `Bearer ${jwt}` } }),
+          fetch(`/api/household-membros?householdId=${encodeURIComponent(householdId)}`, { headers: { Authorization: `Bearer ${jwt}` } }),
+        ]);
+        if (!vivo) return;
+        if (rPush.ok) {
+          const d = await rPush.json() as { ligado?: boolean };
+          setAvisosBanco(!!d.ligado);
+        }
+        if (rMembros.ok) {
+          const d = await rMembros.json() as {
+            membros?: Array<{ clerkUserId: string; papel: string; nome: string | null; email: string | null; ehVoce: boolean }>;
+            convitesPendentes?: Array<{ email: string; enviadoEm: string }>;
+          };
+          setPessoasDaConta(d.membros ?? []);
+          setConvitesPendentes(d.convitesPendentes ?? []);
+        }
+      } catch { /* telas continuam utilizaveis sem isto */ }
+    })();
+    return () => { vivo = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [householdId]);
+
+  const alternarAvisosBanco = async () => {
+    if (mexendoAvisos) return;
+    setMexendoAvisos(true);
+    try {
+      const jwt = await getToken({ template: 'supabase' });
+      if (!jwt) return;
+      if (avisosBanco) {
+        await fetch('/api/push-register', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+          body: JSON.stringify({ householdId, todos: true }),
+        });
+        setAvisosBanco(false);
+      } else {
+        const ok = await pedirPermissaoPush((token, platform) => {
+          void fetch('/api/push-register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+            body: JSON.stringify({ householdId, token, platform }),
+          });
+        });
+        // Quem ja negou a permissao no iPhone precisa liberar nos Ajustes:
+        // o sistema nao pergunta duas vezes.
+        if (!ok) {
+          alert('Para receber os avisos, libere as notificações do Kashim nos Ajustes do seu celular.');
+        }
+        setAvisosBanco(ok);
+      }
+    } finally {
+      setMexendoAvisos(false);
+    }
+  };
   const [showConectarBanco, setShowConectarBanco] = useState(false);
 
   // Subscription
@@ -58,6 +133,24 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
   const [coachAccess, setCoachAccess] = useState<any[]>([]);
   const [revokeConfirm, setRevokeConfirm] = useState(false);
   const [revoking, setRevoking] = useState(false);
+
+  // Exclusão de conta — 3 etapas: aviso → confirmação por texto → executando
+  const [deleteStep, setDeleteStep] = useState<'idle' | 'warn' | 'confirm' | 'deleting'>('idle');
+  /**
+   * Conta compartilhada muda o significado de "excluir": o plano é dos dois, e
+   * sair não pode apagar o que é do parceiro (auditoria de 2026-09-17).
+   */
+  const [contaCompartilhada, setContaCompartilhada] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    db.from('household_members')
+      .select('id', { count: 'exact', head: true })
+      .eq('household_id', householdId)
+      .then(({ count }) => { if (vivo) setContaCompartilhada((count ?? 1) > 1); }, () => {});
+    return () => { vivo = false; };
+  }, [db, householdId]);
+  const [deleteInput, setDeleteInput] = useState('');
+  const [deleteError, setDeleteError] = useState('');
 
   // Password
   const [passwordView, setPasswordView] = useState<PasswordView>('idle');
@@ -588,12 +681,122 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
               </button>
             )}
 
+            {/* Excluir conta — ação destrutiva, fica abaixo do sair */}
+            <div className="flex justify-center pt-1 pb-0">
+              <button
+                onClick={() => setDeleteStep('warn')}
+                className="text-zinc-600 hover:text-red-500 active:text-red-600 text-[11px] transition-colors"
+              >
+                {contaCompartilhada ? 'Sair da conta compartilhada' : 'Excluir minha conta'}
+              </button>
+            </div>
+
             {/* Sign out — kept small and discreet at the bottom */}
             <div className="flex justify-center pt-2 pb-1">
-              <button onClick={() => signOut()} className="text-zinc-600 hover:text-red-400 active:text-red-500 text-xs transition-colors flex items-center gap-1.5">
+              <button onClick={() => signOut()} className="text-zinc-300 hover:text-red-400 active:text-red-500 text-xs transition-colors flex items-center gap-1.5">
                 <i className="fas fa-sign-out-alt text-[10px]"></i> Sair da conta
               </button>
             </div>
+
+            {/* Modal etapa 1: aviso */}
+            {deleteStep === 'warn' && (
+              <div className="fixed inset-0 z-[600] flex items-center justify-center bg-black/70 p-6" onClick={() => setDeleteStep('idle')}>
+                <div className="bg-zinc-900 border border-red-500/30 rounded-3xl p-7 max-w-sm w-full shadow-2xl" onClick={e => e.stopPropagation()}>
+                  <div className="w-14 h-14 bg-red-500/10 rounded-2xl flex items-center justify-center mb-5">
+                    <i className="fas fa-trash-alt text-red-400 text-xl"></i>
+                  </div>
+                  <h3 className="text-white font-black text-lg uppercase italic tracking-tight mb-2">
+                    {contaCompartilhada ? 'Sair da conta compartilhada' : 'Excluir conta'}
+                  </h3>
+                  {contaCompartilhada ? (
+                    <>
+                      <p className="text-zinc-400 text-sm leading-relaxed mb-2">
+                        Este plano é compartilhado. Seu login e seu acesso serão apagados, e{' '}
+                        <strong className="text-white">o plano continua com a outra pessoa</strong> — lançamentos, metas e bancos conectados ficam com ela.
+                      </p>
+                      <p className="text-zinc-400 text-sm leading-relaxed mb-2">
+                        Para apagar o plano inteiro, a outra pessoa precisa sair primeiro. Assim ninguém apaga os dados do outro sozinho.
+                      </p>
+                      <p className="text-red-400 text-sm font-bold mb-6">Sua saída não tem volta.</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-zinc-400 text-sm leading-relaxed mb-2">
+                        Isso vai apagar <strong className="text-white">todos os seus dados permanentemente</strong> — plano, metas, histórico e conexões bancárias.
+                      </p>
+                      <p className="text-red-400 text-sm font-bold mb-6">Essa ação não tem volta.</p>
+                    </>
+                  )}
+                  <div className="flex gap-3">
+                    <button onClick={() => setDeleteStep('idle')} className="flex-1 py-3 rounded-2xl border border-zinc-700 text-zinc-300 font-bold text-sm active:opacity-70">
+                      Cancelar
+                    </button>
+                    <button onClick={() => { setDeleteInput(''); setDeleteError(''); setDeleteStep('confirm'); }} className="flex-1 py-3 rounded-2xl bg-red-500/20 border border-red-500/40 text-red-400 font-black text-sm active:opacity-70">
+                      Continuar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal etapa 2: confirmação por texto */}
+            {deleteStep === 'confirm' && (
+              <div className="fixed inset-0 z-[600] flex items-center justify-center bg-black/70 p-6">
+                <div className="bg-zinc-900 border border-red-500/30 rounded-3xl p-7 max-w-sm w-full shadow-2xl">
+                  <p className="text-zinc-400 text-sm mb-4 leading-relaxed">
+                    Para confirmar, digite <strong className="text-white font-black">{contaCompartilhada ? 'SAIR' : 'EXCLUIR'}</strong> no campo abaixo:
+                  </p>
+                  <input
+                    autoFocus
+                    value={deleteInput}
+                    onChange={e => { setDeleteInput(e.target.value); setDeleteError(''); }}
+                    placeholder={contaCompartilhada ? 'SAIR' : 'EXCLUIR'}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white text-sm font-bold outline-none focus:border-red-500 mb-2"
+                  />
+                  {deleteError && <p className="text-red-400 text-xs mb-3">{deleteError}</p>}
+                  <div className="flex gap-3 mt-4">
+                    <button onClick={() => setDeleteStep('idle')} className="flex-1 py-3 rounded-2xl border border-zinc-700 text-zinc-300 font-bold text-sm active:opacity-70">
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const palavra = contaCompartilhada ? 'SAIR' : 'EXCLUIR';
+                        if (deleteInput.trim().toUpperCase() !== palavra) {
+                          setDeleteError(`Digite exatamente ${palavra} para confirmar.`);
+                          return;
+                        }
+                        setDeleteStep('deleting');
+                        try {
+                          const token = await getToken({ template: 'supabase' });
+                          const res = await fetch('/api/delete-account', {
+                            method: 'DELETE',
+                            headers: { Authorization: `Bearer ${token}` },
+                          });
+                          if (!res.ok) throw new Error();
+                          await signOut();
+                        } catch {
+                          setDeleteError('Erro ao excluir. Tente novamente.');
+                          setDeleteStep('confirm');
+                        }
+                      }}
+                      className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-black text-sm active:opacity-70"
+                    >
+                      {contaCompartilhada ? 'Sair da conta' : 'Excluir tudo'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal etapa 3: executando */}
+            {deleteStep === 'deleting' && (
+              <div className="fixed inset-0 z-[600] flex items-center justify-center bg-black/70 p-6">
+                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-7 max-w-sm w-full shadow-2xl text-center">
+                  <i className="fas fa-spinner fa-spin text-red-400 text-3xl mb-4"></i>
+                  <p className="text-zinc-400 text-sm">{contaCompartilhada ? 'Saindo da conta...' : 'Excluindo sua conta...'}</p>
+                </div>
+              </div>
+            )}
             {/* Carimbo do build: responde "a atualização entrou?" na hora, em
                 vez de depurar lógica nova contra bundle antigo em cache. */}
             <p className="text-center text-zinc-700 text-[10px] pb-1">
@@ -682,30 +885,41 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
               </p>
             )}
 
-            {/* Teste de entrega: dispara um aviso em ~12s e mostra o motivo.
-                Confirma se as notificações chegam NESTE aparelho. */}
-            <button
-              onClick={async () => {
-                const r = await scheduleTestNotification();
-                alert(`Teste de notificação:\n\n${r.reason}`);
-              }}
-              className="w-full mt-5 flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-black py-3 rounded-2xl text-xs uppercase tracking-wide transition-all"
-            >
-              <i className="fas fa-vial text-green-400"></i>
-              Testar notificação agora
-            </button>
-            <button
-              onClick={async () => {
-                const r = await scheduleTestQuoteNotification(householdId);
-                alert(`Teste da frase da semana:\n\n${r.reason}`);
-              }}
-              className="w-full mt-2 flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-black py-3 rounded-2xl text-xs uppercase tracking-wide transition-all"
-            >
-              <i className="fas fa-quote-left text-green-400"></i>
-              Testar frase da semana agora
-            </button>
-            <p className="text-zinc-600 text-[10px] mt-2 text-center leading-relaxed">
-              Dispara um aviso de teste em ~12s. Se não chegar, confira a permissão de notificação do Kashim nas configurações do celular.
+            {/* O "testar notificações" era ferramenta de diagnóstico da fase de
+                testes e saiu da tela do cliente. No lugar, o que ele precisa:
+                ligar e desligar o aviso de gasto novo (Eduardo, 2026-09-20). */}
+            {isNativeApp && (
+              <div className="mt-5 bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-bold text-sm">Avisar quando chegar gasto novo</p>
+                    <p className="text-zinc-500 text-[11px] leading-snug mt-0.5">
+                      O banco manda os gastos sozinho. O aviso é o que lembra você de categorizar —
+                      recomendamos deixar ligado.
+                    </p>
+                  </div>
+                  <button
+                    onClick={alternarAvisosBanco}
+                    disabled={mexendoAvisos || avisosBanco === null}
+                    aria-label={avisosBanco ? 'Desligar avisos' : 'Ligar avisos'}
+                    className={`shrink-0 w-12 h-7 rounded-full transition-colors relative disabled:opacity-50 ${avisosBanco ? 'bg-[#7ab800]' : 'bg-zinc-700'}`}
+                  >
+                    <span
+                      className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-all ${avisosBanco ? 'left-6' : 'left-1'}`}
+                    />
+                  </button>
+                </div>
+                {avisosBanco === false && (
+                  <p className="text-amber-400/80 text-[11px] mt-3 leading-snug">
+                    Com os avisos desligados, você só descobre gastos novos ao abrir o app.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <p className="text-zinc-600 text-[11px] mt-5 leading-relaxed">
+              <i className="fas fa-circle-info mr-1"></i>
+              As notificações chegam pelo aplicativo instalado no celular. O alerta de teto aparece aqui na tela.
             </p>
           </div>
         )}
@@ -720,6 +934,47 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
               <p className="text-zinc-500 text-xs mb-4 leading-relaxed">
                 Convide seu parceiro(a) para acessar e lançar gastos no mesmo plano. Vocês compartilham os mesmos dados em tempo real.
               </p>
+
+              {/* QUEM esta na conta. Antes dizia so que era compartilhada, e o
+                  cliente nao sabia nem se o convite tinha ido para o e-mail
+                  certo (Eduardo, 2026-09-20). */}
+              {pessoasDaConta.length > 0 && (
+                <div className="mb-4 flex flex-col gap-2">
+                  <p className="text-zinc-400 text-[10px] font-black uppercase tracking-widest">
+                    {pessoasDaConta.length > 1 ? 'Nesta conta' : 'Você'}
+                  </p>
+                  {pessoasDaConta.map(pessoa => (
+                    <div key={pessoa.clerkUserId} className="flex items-center gap-3 bg-zinc-950/60 border border-zinc-800 rounded-2xl px-3.5 py-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-[#7ab800]/15 border border-[#7ab800]/25 flex items-center justify-center shrink-0">
+                        <i className={`fas ${pessoa.papel === 'dono' ? 'fa-user' : 'fa-user-group'} text-[#7ab800] text-xs`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-[13px] font-bold truncate">
+                          {pessoa.nome || pessoa.email || 'Sem nome no cadastro'}
+                          {pessoa.ehVoce && <span className="text-zinc-500 font-normal"> · você</span>}
+                        </p>
+                        {pessoa.email && (
+                          <p className="text-zinc-500 text-[11px] truncate">{pessoa.email}</p>
+                        )}
+                      </div>
+                      <span className="shrink-0 text-[9px] font-black uppercase tracking-wider text-zinc-500">
+                        {pessoa.papel === 'dono' ? 'Criou a conta' : 'Parceiro(a)'}
+                      </span>
+                    </div>
+                  ))}
+                  {convitesPendentes.map(convite => (
+                    <div key={convite.email} className="flex items-center gap-3 bg-[#1f1a0a] border border-amber-500/20 rounded-2xl px-3.5 py-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-center shrink-0">
+                        <i className="fas fa-hourglass-half text-amber-400 text-xs" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-amber-200/90 text-[13px] font-bold truncate">{convite.email}</p>
+                        <p className="text-amber-200/50 text-[11px]">Convite enviado, ainda não aceito</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               <InvitePartner
                 db={db}
                 householdId={householdId}

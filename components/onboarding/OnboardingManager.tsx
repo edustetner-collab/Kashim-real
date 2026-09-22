@@ -145,7 +145,11 @@ const OnboardingManager: React.FC<OnboardingManagerProps> = ({
       {!activeTour && (
         <button
           onClick={() => setHelpOpen(true)}
-          className="fixed z-[70] bottom-24 lg:bottom-6 right-4 lg:right-6 w-12 h-12 rounded-full bg-[#1d1d1f] border-2 border-[#a8e716] text-[#a8e716] shadow-lg active:scale-95 transition-all flex items-center justify-center"
+          /* A barra de baixo cresceu (quadrados de 36px + área segura do iPhone) e
+             encostava na bolinha. A conta usa a área segura, e não um número
+             fixo, para valer em qualquer aparelho (Eduardo, 2026-09-20). No
+             computador não existe barra, então volta para o canto. */
+          className="fixed z-[70] bottom-[calc(env(safe-area-inset-bottom,0px)+104px)] lg:bottom-6 right-4 lg:right-6 w-12 h-12 rounded-full bg-[#1d1d1f] border-2 border-[#a8e716] text-[#a8e716] shadow-lg active:scale-95 transition-all flex items-center justify-center"
           aria-label="Ajuda e tutoriais"
           title="Ajuda e tutoriais"
         >

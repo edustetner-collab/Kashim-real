@@ -244,10 +244,11 @@ async function readJson<T>(res: Response): Promise<T> {
   try { parsed = JSON.parse(text); } catch { /* resposta não é JSON */ }
 
   if (!res.ok) {
-    const fromBody = parsed && typeof parsed === 'object' && 'error' in parsed
-      ? String((parsed as { error: unknown }).error)
-      : '';
-    throw new Error(fromBody || `O servidor respondeu ${res.status}. Tente novamente em instantes.`);
+    const body = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : null;
+    const fromBody = body && 'error' in body ? String(body.error) : '';
+    // Inclui detalhes da Technospeed para facilitar diagnóstico
+    const detail = body && 'detail' in body && body.detail ? ` — Detalhe: ${JSON.stringify(body.detail)}` : '';
+    throw new Error((fromBody || `O servidor respondeu ${res.status}. Tente novamente em instantes.`) + detail);
   }
 
   if (parsed === null) {
@@ -1032,55 +1033,43 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
             </div>
           )}
 
-          {/* Instrução baseada no que REALMENTE funcionou: a única autorização
-              concluída até hoje (Bradesco, 2026-08-11) foi pelo navegador. Pelo
-              app do banco a jornada quebra — o Itaú chega a pedir para instalar
-              um app já instalado. Enquanto a Tecnospeed não resolve, mandamos
-              pelo caminho que fecha. */}
-          <p className="text-zinc-400 text-sm mb-5 px-4">
-            Faça pelo <strong className="text-zinc-200">navegador</strong>, entrando na sua conta pelo
-            site do banco. Pelo aplicativo a autorização costuma travar no meio.
-          </p>
-
-          {/* O que esperar — de propósito não pedimos para "marcar conta e
-              cartão": o fluxo do banco não oferece essa escolha, é uma
-              autorização única. Mandar procurar por ela só gera dúvida. */}
-          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl px-4 py-4 mb-5 text-left">
-            <p className="text-zinc-300 text-xs font-bold uppercase tracking-widest mb-3">
-              O que vai acontecer
-            </p>
-            <div className="space-y-2.5">
-              {[
-                'O banco pede para escolher a instituição de novo — é normal, pode escolher.',
-                'Entre pelo site do banco, não pelo aplicativo.',
-                'Você informa o CPF e confirma o compartilhamento.',
-                'Pronto. Uma autorização já cobre conta e cartão do mesmo banco.',
-              ].map((text, i) => (
-                <div key={i} className="flex items-start gap-2.5">
-                  <span className="w-4 flex-shrink-0 text-green-400 text-xs font-black mt-0.5">{i + 1}</span>
-                  <p className="text-zinc-300 text-sm leading-snug">{text}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
+          {/**
+            * A ordem é: BOTÃO primeiro, passos depois.
+            *
+            * A instrução antiga começava com "entre pelo site do banco" e a
+            * Mariane foi abrir o Nubank pelo Google — ela seguiu o texto ao pé
+            * da letra, e o texto estava descrevendo o MEIO do caminho
+            * (Eduardo, 2026-09-20). Agora o primeiro gesto é o botão, e os
+            * passos descrevem o que aparece DEPOIS dele, na ordem real das
+            * telas da Technospeed e da Pluggy.
+            */}
           <a
             href={openFinanceLink}
             target="_blank"
             rel="noopener noreferrer"
-            className="block w-full py-4 bg-green-500 hover:bg-green-400 text-black font-black uppercase tracking-widest text-sm rounded-2xl transition-all active:scale-95 mb-3"
+            className="block w-full py-4 bg-green-500 hover:bg-green-400 text-black font-black uppercase tracking-widest text-sm rounded-2xl transition-all active:scale-95 mb-4"
           >
             <i className="fas fa-external-link mr-2"></i>Abrir autorização do banco
           </a>
 
-          {/* Saída para quando o banco não reconhece o app instalado.
-              `target="_blank"` dentro do app abre uma janela EMBUTIDA (parece
-              Safari, mas não é o app Safari). Bancos como o Itaú tentam abrir o
-              app pelo universal link, e universal link não dispara de dentro de
-              janela embutida — o banco conclui que o app não existe e manda
-              "baixe o aplicativo", mesmo com ele instalado e logado.
-              Colar o link no navegador de verdade contorna isso. */}
-          <CopyLinkButton link={openFinanceLink} />
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl px-4 py-4 mb-4 text-left">
+            <p className="text-zinc-300 text-xs font-bold uppercase tracking-widest mb-3">
+              Depois de tocar, você vai ver
+            </p>
+            <div className="space-y-2.5">
+              {[
+                <>Os dados da sua conta. Toque em <strong className="text-white">Conectar conta</strong>.</>,
+                <>A lista de bancos. Escolha o seu e siga.</>,
+                <>A tela do seu banco. Entre e <strong className="text-white">confirme o compartilhamento</strong>.</>,
+                <>Pronto. Uma autorização cobre a conta e o cartão do mesmo banco.</>,
+              ].map((texto, i) => (
+                <div key={i} className="flex items-start gap-2.5">
+                  <span className="w-4 flex-shrink-0 text-green-400 text-xs font-black mt-0.5">{i + 1}</span>
+                  <p className="text-zinc-300 text-sm leading-snug">{texto}</p>
+                </div>
+              ))}
+            </div>
+          </div>
 
           <button
             onClick={handleCheckAuthorization}
@@ -1088,6 +1077,28 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
           >
             Já autorizei no banco
           </button>
+
+          {/**
+            * Socorro escondido, não instrução principal.
+            *
+            * Copiar o link e abrir no navegador de verdade resolve o caso em
+            * que o banco diz "instale o app" com o app instalado — mas isso é
+            * exceção. No corpo da tela, virava passo obrigatório e confundia
+            * quem não tem problema nenhum.
+            */}
+          <details className="mt-4 text-left">
+            <summary className="text-zinc-400 text-xs font-bold cursor-pointer list-none flex items-center gap-2 py-2">
+              <i className="fas fa-circle-question text-zinc-500" />
+              Não abriu, ou o banco pediu para instalar o app?
+            </summary>
+            <div className="mt-2 bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3.5 flex flex-col gap-3">
+              <p className="text-zinc-400 text-xs leading-relaxed">
+                Copie o link, abra o Safari ou o Chrome pela tela inicial do celular e cole lá. Entrar pelo
+                site do banco costuma funcionar melhor que pelo aplicativo dele.
+              </p>
+              <CopyLinkButton link={openFinanceLink} />
+            </div>
+          </details>
 
           <div className="flex items-start gap-2.5 bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3.5 mt-4 text-left">
             <i className="fas fa-clock text-zinc-500 text-sm mt-0.5"></i>

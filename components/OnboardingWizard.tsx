@@ -170,8 +170,8 @@ const OnboardingWizard: React.FC<Props> = ({ userName, onComplete }) => {
       {/* Top bar */}
       <div className="flex items-center justify-between px-5 pt-6 pb-4 shrink-0">
         {stepIdx > 0 ? (
-          <button onClick={goBack} className="flex items-center gap-1.5 text-zinc-400 active:text-white transition-colors px-1">
-            <i className="fas fa-arrow-left text-sm"></i>
+          <button onClick={goBack} className="flex items-center gap-2 text-zinc-200 active:text-white transition-colors px-4 py-2.5 -ml-2 rounded-xl active:bg-white/10 min-h-[44px]">
+            <i className="fas fa-arrow-left text-[15px]"></i>
             <span className="text-sm font-bold">Voltar</span>
           </button>
         ) : <div className="w-16" />}

@@ -20,8 +20,16 @@ interface TourOverlayProps {
   temOpenFinance?: boolean;
 }
 
-const OVERLAY_Z = 'z-[80]';
-const CARD_Z = 'z-[85]';
+/**
+ * O tour fica ACIMA da barra de baixo (z-95).
+ *
+ * A barra passou a ficar por cima das telas em 2026-09-20, e o card do tour,
+ * ancorado no rodapé, ficou por baixo dela: o Diego viu a explicação cortada e
+ * sem o botão de avançar (2026-09-22). O tour também fala DA barra, então ele
+ * precisa cobri-la para apontar cada botão.
+ */
+const OVERLAY_Z = 'z-[96]';
+const CARD_Z = 'z-[97]';
 const CARD_WIDTH = 372;
 const CARD_MARGIN = 16;
 const DESKTOP_BREAKPOINT = 1024;
@@ -116,7 +124,8 @@ const StepCard: React.FC<StepCardProps> = ({
     ? 'fixed'
     : mobileOnTop
       ? 'fixed left-3 right-3 top-3 safe-top'
-      : 'fixed left-3 right-3 bottom-3 safe-bottom';
+      // Sobe o card acima da barra de baixo, medindo pela área segura do aparelho.
+      : 'fixed left-3 right-3 bottom-[calc(env(safe-area-inset-bottom,0px)+84px)] lg:bottom-3';
 
   return (
     <div

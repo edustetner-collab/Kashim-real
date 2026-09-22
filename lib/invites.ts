@@ -52,7 +52,7 @@ function clearPendingInvite(): void {
   cleanInviteFromUrl();
 }
 
-export async function processInviteFromUrl(authToken: string | null): Promise<string | null> {
+export async function processInviteFromUrl(authToken: string | null): Promise<string | 'NEEDS_MERGE' | null> {
   const token = getPendingInviteToken();
   if (!token) return null;
 
@@ -76,19 +76,58 @@ export async function processInviteFromUrl(authToken: string | null): Promise<st
       return data.householdId ?? null;
     }
 
-    // O servidor respondeu com erro definitivo (convite inválido/usado, ou o
-    // usuário já está em outra conta compartilhada): não adianta reter para
-    // retry — limpa para não prender o usuário num loop.
-    if (res.status === 404 || res.status === 403 || res.status === 409) {
+    if (res.status === 409) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      // "Você já tem lançamentos" → pode resolver via merge. Mantém o token
+      // para que confirmMergeInvite possa usá-lo.
+      if ((body.error ?? '').includes('lançamentos')) {
+        return 'NEEDS_MERGE';
+      }
+      clearPendingInvite();
+      return null;
+    }
+
+    // 404 / 403: convite inválido ou já usado — descarta.
+    if (res.status === 404 || res.status === 403) {
       clearPendingInvite();
     }
-    // Demais status (5xx): mantém o token para nova tentativa no próximo load.
+    // 5xx: mantém o token para nova tentativa no próximo load.
     return null;
   } catch (e) {
     // Falha de rede: mantém o token em localStorage para tentar de novo.
     console.error('Erro ao processar convite:', e);
     return null;
   }
+}
+
+/** Confirma o merge após o usuário aceitar a modal. Chama /api/merge-household
+ *  com o token salvo, limpa o token em caso de sucesso. */
+export async function confirmMergeInvite(authToken: string): Promise<string> {
+  const token = getPendingInviteToken();
+  if (!token) throw new Error('Nenhum convite pendente');
+
+  const res = await fetch('/api/merge-household', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${authToken}`,
+    },
+    body: JSON.stringify({ token }),
+  });
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? 'Erro ao unificar contas');
+  }
+
+  clearPendingInvite();
+  const data = (await res.json()) as { householdId?: string };
+  return data.householdId ?? '';
+}
+
+/** Descarta o convite pendente (chamado quando o usuário cancela o merge). */
+export function discardPendingInvite(): void {
+  clearPendingInvite();
 }
 
 function cleanInviteFromUrl() {

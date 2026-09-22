@@ -129,6 +129,32 @@ export async function deletePartialExpense(db: SupabaseClient, expenseId: string
   await db.from('partial_expenses').delete().eq('id', expenseId);
 }
 
+/**
+ * Troca o nome de um lançamento já gravado.
+ *
+ * O lançamento mora em `partial_expenses`, não em `finance_items`: a renomeação
+ * antiga passava por `saveFinanceItem` e se perdia ao recarregar (Sabesp do
+ * Eduardo, 2026-09-21). Tenta UPDATE e confere se alguma linha mudou — sem
+ * política de UPDATE ele não dá erro, só não muda nada. Nesse caso refaz com
+ * delete + insert, as duas operações que o app já usa.
+ */
+export async function renomearPartialExpense(
+  db: SupabaseClient,
+  financeItemId: string,
+  year: number,
+  month: number,
+  expense: PartialExpense,
+) {
+  const { data, error } = await db
+    .from('partial_expenses')
+    .update({ description: expense.description })
+    .eq('id', expense.id)
+    .select('id');
+  if (!error && (data?.length ?? 0) > 0) return;
+  await deletePartialExpense(db, expense.id);
+  await addPartialExpense(db, financeItemId, year, month, expense);
+}
+
 // ─── TETO COLUMNS ─────────────────────────────────────────────────────────────
 
 export async function loadTetoColumns(db: SupabaseClient, householdId: string) {

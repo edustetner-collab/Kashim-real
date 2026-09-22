@@ -48,7 +48,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (type === 'order.paid') {
     const now = new Date();
-    const expiresAt = new Date(now);
+    /**
+     * Pagamento SOMA tempo, não substitui.
+     *
+     * Antes a validade virava "hoje + 1 mês" sempre. Se a casa ainda tinha
+     * validade em aberto — renovação adiantada, ou os dois do casal pagando no
+     * mesmo dia — o tempo restante era jogado fora, e o cliente saía perdendo
+     * justamente por pagar (auditoria de 2026-09-17).
+     */
+    const { data: atual } = await supabase
+      .from('households')
+      .select('subscription_expires_at')
+      .eq('id', householdId)
+      .maybeSingle();
+    const restante = atual?.subscription_expires_at ? new Date(atual.subscription_expires_at as string) : null;
+    const base = restante && restante.getTime() > now.getTime() ? restante : now;
+    const expiresAt = new Date(base);
     expiresAt.setMonth(expiresAt.getMonth() + (plan === 'annual' ? 12 : 1));
     await supabase
       .from('households')

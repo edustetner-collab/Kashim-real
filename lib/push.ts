@@ -79,20 +79,29 @@ export async function diagnosticoPush(): Promise<string> {
       if (r.receive !== 'granted') return linhas.join('\n');
     }
 
+    // `addListener` devolve Promise: sem esperar por ela, `register()` dispara
+    // antes de o ouvinte estar de pé e o token se perde no caminho — some sem
+    // sucesso nem erro, que era exatamente o silêncio observado em 2026-09-14.
+    // Os dois ouvintes precisam estar prontos ANTES do register.
     const token = await new Promise<string | null>((resolve) => {
-      const t = setTimeout(() => resolve(null), 8000);
-      PushNotifications.addListener('registration', (x) => {
-        clearTimeout(t); resolve(x?.value ?? null);
+      const t = setTimeout(() => resolve(null), 15000);
+      void (async () => {
+        await PushNotifications.addListener('registration', (x) => {
+          clearTimeout(t); resolve(x?.value ?? null);
+        });
+        await PushNotifications.addListener('registrationError', (e) => {
+          clearTimeout(t); resolve(`ERRO da Apple: ${JSON.stringify(e)}`);
+        });
+        await PushNotifications.register();
+      })().catch((e) => {
+        clearTimeout(t);
+        resolve(`ERRO ao registrar: ${e instanceof Error ? e.message : String(e)}`);
       });
-      PushNotifications.addListener('registrationError', (e) => {
-        clearTimeout(t); resolve(`ERRO: ${JSON.stringify(e)}`);
-      });
-      PushNotifications.register();
     });
 
     linhas.push(token
-      ? (token.startsWith('ERRO') ? token : `token recebido: ${token.slice(0, 12)}… (${token.length} ch)`)
-      : 'token NÃO chegou em 8s — a Apple não respondeu');
+      ? (token.startsWith('ERRO') ? token : `TOKEN OK: ${token.slice(0, 12)}… (${token.length} ch)`)
+      : 'token NÃO chegou em 15s — a Apple não respondeu nem recusou');
     return linhas.join('\n');
   } catch (e) {
     linhas.push(`exceção: ${e instanceof Error ? e.message : String(e)}`);

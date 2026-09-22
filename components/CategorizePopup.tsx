@@ -10,11 +10,13 @@ import React, { useEffect, useRef, useState } from 'react';
 
 interface CategorizePopupProps {
   count: number;
+  /** Quantas o Kashim já reconheceu e vai lançar sozinho ao abrir o Extrato. */
+  automaticas?: number;
   onCategorize: () => void;
   onDismiss: () => void;
 }
 
-const CategorizePopup: React.FC<CategorizePopupProps> = ({ count, onCategorize, onDismiss }) => {
+const CategorizePopup: React.FC<CategorizePopupProps> = ({ count, automaticas = 0, onCategorize, onDismiss }) => {
   const [shown, setShown] = useState(false);
   const [display, setDisplay] = useState(count);
   const reduce = useRef(false);
@@ -87,10 +89,21 @@ const CategorizePopup: React.FC<CategorizePopupProps> = ({ count, onCategorize, 
         <h2 className="text-center text-white font-black italic uppercase text-xl leading-tight mt-2 text-balance">
           {plural}
         </h2>
-        <p className="text-center text-zinc-400 text-sm leading-relaxed mt-2.5 mb-5 mx-auto max-w-[30ch]">
+        <p className="text-center text-zinc-400 text-sm leading-relaxed mt-2.5 mb-3 mx-auto max-w-[30ch]">
           Categorize essas despesas para se manter <b className="text-zinc-200 font-bold">organizado</b> e
           saber se está atingindo seus limites de gastos. É bem rápido.
         </p>
+        {/* Sem esta linha, o número do pop-up não batia com a fila: os gastos
+            que o Kashim reconhece sozinho entravam na conta e sumiam ao abrir
+            o Extrato, sem explicação (Mariane, 2026-09-19). */}
+        {automaticas > 0 && (
+          <p className="text-center text-[#a8e716] text-[13px] font-bold leading-snug mb-5 mx-auto max-w-[32ch]">
+            ✨ {automaticas === 1
+              ? 'Outro gasto o Kashim já reconheceu e lança por você ao abrir'
+              : `Outros ${automaticas} gastos o Kashim já reconheceu e lança por você ao abrir`}
+          </p>
+        )}
+        {automaticas === 0 && <div className="mb-2" />}
 
         <button
           onClick={onCategorize}

@@ -51,10 +51,19 @@ const SUBSCRIPTION_CODES = new Set(['SUBSCRIPTION', 'DIGITALSERVICES']);
 // Mesma regex de categoryMap.ts — "Netflix" é conta fixa no método do Kashim.
 const SUBSCRIPTION_RE = /\b(netflix|spotify|youtube|prime\s*video|disney\+?|hbo|max\s*stream|globoplay|paramount|deezer|apple\s*(music|tv\+?|one)|icloud|google\s*(one|drive|storage)|dropbox|onedrive|canva|adobe|chatgpt|openai|microsoft\s*365|office\s*365)/i;
 
+/**
+ * Estabelecimento E descrição juntos. O banco põe a razão social no
+ * estabelecimento ("Google Brasil Internet LTDA.") e o serviço na descrição
+ * ("Google YouTubePremium"): lendo só o primeiro, o YouTube do Eduardo nem
+ * entrava na lista (2026-09-22).
+ */
+function textoDe(merchant: string | null, description: string | null): string {
+  return `${description ?? ''} ${merchant ?? ''}`;
+}
+
 function ehAssinatura(ofCode: string | null, merchant: string | null, description: string | null): boolean {
   if (ofCode && SUBSCRIPTION_CODES.has(ofCode.toUpperCase())) return true;
-  const texto = merchant ?? description ?? '';
-  return SUBSCRIPTION_RE.test(texto);
+  return SUBSCRIPTION_RE.test(textoDe(merchant, description));
 }
 
 // ─── Normalização do nome ─────────────────────────────────────────────────────
@@ -81,10 +90,13 @@ const NOME_LIMPO: Array<[RegExp, string]> = [
   [/adobe/i,                                'Adobe Creative'],
   [/chatgpt|openai/i,                       'ChatGPT Plus'],
   [/microsoft\s*365|office\s*365/i,         'Microsoft 365'],
+  // Genéricos por último: "APPLE.COM/BILL" não diz qual serviço da Apple é.
+  [/apple/i,                                'Apple'],
+  [/google/i,                               'Google'],
 ];
 
 function nomeLimpo(merchant: string | null, description: string | null): string {
-  const texto = merchant ?? description ?? '';
+  const texto = textoDe(merchant, description);
   for (const [re, nome] of NOME_LIMPO) {
     if (re.test(texto)) return nome;
   }
@@ -128,7 +140,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (error) return res.status(500).json({ error: 'db error' });
 
   // Filtra assinaturas e agrupa por serviço.
-  const grupos = new Map<string, { nome: string; valor: number; ultimaData: string; ocorrencias: number }>();
+  const grupos = new Map<string, { nome: string; valor: number; ultimaData: string; ocorrencias: number; meses: Set<string>; noMesDaUltima: number }>();
 
   for (const row of (data ?? [])) {
     if (!ehAssinatura(row.of_code, row.merchant, row.description)) continue;
@@ -139,15 +151,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const data_ = row.transaction_date as string;
 
     const existente = grupos.get(chave);
+    const mes = data_.slice(0, 7);
     if (!existente) {
-      grupos.set(chave, { nome, valor, ultimaData: data_, ocorrencias: 1 });
+      grupos.set(chave, { nome, valor, ultimaData: data_, ocorrencias: 1, meses: new Set([mes]), noMesDaUltima: 1 });
     } else {
-      existente.ocorrencias += 1;
       // Mantém o valor da cobrança mais recente (já está ordenado DESC).
+      existente.ocorrencias += 1;
+      existente.meses.add(mes);
+      if (mes === existente.ultimaData.slice(0, 7)) existente.noMesDaUltima += 1;
     }
   }
 
+  // "2× detectada" fazia parecer cobrança em dobro quando eram dois meses.
+  // Agora a tela diz em quantos meses apareceu e só alerta repetição no mesmo mês.
   const assinaturas = Array.from(grupos.values())
+    .map(({ meses, ...g }) => ({ ...g, meses: meses.size }))
     .sort((a, b) => b.valor - a.valor);
 
   return res.status(200).json({ assinaturas });

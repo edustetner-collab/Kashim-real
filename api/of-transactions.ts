@@ -112,10 +112,55 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
        */
       const { data: vivas } = await db
         .from('bank_connections')
-        .select('id')
+        .select('id, account_import_enabled, card_import_enabled, cards')
         .eq('household_id', householdId)
         .neq('consent_status', 'revoked');
       const idsVivos = (vivas ?? []).map((c) => c.id as string);
+
+      /**
+       * IMPORTAÇÃO DESLIGADA TAMBÉM SOME DA FILA.
+       *
+       * O Extrato só desenha conta e cartão com a importação ligada, mas a fila
+       * continuava contando o que tinha entrado ANTES de o cliente desligar.
+       * Resultado: o push falava em 3, o botão mostrava 2 e o Extrato listava 1
+       * — três números, todos "certos", nenhum igual (Eduardo, 2026-09-20).
+       *
+       * A regra agora é uma só: se a tela não mostra, a fila não conta.
+       */
+      const cartoesLigados = new Map<string, Set<string>>();
+      const cartoesDesligados = new Map<string, Set<string>>();
+      const contaLigada = new Map<string, boolean>();
+      const cartaoLigadoNaConexao = new Map<string, boolean>();
+      for (const c of vivas ?? []) {
+        const id = c.id as string;
+        contaLigada.set(id, c.account_import_enabled !== false);
+        cartaoLigadoNaConexao.set(id, c.card_import_enabled !== false);
+        const lista = Array.isArray(c.cards) ? c.cards as Array<{ last4?: string; enabled?: boolean }> : [];
+        cartoesLigados.set(id, new Set(lista.filter(k => k?.enabled && k?.last4).map(k => String(k.last4))));
+        cartoesDesligados.set(id, new Set(lista.filter(k => k?.enabled === false && k?.last4).map(k => String(k.last4))));
+      }
+
+      /**
+       * A transacao aparece na tela do cliente?
+       *
+       * Esconder exige CERTEZA de que o cliente desligou aquela fonte. Numero
+       * de cartao que nao esta na lista da conexao — virtual, adicional, ou um
+       * final que o banco manda e a conexao nunca cadastrou — nao e fonte
+       * desligada: e gasto real esperando categoria. Tratar como desligado
+       * tirou 20 das 23 transacoes do Michael da tela (2026-09-21).
+       */
+      const apareceNaTela = (t: { connection_id?: string | null; account_type?: string | null; card_last4?: string | null }) => {
+        const conn = t.connection_id ?? '';
+        if (!conn) return true; // sem conexao conhecida, nao esconde nada
+        if (t.account_type === 'credit_card') {
+          if (!cartaoLigadoNaConexao.get(conn)) return false;
+          if (!t.card_last4) return true;
+          const numero = String(t.card_last4);
+          if (cartoesLigados.get(conn)?.has(numero)) return true;
+          return !cartoesDesligados.get(conn)?.has(numero);
+        }
+        return contaLigada.get(conn) !== false;
+      };
 
       if (idsVivos.length === 0) {
         return res.status(200).json({ transactions: [], pendingCount: 0 });
@@ -157,20 +202,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const { data, error } = await query;
       if (error) throw error;
+      const visiveis = (data ?? []).filter(apareceNaTela);
 
-      // MESMO recorte da lista. Divergir aqui é o que já produziu "o pop-up diz
-      // 154 e o Extrato mostra 79" — a contagem tem de contar o que a tela mostra.
-      const { count } = await db
+      /**
+       * A contagem sai da MESMA regra da lista — inclusive o filtro de
+       * importação desligada. Por isso ela lê as linhas (só os campos do
+       * filtro) em vez de pedir um `count` ao banco: `count` não sabe o que a
+       * tela esconde.
+       */
+      const { data: paraContar } = await db
         .from('bank_transactions')
-        .select('id', { count: 'exact', head: true })
+        .select('id, connection_id, account_type, card_last4')
         .eq('household_id', householdId)
         .in('connection_id', idsVivos)
         .gte('transaction_date', inicioDoPlano)
-        .eq('status', 'pending');
+        .eq('status', 'pending')
+        .limit(5000);
 
       return res.status(200).json({
-        transactions: (data ?? []).map(rowToTx),
-        pendingCount: count ?? 0,
+        transactions: visiveis.map(rowToTx),
+        pendingCount: (paraContar ?? []).filter(apareceNaTela).length,
       });
     }
 

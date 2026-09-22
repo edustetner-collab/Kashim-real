@@ -5,6 +5,10 @@ interface Assinatura {
   valor: number;
   ultimaData: string;
   ocorrencias: number;
+  /** Em quantos meses diferentes apareceu. */
+  meses?: number;
+  /** Cobranças no mesmo mês da mais recente — acima de 1 pode ser cobrança em dobro. */
+  noMesDaUltima?: number;
 }
 
 interface Props {
@@ -38,6 +42,7 @@ const CANCEL_URLS: Record<string, string> = {
   'Apple Music':       'https://support.apple.com/pt-br/HT202039',
   'Apple TV+':         'https://support.apple.com/pt-br/HT202039',
   'Apple One':         'https://support.apple.com/pt-br/HT202039',
+  'Apple':             'https://support.apple.com/pt-br/HT202039',
   'iCloud+':           'https://support.apple.com/pt-br/HT207594',
   'Google One':        'https://one.google.com/u/0/storage',
   'Dropbox':           'https://www.dropbox.com/plans',
@@ -61,6 +66,30 @@ const FA_BRAND: Record<string, string> = {
   'Dropbox':        'fab fa-dropbox',
   'OneDrive':       'fab fa-microsoft',
   'Microsoft 365':  'fab fa-microsoft',
+};
+
+/**
+ * Logos oficiais (acervo Simple Icons, cor da marca), guardadas em
+ * public/assinaturas como as dos bancos. Serviço fora da lista mostra a inicial.
+ */
+const LOGO: Record<string, string> = {
+  'Netflix':         'netflix',
+  'Spotify':         'spotify',
+  'YouTube Premium': 'youtube',
+  'Amazon Prime':    'amazonprime',
+  'Max (HBO)':       'max',
+  'Paramount+':      'paramountplus',
+  'Apple Music':     'applemusic',
+  'Apple TV+':       'appletv',
+  'Apple One':       'apple',
+  'Apple':           'apple',
+  'iCloud+':         'icloud',
+  'Google One':      'google',
+  'Google':          'google',
+  'Dropbox':         'dropbox',
+  'Canva Pro':       'canva',
+  'Adobe Creative':  'adobecreativecloud',
+  'ChatGPT Plus':    'openai',
 };
 
 function cancelUrl(nome: string) {
@@ -155,8 +184,10 @@ export default function Assinaturas({ householdId, authToken, topOffset, onClose
                     className={`flex items-center gap-3 px-4 py-3.5 ${idx > 0 ? 'border-t border-[#f0f0f0]' : ''}`}
                   >
                     {/* Ícone: marca FA quando existe, letra inicial para o resto */}
-                    <div className="w-10 h-10 rounded-xl bg-[#f2f2f7] flex items-center justify-center flex-shrink-0">
-                      {FA_BRAND[a.nome] ? (
+                    <div className="w-10 h-10 rounded-xl bg-white border border-[#e5e5ea] flex items-center justify-center flex-shrink-0">
+                      {LOGO[a.nome] ? (
+                        <img src={`/assinaturas/${LOGO[a.nome]}.svg`} alt={a.nome} width={22} height={22} className="h-[22px] w-[22px]" />
+                      ) : FA_BRAND[a.nome] ? (
                         <i className={`${FA_BRAND[a.nome]} text-[#1d1d1f] text-[17px]`} />
                       ) : (
                         <span className="text-[17px] font-black text-[#1d1d1f]">
@@ -172,11 +203,15 @@ export default function Assinaturas({ householdId, authToken, topOffset, onClose
                       </p>
                       <p className="text-[12px] text-[#8e8e93]">
                         Último: {formatDateBR(a.ultimaData)}
-                        {a.ocorrencias > 1 && (
-                          <span className="ml-1.5 text-[11px] bg-[#f2f2f7] text-[#6e6e73] rounded-full px-1.5 py-0.5 font-semibold">
-                            {a.ocorrencias}× detectada
+                        {(a.noMesDaUltima ?? 1) > 1 ? (
+                          <span className="ml-1.5 text-[11px] bg-[#fff4e5] text-[#b25e00] rounded-full px-1.5 py-0.5 font-semibold">
+                            {a.noMesDaUltima} cobranças no mesmo mês
                           </span>
-                        )}
+                        ) : (a.meses ?? 1) > 1 ? (
+                          <span className="ml-1.5 text-[11px] bg-[#f2f2f7] text-[#6e6e73] rounded-full px-1.5 py-0.5 font-semibold">
+                            há {a.meses} meses
+                          </span>
+                        ) : null}
                       </p>
                     </div>
 

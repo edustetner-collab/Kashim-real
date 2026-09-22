@@ -9,8 +9,13 @@ import { CategoryType, FinanceItem } from '../types';
  * e o gasto so aparecia no selo azul embaixo — foi o caso do "Serasa S.A.",
  * zerado com R$ 64,99 lancado.
  *
- * So preenche onde o valor esta ZERO. Teto definido pelo cliente (ou pelo coach)
- * nunca e sobrescrito, mesmo que o gasto real passe dele.
+ * O valor ACOMPANHA a soma dos lancamentos, para cima. Conta variavel e
+ * imprevisto: nao tem teto a respeitar, entao o numero da linha tem que refletir
+ * o que ja aconteceu. Ficava travado no primeiro gasto — linha com R$ 103 e
+ * R$ 305,96 lancados embaixo (Eduardo, 2026-09-20).
+ *
+ * Nunca ABAIXA: valor planejado maior que o gasto ate agora e previsao do
+ * cliente (ou do coach) e continua valendo.
  *
  * Roda no carregamento do banco, e nao num efeito preso a `items.length`: os
  * itens ja comecam preenchidos com o padrao (`makeDefaultItems`), entao um
@@ -31,10 +36,12 @@ export function fillVariableValuesFromPartials(
     let touched = false;
 
     months.forEach((month, monthIdx) => {
-      if ((values[monthIdx] || 0) > 0) return;
       const partials = item.partialExpenses?.[`${month.year}-${month.index}`] || [];
       if (partials.length === 0) return;
-      values[monthIdx] = partials.reduce((total, p) => total + p.value, 0);
+      const soma = partials.reduce((total, p) => total + p.value, 0);
+      const atual = values[monthIdx] || 0;
+      if (soma <= atual + 0.009) return;
+      values[monthIdx] = soma;
       touched = true;
     });
 

@@ -5,6 +5,7 @@ import { formatCurrency, MONTHS_BR } from '../constants';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { loadTetoColumns, saveTetoColumns } from '../lib/db';
 import RecategorizarSheet from './RecategorizarSheet';
+import ConfirmarMesLancamento, { precisaConfirmarMes } from './ConfirmarMesLancamento';
 import { getSourceInfo } from '../lib/paymentSource';
 
 /** Rótulo curto por categoria, para o seletor do diálogo de edição. */
@@ -43,6 +44,21 @@ interface TetoGastosProps {
   initialMonthKey?: string | null;
   /** Chamado depois de aplicar o filtro inicial, para limpar o estado no pai. */
   onInitialFilterHandled?: () => void;
+  /** Plano com banco conectado: os cards nascem da categorização, não do botão. */
+  modoOpenFinance?: boolean;
+  /**
+   * Cards que o App já carregou na abertura.
+   *
+   * A aba buscava os mesmos dados de novo ao montar, e o cliente olhava uma
+   * tela vazia por 5 ou 6 segundos com o mês solto no topo (Eduardo,
+   * 2026-09-22). Começando pelo que já está em memória, os cards aparecem na
+   * hora; a leitura do banco continua acontecendo e corrige se algo mudou.
+   */
+  colunasIniciais?: Array<{ id: string; title: string; linkedItemId: string }>;
+  /** Devolve a lista ao App: a cópia dele ficava parada na da abertura do app. */
+  onColunasMudaram?: (cols: Array<{ id: string; title: string; linkedItemId: string }>) => void;
+  /** Troca o nome do estabelecimento num lançamento e ensina o dicionário. */
+  onRenomearLancamento?: (itemId: string, monthKey: string, partialId: string, nome: string) => void;
 }
 
 interface ColumnData {
@@ -70,7 +86,7 @@ function describeSaveError(err: unknown): string {
   return 'Verifique a conexão — o app segue tentando sozinho.';
 }
 
-const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, currentYear, months, onAddPartial, onRemovePartial, db, householdId, resolveDbId, tetoAlert, focusItemId, onFocusHandled, onCreateItem, initialFilter, onInitialFilterHandled, initialMonthKey }) => {
+const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, currentYear, months, onAddPartial, onRemovePartial, db, householdId, resolveDbId, tetoAlert, focusItemId, onFocusHandled, onCreateItem, initialFilter, onInitialFilterHandled, initialMonthKey, modoOpenFinance, colunasIniciais, onColunasMudaram, onRenomearLancamento }) => {
   const currentMonthKey = `${currentYear}-${currentMonthIdx}`;
 
   // MÊS DE TRABALHO: normalmente o mês corrente do calendário — mas o plano do
@@ -161,7 +177,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
     return months.findIndex(m => m.year === selYear && m.index === selMonth);
   }, [months, monthKey]);
 
-  const [columns, setColumns] = useState<ColumnData[]>([]);
+  const [columns, setColumns] = useState<ColumnData[]>(colunasIniciais ?? []);
   const [tetoAlertData, setTetoAlertData] = useState<{ name: string; pct: number; teto: number; spent: number } | null>(null);
 
   // `columnsLoaded` controla só o skeleton da UI. Quem libera GRAVAR e
@@ -196,7 +212,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
   };
 
   useEffect(() => {
-    setColumns([]);
+    setColumns(colunasIniciais ?? []);
     setColumnsLoaded(false);
     setDbSynced(false);
     loadedForRef.current = null;
@@ -292,6 +308,12 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
     if (novas.length > 0) setColumns((prev) => [...prev, ...novas]);
   }, [items, columns, dbSynced, columnsLoaded]);
+
+  const onColunasMudaramRef = useRef(onColunasMudaram);
+  onColunasMudaramRef.current = onColunasMudaram;
+  useEffect(() => {
+    if (dbSynced) onColunasMudaramRef.current?.(columns);
+  }, [columns, dbSynced]);
 
   useEffect(() => {
     if (!dbSynced || !db || !householdId) return;
@@ -461,6 +483,22 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
     });
   }, [columns, items, monthKey, tetoSlotIdx]);
 
+  /**
+   * Primeiro os cards que aparecem na tela; o resto entra logo depois.
+   *
+   * Cada card soma lançamentos, quebra por forma de pagamento e desenha barras.
+   * Com muitos cards, montar todos de uma vez segurava a aba por vários
+   * segundos ao abrir (Eduardo, 2026-09-20). O carrossel mostra dois por vez,
+   * então renderizar 3 já preenche a primeira tela; o resto chega no próximo
+   * quadro, antes de a pessoa conseguir rolar até ele.
+   */
+  const [limiteRender, setLimiteRender] = useState(3);
+  useEffect(() => {
+    if (limiteRender > 900) return;
+    const t = setTimeout(() => setLimiteRender(999), 80);
+    return () => clearTimeout(t);
+  }, [limiteRender]);
+
   const columnsScrollRef = useRef<HTMLDivElement>(null);
   const [visibleColIdx, setVisibleColIdx] = useState(0);
 
@@ -573,60 +611,102 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
    * não ter que caçar na lista qual card formava aquele número.
    */
   const [flashItemId, setFlashItemId] = useState<string | null>(null);
+  // `onFocusHandled` chega do App como função nova a cada render. Nas
+  // dependências, ela reiniciava a busca a cada render e zerava as tentativas.
+  const onFocusHandledRef = useRef(onFocusHandled);
+  onFocusHandledRef.current = onFocusHandled;
+  const buscaFocoRef = useRef<{ id: string; inicio: number } | null>(null);
   useEffect(() => {
-    if (!focusItemId) return;
+    if (!focusItemId) { buscaFocoRef.current = null; return; }
+    if (buscaFocoRef.current?.id !== focusItemId) buscaFocoRef.current = { id: focusItemId, inicio: Date.now() };
 
-    // As colunas vem do banco (`teto_columns`), de forma assincrona. Um timeout
-    // fixo procurava o card antes de ele existir, nao achava nada e nao rolava
-    // — o cliente ficava onde estava e parecia que o app tinha levado para o
-    // card errado. Tenta ate aparecer, com teto de ~4s.
-    // Se o item NAO tem card, nao ha para onde rolar — e era isso que
-    // acontecia com "Assinaturas": um gasto so, card nunca criado, seletor sem
-    // alvo, tela parada onde estava. Criar o card aqui e o que faz o clique
-    // sempre ter destino; ele passa a existir porque o cliente quis olhar.
     const alvoDb = resolveDbId?.(focusItemId) ?? focusItemId;
-    const temCard = columns.some((c) => c.linkedItemId === focusItemId || c.linkedItemId === alvoDb);
-    if (!temCard && dbSynced) {
-      const item = items.find((i) => i.id === focusItemId || i.id === alvoDb);
-      if (item) {
-        setColumns((prev) => [...prev, {
-          id: crypto.randomUUID(),
-          title: (item.description || 'GASTO').toUpperCase(),
-          linkedItemId: item.id,
-        }]);
-      }
+    const item = items.find((i) => i.id === focusItemId || i.id === alvoDb);
+    /**
+     * Lazer é UM card só na tela: os itens de lazer além do primeiro não são
+     * renderizados (`firstLeisureColId`). Procurar o card do item exato nunca
+     * achava nada, a busca desistia e a tela ficava no começo da lista — o
+     * primeiro card, que é justamente Lazer. Parecia acerto por acaso e errava
+     * em qualquer outro gasto (Eduardo, 2026-09-17).
+     */
+    const ehLazer = item?.category === CategoryType.PERSONAL_LEISURE;
+    const colunaLazer = columns.find((c) => items.find((i) => i.id === c.linkedItemId)?.category === CategoryType.PERSONAL_LEISURE);
+    const temCard = ehLazer ? !!colunaLazer : columns.some((c) => c.linkedItemId === focusItemId || c.linkedItemId === alvoDb);
+
+    // Sem card, cria: o clique no Plano precisa ter destino.
+    if (!temCard && dbSynced && item) {
+      setColumns((prev) => [...prev, {
+        id: crypto.randomUUID(),
+        title: (item.description || 'GASTO').toUpperCase(),
+        linkedItemId: item.id,
+      }]);
+      return; // o render com a coluna nova roda este efeito de novo
     }
 
-    let tentativas = 0;
+    const alvos = ehLazer && colunaLazer?.linkedItemId
+      ? [colunaLazer.linkedItemId]
+      : [focusItemId, alvoDb];
+
     let timer: ReturnType<typeof setTimeout>;
-
-    // As colunas guardam o id do BANCO (ver resolveDbId na gravação), enquanto
-    // o clique no Plano manda o id LOCAL do item. Sem tentar os dois, o seletor
-    // nunca casa e a tela simplesmente nao rola — foi por isso que clicar em
-    // Assinaturas parecia levar para Lazer: nao levava para lugar nenhum.
-    const alvos = [focusItemId, resolveDbId?.(focusItemId)].filter(Boolean) as string[];
-
     const procurar = () => {
       const el = alvos
         .map((id) => document.querySelector(`[data-teto-item="${id}"]`))
-        .find(Boolean) ?? null;
+        .find(Boolean) as HTMLElement | undefined;
       if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Rolagem HORIZONTAL explícita no carrossel. O scrollIntoView sozinho
+        // não move o carrossel com snap no iPhone.
+        const container = columnsScrollRef.current;
+        if (container) {
+          const left = container.scrollLeft + el.getBoundingClientRect().left - container.getBoundingClientRect().left;
+          container.scrollTo({ left: Math.max(0, left - 4), behavior: 'auto' });
+        }
+        // Topo do card logo abaixo do cabeçalho. O `scrollIntoView` com
+        // 'nearest' alinhava o FIM de um card mais alto que a tela e escondia o
+        // nome da linha (Eduardo, 2026-09-22).
+        // Quem rola é o <body> (html/body têm altura fixa), não a janela:
+        // `window.scrollTo` não fazia nada e a tela ficava na parte vazia.
+        // scrollIntoView acha o contêiner certo; a margem desconta o cabeçalho.
+        const cabecalho = document.getElementById('header')?.getBoundingClientRect().bottom ?? 0;
+        el.style.scrollMarginTop = `${Math.max(0, cabecalho) + 12}px`;
+        el.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
         setFlashItemId(el.getAttribute('data-teto-item'));
         setTimeout(() => setFlashItemId(null), 2200);
-        onFocusHandled?.();
+        buscaFocoRef.current = null;
+        onFocusHandledRef.current?.();
+        /**
+         * Confere por 3s se o card continua à vista. A leitura do banco chega
+         * depois e remonta a lista, mudando o card de posição: a tela ficava
+         * no primeiro card (Lazer) mesmo com o destino certo (2026-09-22).
+         */
+        const idAlvo = el.getAttribute('data-teto-item');
+        const fim = Date.now() + 3000;
+        let tocou = false;
+        columnsScrollRef.current?.addEventListener('touchstart', () => { tocou = true; }, { once: true, passive: true });
+        const conferir = () => {
+          if (tocou) return;
+          const atual = document.querySelector(`[data-teto-item="${idAlvo}"]`) as HTMLElement | null;
+          const cont = columnsScrollRef.current;
+          if (atual && cont) {
+            const desvio = atual.getBoundingClientRect().left - cont.getBoundingClientRect().left;
+            if (Math.abs(desvio) > 24) cont.scrollTo({ left: Math.max(0, cont.scrollLeft + desvio - 4), behavior: 'auto' });
+          }
+          if (Date.now() < fim) setTimeout(conferir, 250);
+        };
+        setTimeout(conferir, 250);
         return;
       }
-      if (++tentativas < 20) timer = setTimeout(procurar, 200);
-      else onFocusHandled?.(); // desiste sem travar o estado
+      // Tempo total contado desde o clique, não desde o último render.
+      if (Date.now() - (buscaFocoRef.current?.inicio ?? 0) < 12000) timer = setTimeout(procurar, 150);
+      else { buscaFocoRef.current = null; onFocusHandledRef.current?.(); }
     };
-
-    timer = setTimeout(procurar, 120);
+    timer = setTimeout(procurar, 60);
     return () => clearTimeout(timer);
-  }, [focusItemId, onFocusHandled, resolveDbId, columns, items, dbSynced]);
+  }, [focusItemId, resolveDbId, columns, items, dbSynced]);
   const valueInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  const handleSubmitEntry = (colId: string, itemId: string, value: string) => {
+  const [confirmarMesEntrada, setConfirmarMesEntrada] = useState<{ colId: string; itemId: string; value: string } | null>(null);
+
+  const handleSubmitEntry = (colId: string, itemId: string, value: string, destino?: 'mes-atual' | 'manter') => {
     if (!itemId) {
       setLinkRequired(prev => ({ ...prev, [colId]: true }));
       return;
@@ -640,12 +720,21 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
     const parsed = parseFloat(value.replace(',', '.'));
     if (!value || isNaN(parsed) || parsed <= 0) return;
     const linkedItem = items.find(i => i.id === itemId);
+    // Fora do mês atual, no app, confirma antes de gravar.
+    if (!destino && precisaConfirmarMes(selYear, selMonthIdx)) {
+      setConfirmarMesEntrada({ colId, itemId, value });
+      return;
+    }
+    const hoje = new Date();
+    const noMesAtual = destino === 'mes-atual';
+    const anoLanc = noMesAtual ? hoje.getFullYear() : selYear;
+    const mesLanc = noMesAtual ? hoje.getMonth() : selMonthIdx;
     // Data do lançamento reflete o mês SELECIONADO (retroativo usa dia 1 do mês
     // passado; no mês de trabalho usa o dia de hoje).
-    const entryDay = isPastView ? 1 : new Date().getDate();
+    const entryDay = !noMesAtual && isPastView ? 1 : hoje.getDate();
     const expense: PartialExpense = {
       id: crypto.randomUUID(),
-      date: `${String(entryDay).padStart(2, '0')}/${String(selMonthIdx + 1).padStart(2, '0')}`,
+      date: `${String(entryDay).padStart(2, '0')}/${String(mesLanc + 1).padStart(2, '0')}`,
       description: desc || linkedItem?.description || 'Gasto',
       value: parsed,
     };
@@ -664,7 +753,9 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       }
     }
 
-    onAddPartial(itemId, expense, selYear, selMonthIdx);
+    onAddPartial(itemId, expense, anoLanc, mesLanc);
+    // Leva a tela junto, para o cliente ver o gasto onde ele caiu.
+    if (noMesAtual) setSelectedMonthKey(`${anoLanc}-${mesLanc}`);
     if (valueInputRefs.current[colId]) valueInputRefs.current[colId]!.value = '';
     setEntryDescriptions(prev => ({ ...prev, [colId]: '' }));
     setEntryErrors(prev => ({ ...prev, [colId]: false }));
@@ -734,6 +825,15 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
 
   return (
     <div className="p-3 lg:p-6 animate-in fade-in zoom-in-95 duration-500">
+      {confirmarMesEntrada && (
+        <ConfirmarMesLancamento
+          ano={selYear}
+          mes={selMonthIdx}
+          onMesAtual={() => { const e = confirmarMesEntrada; setConfirmarMesEntrada(null); handleSubmitEntry(e.colId, e.itemId, e.value, 'mes-atual'); }}
+          onManter={() => { const e = confirmarMesEntrada; setConfirmarMesEntrada(null); handleSubmitEntry(e.colId, e.itemId, e.value, 'manter'); }}
+          onFechar={() => setConfirmarMesEntrada(null)}
+        />
+      )}
       {/* Gravação falhando: avisa NA TELA. Card sumindo em silêncio já custou
           horas de debug e confiança — o usuário precisa saber na hora que o
           que ele criou não foi salvo, em vez de descobrir na próxima aba. */}
@@ -788,7 +888,9 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
           </select>
           <i className="fas fa-chevron-down text-[#aeaeb2] text-[9px] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
         </div>
-        {!isFutureView && (
+        {/* Com Open Finance o botão não tem papel: cada card nasce quando o
+            cliente categoriza um gasto do extrato (Eduardo, 2026-09-17). */}
+        {!isFutureView && !modoOpenFinance && (
           <button
             onClick={addColumn}
             className="k-btn-lime px-5 py-2.5 flex items-center gap-2 shrink-0"
@@ -851,7 +953,15 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
       )}
 
       <div ref={columnsScrollRef} onScroll={handleContainerScroll} className="flex gap-3 items-start overflow-x-auto pb-6 pt-1 px-1 snap-x snap-mandatory scrollbar-none">
-        {/* Loading skeleton — avoids a blank screen while columns load from the DB */}
+        {/* Enquanto o banco nao respondeu, a tela DIZ que esta carregando.
+            Antes ficava parada e o cliente nao sabia se tinha travado
+            (Eduardo, 2026-09-22). */}
+        {!dbSynced && displayColumns.length === 0 && columns.length === 0 && (
+          <div className="w-full flex flex-col items-center justify-center py-10 gap-3">
+            <i className="fas fa-circle-notch animate-spin text-[#7ab800] text-2xl" />
+            <p className="text-[#8e8e93] text-[13px] font-bold">Carregando seus gastos…</p>
+          </div>
+        )}
         {!columnsLoaded && displayColumns.length === 0 && [0, 1].map(i => (
           <div key={`sk-${i}`} className="w-[calc(100vw-48px)] lg:w-64 flex-shrink-0 snap-start rounded-2xl border border-[#e8e8ed] overflow-hidden bg-white">
             <div className="h-11 bg-[#f0fad0] animate-pulse"></div>
@@ -864,14 +974,16 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
             </div>
           </div>
         ))}
-        {displayColumns.map((col, colIdx) => {
+        {displayColumns.slice(0, limiteRender).map((col, colIdx) => {
           const linkedItem = items.find(i => i.id === col.linkedItemId);
           const isLeisureCol = linkedItem?.category === CategoryType.PERSONAL_LEISURE;
           if (isLeisureCol && col.id !== firstLeisureColId) return null;
           const teto = linkedItem && tetoSlotIdx >= 0 ? (linkedItem.values[tetoSlotIdx] || 0) : 0;
           const partials = isLeisureCol ? aggregatedLeisurePartials : (linkedItem?.partialExpenses?.[monthKey] || []);
           const totalSpent = partials.reduce((acc, p) => acc + p.value, 0);
-          const isOverLimit = totalSpent > teto && teto > 0;
+          // Conta variável é imprevisto: sem teto, nunca "estoura" (Mariane, 2026-09-17).
+          const isVariavel = linkedItem?.category === CategoryType.VARIABLE_EXPENSE;
+          const isOverLimit = !isVariavel && totalSpent > teto && teto > 0;
           const progressPct = teto > 0 ? Math.min(100, (totalSpent / teto) * 100) : 0;
           // Lançamento sem origem gravada (anterior a este campo) conta como
           // "já saiu": é o que era verdade antes de existir a distinção.
@@ -1229,11 +1341,21 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
               {/* Expense list — only shown when there are expenses */}
               {partials.length > 0 && (() => {
                 const activeKey = activeSourceKeys[col.id] ?? null;
+                /**
+                 * Mesma regra do total (`getSourceInfo`). A lista filtrava pelo
+                 * número gravado no lançamento, o total pelo cartão da linha: o
+                 * Google sem número somava nos R$ 168,50 do Itaú 7212 e sumia
+                 * da lista filtrada (Eduardo, 2026-09-22).
+                 */
+                const fonteDe = (p: PartialExpense) => getSourceInfo(
+                  p,
+                  isLeisureCol
+                    ? items.find(i => (i.partialExpenses?.[monthKey] || []).some(x => x.id === p.id))
+                    : linkedItem,
+                  creditCards,
+                );
                 const shown = activeKey
-                  ? partials.filter(p => {
-                      const k = p.paymentSource === 'credit' ? `credit_${p.cardLast4 ?? ''}` : 'debit';
-                      return k === activeKey;
-                    })
+                  ? partials.filter(p => fonteDe(p).key === activeKey)
                   : partials;
                 return (
                   <div className="flex flex-col bg-white border-t border-[#e8e8ed]">
@@ -1245,7 +1367,7 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
                             {p.paymentSource === 'credit' && (
                               <span className="text-[8px] text-[#ff9500] whitespace-nowrap">
                                 <i className="fas fa-credit-card text-[7px] mr-0.5" />
-                                {p.cardLast4 ? `••${p.cardLast4}` : 'Cartão'}
+                                {(() => { const l4 = p.cardLast4 ?? fonteDe(p).cardLast4; return l4 ? `••${l4}` : 'Cartão'; })()}
                               </span>
                             )}
                             {p.paymentSource === 'debit' && (
@@ -1323,6 +1445,10 @@ const TetoGastos: React.FC<TetoGastosProps> = ({ items, currentMonthIdx, current
           workingMonthKey={recategorizando.monthKey}
           onKeep={() => setRecategorizando(null)}
           onClose={() => setRecategorizando(null)}
+          onRenomear={onRenomearLancamento ? (nome) => {
+            onRenomearLancamento(recategorizando.itemId, recategorizando.monthKey, recategorizando.expId, nome);
+            setRecategorizando(null);
+          } : undefined}
           onCreateItem={onCreateItem}
           onConfirm={(newItemId) => {
             const [ty, tm] = recategorizando.monthKey.split('-').map(Number);

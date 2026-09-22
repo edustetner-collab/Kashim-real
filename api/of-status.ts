@@ -62,7 +62,11 @@ async function isMember(sub: string, householdId: string): Promise<boolean> {
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? '';
 const OF_BETA_USER_IDS = (process.env.OF_BETA_USER_IDS ?? '')
   .split(',').map((s) => s.trim()).filter(Boolean);
-const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com', 'remmachado@gmail.com'];
+const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com', 'remmachado.86@gmail.com', 'mouragiany@gmail.com', 'edununesbenedito@gmail.com',
+  'dlcosta.dev@gmail.com', 'arquiteturabrunamaia@gmail.com', 'hugoale09@gmail.com',
+  'luciana.luciano@gmail.com', 'cayolcarvalho@hotmail.com',
+  'alex.radiologia@icloud.com',
+  'kl_soares@yahoo.com.br'];
 
 async function hasOpenFinanceAccess(sub: string): Promise<boolean> {
   if (OF_BETA_USER_IDS.includes(sub)) return true;

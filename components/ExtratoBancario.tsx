@@ -17,12 +17,15 @@ interface BankConn {
   lastSyncedAt: string | null;
   openFinanceLink: string | null;
   accountImportEnabled: boolean;
-  cards: Array<{ last4: string; enabled: boolean }>;
+  cards: Array<{ last4: string; enabled: boolean; adicionais?: string[] }>;
   /** Primeiro nome do titular — no modo casal, diz de quem é a conexão. */
   ownerFirstName: string | null;
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────────
+
+/** O que acontece depois que o cliente confirma o nome do estabelecimento. */
+type DepoisDoNome = 'confirmar' | 'lancarNaLinha';
 
 interface Props {
   householdId: string;
@@ -54,14 +57,18 @@ interface Props {
     category?: CategoryType;
     purchaseDate: { day: number; month: number; year: number };
     ofTx: { transactionId: string; merchantKey: string };
+    /** Categoria já decidida: abre direto na escolha da linha. */
+    irDiretoParaLinha?: boolean;
+    /** Parcelamento como o BANCO informou (3/10). Vira texto, nunca pergunta. */
+    parcelaDoBanco?: { current: number; total: number } | null;
   }) => void;
   onAddPartial: (itemId: string, expense: PartialExpense, year?: number, month?: number) => void;
   /** Cria um item no plano e devolve o id — usado pelo confirmar de um toque. */
   onCreateItem: (description: string, category: CategoryType, isOneTime?: boolean) => string;
-  /** Renomeia o lançamento recém-criado, quando o cliente quiser batizá-lo. */
-  onRenomearPartial?: (itemId: string, partialId: string, nome: string, ano: number, mes: number) => void;
   /** Banco removido — o Plano precisa soltar as linhas de fatura que vieram dele. */
   onBancoRemovido?: (bankName: string) => void;
+  /** Quantos ainda esperam o cliente — o badge acompanha sem esperar o fechamento. */
+  onFilaMudou?: (pendentes: number) => void;
   /** Guarda o aparelho para push, quando o cliente aceita ao conectar o banco. */
   onRegistrarPush?: (tokenApns: string, platform: string) => void;
   /** Lançar um gasto do zero — dinheiro vivo, cartão de terceiro, banco de fora. */
@@ -336,107 +343,88 @@ interface TxRowProps {
   onConfirm: (tx: BankTransaction) => void;
 }
 
+/** Cor do nome da categoria na frase — mais escura que a da etiqueta, para ler bem no fundo claro. */
+const COR_DA_FRASE: Record<string, string> = {
+  [CategoryType.INCOME]: '#1f8a3b',
+  [CategoryType.FIXED_EXPENSE]: '#0060c9',
+  [CategoryType.VARIABLE_EXPENSE]: '#c56f00',
+  [CategoryType.PERSONAL_LEISURE]: '#8e3bb8',
+  [CategoryType.CREDIT_CARD]: '#d70015',
+};
+
+/**
+ * Um card por gasto, com a pergunta escrita.
+ *
+ * A linha antiga tinha uma bolinha verde sem texto para confirmar e a etiqueta
+ * da categoria como único jeito de trocar: quem não conhecia o app não sabia o
+ * que tocar (Eduardo, 2026-09-22 — aprovou a "Proposta A" do desenho). Os
+ * botões fazem o mesmo de antes: confirmar = o visto; mudar = o editar.
+ */
 const TxRow: React.FC<TxRowProps> = ({ tx, onSelect, onDiscard, onConfirm }) => {
   const isIncome = tx.transactionType === 'income';
-  const suggested = tx.suggestedCategory ? CATEGORY_CONFIG[tx.suggestedCategory] : null;
+  const categoria = tx.suggestedCategory ?? null;
+  const meio = tx.accountType === 'credit_card'
+    ? (tx.cardLast4 ? `Cartão ••${tx.cardLast4}` : 'Cartão')
+    : (tx.paymentMethod ? tx.paymentMethod.charAt(0).toUpperCase() + tx.paymentMethod.slice(1).toLowerCase() : 'Conta');
+  const parcela = tx.installmentCurrent && tx.installmentTotal ? ` · ${tx.installmentCurrent}/${tx.installmentTotal}x` : '';
+  const detalhe = tx.description && tx.description !== tx.merchant ? tx.description : (tx.ofCategory || null);
 
   return (
-    // <div> e não <button>: a lixeira é um botão dentro da linha, e botão
-    // aninhado em botão é HTML inválido — o clique interno vazava para fora.
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => onSelect(tx)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onSelect(tx); }}
-      className="w-full flex items-center gap-3 px-4 py-3.5 text-left cursor-pointer hover:bg-[#f5f5f7] active:bg-[#ebebed] transition-colors border-b border-[#f0f0f0] last:border-0"
-    >
-      {/* Direction icon */}
-      <div
-        className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
-        style={{ background: isIncome ? '#34c75918' : '#ff950018' }}
-      >
-        <i
-          className={`fas ${isIncome ? 'fa-arrow-down text-[#34c759]' : 'fa-arrow-up text-[#ff9500]'} text-sm`}
-        />
-      </div>
-
-      {/* Description + meta */}
-      <div className="flex-1 min-w-0">
-        {/* O nome de quem recebeu vem primeiro: "Edp São Paulo" é reconhecível,
-            "PIX QR CODE DINAMICO - DES: EDP SP" não. A descrição do banco fica
-            embaixo, menor, para quem precisar conferir a origem. */}
-        <p className="text-[#1d1d1f] text-sm font-semibold truncate leading-snug">
-          {tx.merchant || tx.description}
-        </p>
-        {/* Segunda linha: o que ajudar a RECONHECER o gasto.
-            A descrição do banco quando ela diz algo a mais que o nome; senão, a
-            categoria que o próprio banco atribuiu. Existe porque nomes de
-            maquininha não significam nada sozinhos: "CVS" não diz se foi
-            farmácia, mercado ou restaurante, e o cliente fica sem como decidir
-            (Eduardo, 2026-09-09). O rótulo do banco costuma resolver. */}
-        {(() => {
-          const desc = tx.description && tx.description !== tx.merchant ? tx.description : null;
-          const extra = desc ?? (tx.ofCategory || null);
-          if (!extra) return null;
-          return <p className="text-[10px] text-[#c7c7cc] truncate leading-tight">{extra}</p>;
-        })()}
-        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-          <span className="text-xs text-[#aeaeb2]">{formatDateBR(tx.transactionDate)}</span>
-          {tx.installmentCurrent && tx.installmentTotal && (
-            <span className="text-xs text-[#aeaeb2]">
-              · {tx.installmentCurrent}/{tx.installmentTotal}x
-            </span>
-          )}
-          {/* A categoria vira BOTAO: tocar nela abre o fluxo para trocar, sem
-              precisar adivinhar que o toque na linha faz isso. O visto ao lado
-              confirma; a etiqueta corrige. */}
-          {suggested ? (
-            <button
-              onClick={(e) => { e.stopPropagation(); onSelect(tx); }}
-              className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1 active:opacity-70"
-              style={{ background: suggested.color + '18', color: suggested.color }}
-            >
-              {suggested.label}
-              <i className="fas fa-pen text-[7px] opacity-60" />
-            </button>
-          ) : (
-            <button
-              onClick={(e) => { e.stopPropagation(); onSelect(tx); }}
-              className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#f2f2f7] text-[#8e8e93] active:opacity-70"
-            >
-              escolher categoria
-            </button>
-          )}
-          {tx.accountType === 'credit_card' && tx.cardLast4 && (
-            <span className="text-[10px] text-[#aeaeb2]">···{tx.cardLast4}</span>
-          )}
+    <div className="mx-2 mt-2 overflow-hidden rounded-2xl bg-white shadow-sm">
+      <div className="flex items-center gap-3 px-4 pb-2.5 pt-3.5">
+        <div className="min-w-0 flex-1">
+          {/* O nome de quem recebeu vem primeiro: "Edp São Paulo" é reconhecível,
+              "PIX QR CODE DINAMICO - DES: EDP SP" não. */}
+          <p className="truncate text-[15px] font-bold leading-snug text-[#1d1d1f]">{tx.merchant || tx.description}</p>
+          <p className="text-xs text-[#8e8e93]">{formatDateBR(tx.transactionDate)} · {meio}{parcela}</p>
+          {/* O rótulo do banco ajuda a reconhecer maquininha sem nome ("CVS"). */}
+          {detalhe && <p className="truncate text-[10px] leading-tight text-[#c7c7cc]">{detalhe}</p>}
         </div>
+        <span className={`flex-shrink-0 text-[15px] font-black ${isIncome ? 'text-[#34c759]' : 'text-[#1d1d1f]'}`}>
+          {isIncome ? '+' : ''}{formatCurrencyBR(Number(tx.amount))}
+        </span>
       </div>
 
-      {/* Amount */}
-      <span className={`font-black text-sm flex-shrink-0 ${isIncome ? 'text-[#34c759]' : 'text-[#1d1d1f]'}`}>
-        {isIncome ? '+' : ''}{formatCurrencyBR(Number(tx.amount))}
-      </span>
-
-      {/* Confirmar num toque: a sugestao ja esta certa na maioria das vezes,
-          e obrigar a abrir o fluxo inteiro para dizer "sim" era a friccao. */}
-      {tx.suggestedCategory && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onConfirm(tx); }}
-          aria-label="Confirmar nesta categoria"
-          title="Confirmar nesta categoria"
-          className="flex-shrink-0 w-9 h-9 rounded-full bg-[#e8f5d0] text-[#5a8c00] flex items-center justify-center active:scale-90 transition-transform"
-        >
-          <i className="fas fa-check text-xs" />
-        </button>
-      )}
+      <div className="mx-2.5 mb-1 rounded-xl bg-[#f7f7f8] p-3">
+        {categoria ? (
+          <>
+            <p className="text-[13px] leading-snug text-[#3a3a3c]">
+              Sugerimos <span className="font-extrabold" style={{ color: COR_DA_FRASE[categoria] ?? '#1d1d1f' }}>{categoria}</span>. Está certo?
+            </p>
+            <div className="mt-2.5 flex gap-2">
+              <button
+                onClick={() => onConfirm(tx)}
+                className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl text-[13px] font-extrabold text-[#182200] active:scale-95"
+                style={{ background: 'linear-gradient(90deg,#c5f23a,#8cc400)' }}
+              >
+                <i className="fas fa-check text-xs" /> Sim, confirmar
+              </button>
+              <button
+                onClick={() => onSelect(tx)}
+                className="h-11 flex-1 rounded-xl border-[1.5px] border-[#d1d1d6] bg-white text-[13px] font-extrabold text-[#1d1d1f] active:scale-95"
+              >
+                Mudar categoria
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-[13px] leading-snug text-[#3a3a3c]">Onde este gasto entra no seu plano?</p>
+            <button
+              onClick={() => onSelect(tx)}
+              className="mt-2.5 h-11 w-full rounded-xl bg-[#1d1d1f] text-[13px] font-extrabold text-white active:scale-95"
+            >
+              Escolher categoria
+            </button>
+          </>
+        )}
+      </div>
 
       <button
-        onClick={(e) => { e.stopPropagation(); onDiscard(tx); }}
-        aria-label="Descartar transação"
-        className="flex-shrink-0 w-8 h-8 -mr-1 flex items-center justify-center text-[#d1d1d6] hover:text-[#ff3b30] transition-colors"
+        onClick={() => onDiscard(tx)}
+        className="w-full py-2.5 text-[11px] font-bold text-[#aeaeb2] active:text-[#ff3b30]"
       >
-        <i className="fas fa-trash-can text-xs" />
+        Ignorar este gasto
       </button>
     </div>
   );
@@ -457,8 +445,8 @@ export default function ExtratoBancario({
   onLaunchExpense,
   onAddPartial,
   onCreateItem,
-  onRenomearPartial,
   onBancoRemovido,
+  onFilaMudou,
   onRegistrarPush,
   onLancarManual,
   onClose,
@@ -587,7 +575,10 @@ export default function ExtratoBancario({
    * 2026-09-09). Aparece DEPOIS de o gasto já estar salvo: quem ignorar não
    * perde nada, e quem quiser batiza em dois toques.
    */
-  const [renomear, setRenomear] = useState<{ itemId: string; partialId: string; ano: number; mes: number; original: string } | null>(null);
+  /** Adicional que o cliente esta dizendo a qual cartao pertence. */
+  const [vinculando, setVinculando] = useState<{ conn: BankConn; adicional: string } | null>(null);
+  const [salvandoVinculo, setSalvandoVinculo] = useState(false);
+  const [renomear, setRenomear] = useState<{ tx: BankTransaction; original: string; depois: DepoisDoNome } | null>(null);
   const [nomeNovo, setNomeNovo] = useState('');
   /** Transação que o cliente pediu para descartar — aguardando confirmação */
   const [pendingDiscard, setPendingDiscard] = useState<BankTransaction | null>(null);
@@ -609,18 +600,43 @@ export default function ExtratoBancario({
    * semelhança: mesmo valor (1 centavo de folga) e até 4 dias de diferença,
    * porque a data que o banco informa é a de LANÇAMENTO, não a da compra.
    */
+  /**
+   * Procura um lançamento feito à mão que seja a MESMA compra desta transação.
+   *
+   * Olhava só o mês da fatura, com 4 dias de janela. Duas coisas escapavam: a
+   * compra lançada à mão no mês da COMPRA quando a fatura vence no mês seguinte,
+   * e a parcelada, cujas parcelas seguintes moram nos meses de frente. Agora
+   * varre o mês da fatura e os vizinhos, com 7 dias de janela
+   * (Eduardo, 2026-09-17).
+   *
+   * A data do lançamento manual vem como "dd/mm", sem ano — por isso a
+   * comparação é feita por dia e mês, e não por timestamp absoluto.
+   */
   function findManualDuplicate(tx: BankTransaction): { itemName: string; expense: PartialExpense } | null {
     const dateStr = tx.billDueDate ?? tx.transactionDate;
     const [y, m] = dateStr.split('-').map(Number);
-    const monthKey = `${y}-${m - 1}`;
-    const txTime = new Date(tx.transactionDate).getTime();
     const value = Number(tx.amount);
+    const [cy, cm, cd] = tx.transactionDate.split('-').map(Number);
+    const diaDaCompra = Date.UTC(cy, (cm || 1) - 1, cd || 1);
+
+    const chaves: string[] = [];
+    for (const passo of [-1, 0, 1]) {
+      const d = new Date(Date.UTC(y, (m - 1) + passo, 1));
+      chaves.push(`${d.getUTCFullYear()}-${d.getUTCMonth()}`);
+    }
 
     for (const item of items) {
-      for (const p of item.partialExpenses?.[monthKey] ?? []) {
-        if (Math.abs(p.value - value) > 0.01) continue;
-        const diffDays = Math.abs(new Date(p.date).getTime() - txTime) / 86_400_000;
-        if (diffDays <= 4) return { itemName: item.description || 'um item do plano', expense: p };
+      for (const chave of chaves) {
+        const [ky, km] = chave.split('-').map(Number);
+        for (const p of item.partialExpenses?.[chave] ?? []) {
+          if (Math.abs(p.value - value) > 0.01) continue;
+          const [dia, mes] = String(p.date ?? '').split('/').map(Number);
+          if (!dia) continue;
+          // Mês do lançamento: o que vem na data, quando existe; senão, o mês da chave.
+          const diaDoLancamento = Date.UTC(ky, (mes ? mes - 1 : km), dia);
+          const dias = Math.abs(diaDoLancamento - diaDaCompra) / 86_400_000;
+          if (dias <= 7) return { itemName: item.description || 'um item do plano', expense: p };
+        }
       }
     }
     return null;
@@ -670,7 +686,55 @@ export default function ExtratoBancario({
     const categoria = tx.suggestedCategory as CategoryType | null;
     if (!categoria) return;
 
+    /**
+     * Conta fixa sem linha conhecida pergunta ONDE encaixar.
+     *
+     * Nas outras categorias a linha guarda-chuva serve (lazer e variável são um
+     * número só). Na fixa, cada linha é uma conta de verdade — Apple, aluguel,
+     * internet — e jogar a assinatura em "Outras Contas Fixas" escondia de onde
+     * vem o dinheiro (Eduardo, 2026-09-17). Se a memória do estabelecimento ou o
+     * código do gasto já apontam a linha, confirma direto como antes; só na
+     * primeira vez a pergunta aparece.
+     */
+    if (categoria === CategoryType.FIXED_EXPENSE) {
+      /**
+       * SO a memoria confirma direto. Palpite pergunta.
+       *
+       * O casamento por codigo do banco mandava EDP e Sabesp para uma linha de
+       * conta fixa sem o cliente escolher nada (Eduardo, 2026-09-22). Conta fixa
+       * tem uma linha por conta de verdade — errar ali some com o dinheiro de
+       * vista. So o que ele mesmo ja categorizou antes entra sem perguntar.
+       */
+      const conhecida = tx.suggestionConfidence === 'memory'
+        && tx.suggestedItemId
+        && items.some((i) => i.id === tx.suggestedItemId);
+      if (!conhecida) {
+        const dup = findManualDuplicate(tx);
+        if (dup) { setDuplicate({ tx, itemName: dup.itemName, existing: dup.expense }); return; }
+        pedirNome(tx, 'lancarNaLinha');
+        return;
+      }
+    }
+
+    pedirNome(tx, 'confirmar');
+  }
+
+  /**
+   * O nome vem ANTES de gravar, em todos os caminhos.
+   *
+   * Antes o "OK" gravava e só depois perguntava o nome: fechar a pergunta não
+   * desfazia nada e o gasto sumia da fila como confirmado. E o "editar" nem
+   * perguntava (Eduardo, 2026-09-21). Agora fechar deixa o gasto na fila.
+   */
+  function pedirNome(tx: BankTransaction, depois: DepoisDoNome) {
     const nome = tx.merchant || tx.description || 'Gasto';
+    setRenomear({ tx, original: nome, depois });
+    setNomeNovo(nome);
+  }
+
+  async function gravarConfirmado(tx: BankTransaction, nome: string) {
+    const categoria = tx.suggestedCategory as CategoryType | null;
+    if (!categoria) return;
 
     /**
      * Item de destino, sem inventar linha nova a cada estabelecimento.
@@ -753,11 +817,6 @@ export default function ExtratoBancario({
 
     marcarNoServidor(tx, { householdId, transactionId: tx.transactionId, action: 'categorize', itemId, category: categoria, partialId: partial.id });
 
-    // Convite para batizar o gasto — o lançamento JÁ está salvo neste ponto.
-    const primeiroAbs = (y * 12) + (rawM - 1);
-    setRenomear({ itemId, partialId: primeiro, ano: Math.floor(primeiroAbs / 12), mes: primeiroAbs % 12, original: nome });
-    setNomeNovo('');
-
     const key = merchantKey(tx.merchant ?? tx.description ?? '');
     if (key && !ehMarketplace(tx.merchant ?? tx.description)) {
       fetch('/api/of-merchant-memory', {
@@ -771,10 +830,13 @@ export default function ExtratoBancario({
   function openLaunch(tx: BankTransaction) {
     const dup = findManualDuplicate(tx);
     if (dup) { setDuplicate({ tx, itemName: dup.itemName, existing: dup.expense }); return; }
+    // Editar vai direto para a categoria; o nome é um campo da própria tela de
+    // lançamento. A pergunta do nome antes fazia parecer que o editar não
+    // levava a recategorizar (Eduardo, 2026-09-22).
     proceedToLaunch(tx);
   }
 
-  function proceedToLaunch(tx: BankTransaction) {
+  function proceedToLaunch(tx: BankTransaction, irDiretoParaLinha = false, nomeEscolhido?: string) {
     const dateStr = tx.billDueDate ?? tx.transactionDate;
     const [y, rawM, rawD] = dateStr.split('-').map(Number);
     /**
@@ -795,7 +857,7 @@ export default function ExtratoBancario({
     onLaunchExpense({
       itemId: '',
       value: Number(tx.amount),
-      description: tx.merchant || tx.description || '',
+      description: nomeEscolhido || tx.merchant || tx.description || '',
       installments: faltam,
       isCredit: tx.accountType === 'credit_card',
       // O extrato sabe como foi pago — o ExpenseSheet nao pergunta de novo.
@@ -804,6 +866,8 @@ export default function ExtratoBancario({
       category: (tx.suggestedCategory as CategoryType) ?? undefined,
       purchaseDate: { day: rawD || 1, month: (rawM || 1) - 1, year: y },
       ofTx: { transactionId: tx.transactionId, merchantKey: merchantKey(tx.merchant ?? tx.description ?? '') },
+      irDiretoParaLinha,
+      parcelaDoBanco: totalParcelas > 1 ? { current: parcelaAtual, total: totalParcelas } : null,
     });
   }
 
@@ -827,6 +891,37 @@ export default function ExtratoBancario({
 
   useEffect(() => { loadTransactions(); }, [loadTransactions]);
 
+  /**
+   * Pede o push ao abrir o Extrato.
+   *
+   * Antes o pedido acontecia em um ponto só — logo depois de conectar um banco.
+   * Quem já tinha banco conectado nunca passava por ali, e o canal ficava
+   * fechado para sempre: zero aparelhos registrados mesmo com servidor e
+   * credenciais corretos (medido em 2026-09-14).
+   *
+   * Aqui é uma hora boa: quem abre o Extrato veio justamente ver os lançamentos
+   * do banco, então "avisar quando chegarem novos" é a continuação natural.
+   * `pedirPermissaoPush` sai calado se a pessoa já respondeu antes — no iOS o
+   * pedido só aparece uma vez, e insistir depois do "não" não mostra nada.
+   */
+  useEffect(() => {
+    if (!onRegistrarPush) return;
+    const id = setTimeout(() => { pedirPermissaoPush(onRegistrarPush).catch(() => {}); }, 1200);
+    return () => clearTimeout(id);
+  }, [onRegistrarPush]);
+
+  /**
+   * Avisa o app a cada gasto que sai da fila.
+   *
+   * O badge so era recontado ao FECHAR o Extrato: o cliente categorizava os
+   * tres, voltava para a tela inicial e continuava lendo "3" (Eduardo,
+   * 2026-09-22). Agora o numero cai junto com a lista.
+   */
+  useEffect(() => {
+    onFilaMudou?.(transactions.length);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactions.length]);
+
   /** Quantos lançamentos entraram sozinhos nesta abertura da tela. */
   const [autoFiled, setAutoFiled] = useState(0);
 
@@ -840,18 +935,25 @@ export default function ExtratoBancario({
    * Editar, que agora troca de categoria.
    */
   useEffect(() => {
-    // Duas origens confiáveis o bastante para entrar sozinhas:
-    //   1. memória — o cliente já categorizou este estabelecimento antes
-    //   2. nomenclatura óbvia — o código do banco casa com UM item do plano
-    // Qualquer outra coisa continua na fila esperando decisão dele.
+    /**
+     * SÓ MEMÓRIA. Palpite nosso não lança sozinho.
+     *
+     * O `?? resolveItemByCode(...)` que existia aqui fazia o app lançar TODA
+     * transação cujo código do banco casasse com algum item do plano — sem o
+     * cliente ter ensinado nada. Efeito em produção (Eduardo, 21/09): o push
+     * anunciava 2 gastos novos, ele abria o Extrato, a fila esvaziava sozinha e
+     * nada aparecia no resumo (que só lista as de memória). "204 SHIBATA",
+     * mercado, foi parar em Contas Fixas desse jeito.
+     *
+     * Entra sozinho apenas o que o PRÓPRIO cliente já categorizou antes, com o
+     * item ainda vivo no plano. O resto espera a decisão dele.
+     */
     const resolved = transactions
       .map((t) => {
-        const fromMemory = t.suggestionConfidence === 'memory' && t.suggestedItemId
-          && items.some((i) => i.id === t.suggestedItemId)
-          ? t.suggestedItemId
-          : null;
-        const itemId = fromMemory ?? resolveItemByCode(t.ofCode, t.suggestedCategory, items);
-        return itemId ? { tx: t, itemId } : null;
+        const daMemoria = t.suggestionConfidence === 'memory'
+          && t.suggestedItemId
+          && items.some((i) => i.id === t.suggestedItemId);
+        return daMemoria ? { tx: t, itemId: t.suggestedItemId as string } : null;
       })
       .filter((x): x is { tx: BankTransaction; itemId: string } => x !== null);
 
@@ -895,6 +997,7 @@ export default function ExtratoBancario({
   // código COMPE (para a logo) vêm daqui.
   const [banks, setBanks] = useState<BankConn[]>([]);
   const [banksLoaded, setBanksLoaded] = useState(false);
+  const [erroBancos, setErroBancos] = useState(false);
   /** Desconecta (e opcionalmente apaga o extrato) do banco escolhido. */
   const removerBanco = async (conn: BankConn, apagarHistorico: boolean) => {
     setRemovendoAgora(true);
@@ -916,11 +1019,23 @@ export default function ExtratoBancario({
     }
   };
 
+  /**
+   * Falha de rede NÃO pode virar "Nenhum banco conectado".
+   *
+   * O erro era engolido e a lista ficava vazia, então a tela anunciava que o
+   * cliente não tinha banco nenhum — ele achou que tinha perdido as conexões
+   * (Eduardo, 2026-09-14). Agora a falha é registrada e a tela mostra que não
+   * conseguiu carregar, com opção de tentar de novo.
+   */
   const loadBanks = useCallback(() => {
+    setErroBancos(false);
     cabecalho(false).then((h) => fetch(`/api/of-connect?householdId=${householdId}`, { headers: h }))
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.json();
+      })
       .then((d) => { if (d?.connections) setBanks(d.connections); })
-      .catch(() => { /* sem lista: cai no extrato único */ })
+      .catch(() => { setErroBancos(true); })
       .finally(() => setBanksLoaded(true));
   }, [householdId, cabecalho]);
   /**
@@ -1076,16 +1191,56 @@ export default function ExtratoBancario({
   const cartaoVisivel = (t: BankTransaction): string | undefined => {
     const daConexao = cartoesDaConexao.get(t.connectionId ?? '') ?? [];
     if (t.cardLast4 && daConexao.includes(t.cardLast4)) return t.cardLast4;
+    // Conexão ainda sem cartões cadastrados: vale o número que o banco carimbou.
+    // Antes o gasto ficava "Cartão ••?" (Google 7212 do Eduardo, 2026-09-21).
+    if (daConexao.length === 0) return t.cardLast4 ?? aberto?.last4 ?? undefined;
     return daConexao[0] ?? aberto?.last4 ?? undefined;
+  };
+
+  /**
+   * Cada gasto conta no cartao que o BANCO carimbou nele.
+   *
+   * Antes, numero fora da lista da conexao era jogado no primeiro cartao: as 23
+   * compras do Michael, vindas de quatro numeros diferentes (1210, 4412, 8815 e
+   * 0827), apareciam todas sob o 4412, enquanto o 5198 dizia "nada a
+   * categorizar" (2026-09-21). Agora cada numero tem a propria linha — inclusive
+   * os adicionais e virtuais, que o cliente reconhece pela fatura.
+   */
+  /** "1210" -> "5198": o que o cliente ensinou sobre os adicionais. */
+  const principalDoAdicional = (connId: string, last4: string): string | null => {
+    const conn = banks.find((b) => b.id === connId);
+    for (const c of conn?.cards ?? []) {
+      if ((c.adicionais ?? []).includes(last4)) return c.last4;
+    }
+    return null;
   };
 
   const chaveDaTx = (t: BankTransaction) => {
     const conn = t.connectionId ?? '';
     if (t.accountType !== 'credit_card') return chaveDe(conn, 'checking');
     const daConexao = cartoesDaConexao.get(conn) ?? [];
-    const casa = t.cardLast4 && daConexao.includes(t.cardLast4) ? t.cardLast4 : daConexao[0];
+    const vinculado = t.cardLast4 ? principalDoAdicional(conn, t.cardLast4) : null;
+    const casa = vinculado ?? t.cardLast4 ?? daConexao[0];
     // Conexão sem cartão nenhum: cai na conta corrente para continuar visível.
     return casa ? chaveDe(conn, 'card', casa) : chaveDe(conn, 'checking');
+  };
+
+  /**
+   * Numeros de cartao que aparecem nas transacoes mas nao estao cadastrados na
+   * conexao — cartao adicional, virtual ou trocado pelo banco. Sem uma linha
+   * propria, eles some da tela ou entram na conta de outro cartao.
+   */
+  const cartoesExtras = (connId: string): string[] => {
+    const cadastrados = new Set(cartoesDaConexao.get(connId) ?? []);
+    const vistos = new Set<string>();
+    for (const t of transactions) {
+      if (t.connectionId !== connId) continue;
+      if (t.accountType !== 'credit_card' || !t.cardLast4) continue;
+      if (cadastrados.has(t.cardLast4)) continue;
+      if (principalDoAdicional(connId, t.cardLast4)) continue; // ja tem dono
+      vistos.add(t.cardLast4);
+    }
+    return [...vistos].sort();
   };
 
   const countByKey = transactions.reduce<Record<string, number>>((acc, t) => {
@@ -1254,7 +1409,7 @@ export default function ExtratoBancario({
   // ─── Tela inicial: escolher o banco ────────────────────────────────────────
   if (showBankPicker) {
     return (
-      <div className="fixed inset-0 z-[60] flex flex-col bg-[#f2f2f7]" style={{ paddingTop: topoDaCamadaFixa }}>
+      <div className="fixed inset-0 z-[60] flex flex-col bg-[#f2f2f7] pb-16 lg:pb-0" style={{ paddingTop: topoDaCamadaFixa }}>
         <div className="bg-white border-b border-[#e5e5ea] px-4 safe-top pt-2 pb-3 flex items-center justify-between flex-shrink-0">
           <div>
             <h2 className="text-lg font-black text-[#1d1d1f]">Extrato bancário</h2>
@@ -1316,6 +1471,20 @@ export default function ExtratoBancario({
             <div className="text-center py-12 text-[#8e8e93]">
               <i className="fas fa-circle-notch animate-spin text-xl mb-2 block" />
               <span className="text-sm">Carregando…</span>
+            </div>
+          ) : erroBancos ? (
+            <div className="bg-white rounded-2xl p-8 text-center">
+              <i className="fas fa-triangle-exclamation text-3xl text-amber-500 mb-3 block" />
+              <p className="font-bold text-[#1d1d1f] mb-1">Não consegui carregar seus bancos</p>
+              <p className="text-sm text-[#6e6e73] mb-4">
+                Falha de conexão. Seus bancos continuam conectados — é só tentar de novo.
+              </p>
+              <button
+                onClick={() => { setBanksLoaded(false); loadBanks(); }}
+                className="px-5 py-2.5 rounded-xl bg-[#7ab800] text-white font-black text-xs uppercase tracking-wide active:scale-95 transition-transform"
+              >
+                Tentar de novo
+              </button>
             </div>
           ) : banks.length === 0 ? (
             <div className="bg-white rounded-2xl p-8 text-center">
@@ -1504,13 +1673,44 @@ export default function ExtratoBancario({
                         <LinhaMetodo
                           key={card.last4}
                           icone="fa-credit-card"
-                          rotulo={<>Cartão <span className="text-[#8e8e93]">••{card.last4}</span></>}
+                          rotulo={<>
+                            Cartão <span className="text-[#8e8e93]">••{card.last4}</span>
+                            {(card.adicionais ?? []).length > 0 && (
+                              <span className="text-[10px] text-[#8e8e93]"> · inclui {(card.adicionais ?? []).map(n => `••${n}`).join(', ')}</span>
+                            )}
+                          </>}
                           ligado={card.enabled}
                           chave={`${b.id}:${card.last4}`}
                           onToggle={() => toggleImport(b, { card: card.last4 })}
                           kind="card"
                           last4={card.last4}
                         />
+                      ))}
+                      {/* Cartoes que so existem nas compras: adicional, virtual
+                          ou numero trocado pelo banco. Sem isto, o gasto deles
+                          entrava na conta de outro cartao (Michael, 2026-09-21). */}
+                      {cartoesExtras(b.id).map((last4) => (
+                        <div key={`extra-${last4}`}>
+                          <LinhaMetodo
+                            icone="fa-credit-card"
+                            rotulo={<>Cartão <span className="text-[#8e8e93]">••{last4}</span> <span className="text-[10px] text-[#8e8e93]">· adicional</span></>}
+                            ligado
+                            chave={`${b.id}:${last4}`}
+                            onToggle={() => toggleImport(b, { card: last4 })}
+                            kind="card"
+                            last4={last4}
+                          />
+                          {/* O banco nao diz de qual cartao e o adicional. Uma
+                              resposta do cliente resolve para sempre. */}
+                          {b.cards.length > 0 && (
+                            <button
+                              onClick={() => setVinculando({ conn: b, adicional: last4 })}
+                              className="w-full text-left px-4 pb-2.5 -mt-1 text-[11px] font-bold text-[#7ab800]"
+                            >
+                              De qual cartão é este adicional?
+                            </button>
+                          )}
+                        </div>
                       ))}
                       {b.cards.length === 0 && (
                         <p className="border-t border-[#f0f0f0] px-4 py-2.5 text-[11px] text-[#aeaeb2] italic">
@@ -1715,7 +1915,7 @@ export default function ExtratoBancario({
       </div>
 
       {/* Transaction list */}
-      <div className="flex-1 overflow-y-auto">
+      <div data-extrato-rolagem className="flex-1 overflow-y-auto">
         {autoFiled > 0 && (
           <div className="mx-2 mt-2 bg-[#f0fad0] border border-[#d4e8a0] rounded-2xl px-4 py-3 flex items-start gap-2.5">
             <i className="fas fa-wand-magic-sparkles text-[#7ab800] text-sm mt-0.5" />
@@ -1759,7 +1959,7 @@ export default function ExtratoBancario({
             </p>
           </div>
         ) : (
-          <div className="bg-white mt-2 mx-2 rounded-2xl overflow-hidden shadow-sm">
+          <div className="pb-2">
             {displayed.map((tx) => (
               <TxRow key={tx.transactionId} tx={tx} onSelect={openLaunch} onDiscard={setPendingDiscard} onConfirm={confirmarRapido} />
             ))}
@@ -1833,6 +2033,63 @@ export default function ExtratoBancario({
       )}
 
       {/* Aviso de teto atingido */}
+      {vinculando && (
+        <div className="fixed inset-0 z-[80] flex items-end justify-center" onClick={() => setVinculando(null)}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div onClick={e => e.stopPropagation()} className="relative w-full max-w-lg bg-white rounded-t-3xl p-5 pb-8 shadow-2xl">
+            <div className="w-10 h-1 bg-[#e8e8ed] rounded-full mx-auto mb-4" />
+            <p className="text-[10px] font-black uppercase tracking-widest text-[#aeaeb2]">Cartão adicional</p>
+            <h3 className="text-[#1d1d1f] font-black text-lg leading-tight mb-1">
+              De qual cartão é o ••{vinculando.adicional}?
+            </h3>
+            <p className="text-[#6e6e73] text-[13px] leading-snug mb-4">
+              O banco carimba as compras com o número do plástico usado. Dizendo isso uma vez, os gastos
+              deste adicional passam a somar no cartão certo.
+            </p>
+            <div className="flex flex-col gap-1.5">
+              {vinculando.conn.cards.map((card) => (
+                <button
+                  key={card.last4}
+                  disabled={salvandoVinculo}
+                  onClick={async () => {
+                    setSalvandoVinculo(true);
+                    try {
+                      const res = await fetch('/api/of-connect', {
+                        method: 'PATCH',
+                        headers: await cabecalho(),
+                        body: JSON.stringify({
+                          householdId,
+                          connectionId: vinculando.conn.id,
+                          vincularAdicional: { adicional: vinculando.adicional, principal: card.last4 },
+                        }),
+                      });
+                      if (res.ok) {
+                        const data = await res.json() as { cards?: BankConn['cards'] };
+                        if (data.cards) {
+                          setBanks((prev) => prev.map((x) => (x.id === vinculando.conn.id ? { ...x, cards: data.cards! } : x)));
+                        }
+                      }
+                    } finally {
+                      setSalvandoVinculo(false);
+                      setVinculando(null);
+                    }
+                  }}
+                  className="w-full text-left px-4 py-3 rounded-2xl bg-[#f5f5f7] text-[14px] font-bold text-[#1d1d1f] active:scale-[0.99] disabled:opacity-50"
+                >
+                  Cartão ••{card.last4}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setVinculando(null)}
+              className="w-full py-3 mt-3 text-[#8e8e93] font-bold text-[13px]"
+            >
+              Deixar separado
+            </button>
+          </div>
+        </div>
+      )}
+
       {renomear && (
         /* Clicar fora fecha. Sem isso o cliente ficava preso: os dois botões
            decidiam o nome, e quem só queria sair da tela não tinha por onde
@@ -1852,45 +2109,76 @@ export default function ExtratoBancario({
             >
               <i className="fas fa-xmark text-sm" />
             </button>
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#5a8c00]">Gasto já salvo</p>
+            {/* A pergunta mudou de "apelido" para NOME DO LUGAR porque essa
+                resposta alimenta o dicionário compartilhado: apelido pessoal
+                ("presente da Ana") apareceria para outros clientes
+                (Eduardo, 2026-09-20). */}
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#5a8c00]">
+              {renomear.depois === 'confirmar' && renomear.tx.suggestedCategory
+                ? `Vai para ${renomear.tx.suggestedCategory}`
+                : 'Antes de lançar'}
+            </p>
             <h3 className="mb-1 mt-1 pr-10 text-[19px] font-black leading-tight text-[#1d1d1f]">
-              Quer dar um nome que você reconheça?
+              Qual é o nome deste estabelecimento?
             </h3>
             <p className="mb-3 text-[13px] leading-snug text-[#6e6e73]">
-              O banco chamou de <strong className="text-[#1d1d1f]">{renomear.original}</strong>. Daqui a um
-              mês esse nome pode não dizer nada.
+              O banco chamou de <strong className="text-[#1d1d1f]">{renomear.original}</strong>, que costuma
+              ser a razão social. Escreva como o lugar é conhecido.
             </p>
-            {/* Sem este recado o cliente achava que estava perdendo a única
-                chance de nomear, e fechar a tela dava aflição. */}
-            <p className="mb-4 rounded-xl bg-[#f5f5f7] px-3 py-2 text-[12px] leading-snug text-[#6e6e73]">
-              O lançamento <strong className="text-[#1d1d1f]">já entrou no seu plano</strong> — isto aqui é só
-              o apelido. Dá para mudar quando quiser em <strong className="text-[#1d1d1f]">Gastos</strong> →
-              toque no lançamento → <strong className="text-[#1d1d1f]">Editar</strong>.
+            <p className="mb-4 rounded-xl bg-[#f0fad0] px-3 py-2 text-[12px] leading-snug text-[#5a8c00]">
+              Escreva o <strong>nome do lugar</strong>, não o que você comprou. Assim o Kashim reconhece esse
+              estabelecimento nas próximas compras, suas e de quem mais usa o app.
             </p>
+            <p className="mb-3 text-[12px] leading-snug text-[#6e6e73]">
+              Se fechar agora, <strong className="text-[#1d1d1f]">nada é salvo</strong>: o gasto continua na
+              lista para você decidir depois.
+            </p>
+            {/* O nome do banco ja vem escrito: quando ele ja esta certo
+                ("LENCIONI PIZZERIA"), digitar de novo e trabalho a toa e chance
+                de erro (Eduardo, 2026-09-21). */}
             <input
               autoFocus
               value={nomeNovo}
               onChange={(e) => setNomeNovo(e.target.value)}
-              placeholder="Ex.: camiseta do Tio, cabo do notebook"
+              placeholder="Ex.: Padaria Estrela, Posto Ipiranga"
               maxLength={60}
               className="w-full rounded-2xl border border-[#e5e5ea] bg-[#f7f7f8] px-4 py-3 text-[15px] text-[#1d1d1f] outline-none focus:border-[#a8e716] focus:bg-white"
             />
             <button
               disabled={!nomeNovo.trim()}
               onClick={() => {
-                onRenomearPartial?.(renomear.itemId, renomear.partialId, nomeNovo.trim(), renomear.ano, renomear.mes);
+                const apelido = nomeNovo.trim();
+                const { tx, depois, original } = renomear;
                 setRenomear(null);
+                if (depois === 'confirmar') gravarConfirmado(tx, apelido);
+                else proceedToLaunch(tx, depois === 'lancarNaLinha', apelido);
+                /**
+                 * O nome que ele deu também ensina o Kashim.
+                 *
+                 * Antes ficava só dentro do lançamento dele; agora entra no
+                 * dicionário e o próximo cliente que gastar no mesmo lugar já
+                 * vê o nome certo (Eduardo, 2026-09-20). Falha aqui não pode
+                 * atrapalhar o lançamento, que já foi salvo.
+                 */
+                (async () => {
+                  try {
+                    await fetch('/api/merchant-nome', {
+                      method: 'POST', headers: await cabecalho(),
+                      body: JSON.stringify({ textoDoBanco: original, nome: apelido }),
+                    });
+                  } catch { /* dicionário é acessório */ }
+                })();
               }}
               className="mt-3 w-full rounded-2xl py-3.5 text-xs font-black uppercase tracking-widest text-black transition-all active:scale-95 disabled:opacity-40"
               style={{ background: 'linear-gradient(90deg, #c5f23a, #8cc400)' }}
             >
-              Salvar nome
+              {renomear.depois === 'confirmar' ? 'Confirmar e salvar' : 'Continuar'}
             </button>
             <button
               onClick={() => setRenomear(null)}
               className="w-full py-3 text-[12px] font-bold uppercase tracking-widest text-[#8e8e93]"
             >
-              Agora não
+              Decidir depois
             </button>
           </div>
         </div>

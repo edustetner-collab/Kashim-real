@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FinanceItem, CategoryType } from '../types';
 import { formatCurrency } from '../constants';
+import ConfirmarMesLancamento, { precisaConfirmarMes } from './ConfirmarMesLancamento';
 
 export interface DetectedExpense {
   itemId: string;
@@ -23,6 +24,14 @@ interface ExpenseSheetProps {
   initialDescription?: string;
   initialInstallments?: number;
   initialCategory?: CategoryType;
+  /** Categoria já decidida (conta fixa do extrato): abre na escolha da linha. */
+  irDiretoParaLinha?: boolean;
+  /** Parcela como o banco informou (ex.: 21/21). Só informa; não pergunta. */
+  parcelaDoBanco?: { current: number; total: number } | null;
+  /** Finais dos cartões que já vêm pelo Open Finance — gasto deles chega sozinho. */
+  cartoesConectadosLast4?: string[];
+  /** Há conta bancária conectada: débito e Pix dela também chegam sozinhos. */
+  contaConectada?: boolean;
   /**
    * Forma de pagamento JA conhecida — vem do extrato bancario, onde a origem
    * nao e duvida: transacao de cartao foi no credito, de conta foi no debito.
@@ -35,6 +44,12 @@ interface ExpenseSheetProps {
   onConfirm: (data: DetectedExpense) => void;
   onClose: () => void;
   onCreateItem?: (description: string, category: CategoryType, isOneTime?: boolean) => string;
+  /** Atalhos de entrada no topo da escolha de categoria. */
+  onAbrirCamera?: () => void;
+  onAbrirGaleria?: () => void;
+  onAbrirVoz?: () => void;
+  /** Abre o Stets com a pergunta já digitada. */
+  onPerguntarStets?: (pergunta: string) => void;
 }
 
 type Step = 'category' | 'variable-entry' | 'item-picker' | 'value-payment';
@@ -80,10 +95,15 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
   open, source, items,
   initialItemId, initialValue, initialDescription, initialInstallments,
   initialCategory,
+  irDiretoParaLinha,
+  parcelaDoBanco,
+  cartoesConectadosLast4,
+  contaConectada,
   knownPayMethod,
   knownCardLast4,
   defaultPurchaseDate,
   onConfirm, onClose, onCreateItem,
+  onAbrirCamera, onAbrirGaleria, onAbrirVoz, onPerguntarStets,
 }) => {
   const [step, setStep] = useState<Step>('category');
   const [category, setCategory] = useState<CategoryType | null>(null);
@@ -133,6 +153,11 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
       if (precat === CategoryType.VARIABLE_EXPENSE && source !== 'manual') {
         setStep('variable-entry');
         setCategory(CategoryType.VARIABLE_EXPENSE);
+      } else if (precat && irDiretoParaLinha) {
+        // Confirmado no extrato como conta fixa, mas sem linha conhecida:
+        // a pergunta é só "qual conta?". Voltar leva à categoria, se mudar de ideia.
+        setStep('item-picker');
+        setCategory(precat);
       } else {
         setStep('category');
         setCategory(precat);
@@ -155,7 +180,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
       const initManual = Math.max(1, initialInstallments ?? 1);
       setInstallCount(initManual > 1 ? String(initManual) : '');
     }
-  }, [open, source, initialItemId, initialValue, initialDescription, initialInstallments, initialCategory, defaultPurchaseDate, knownPayMethod, knownCardLast4]);
+  }, [open, source, initialItemId, initialValue, initialDescription, initialInstallments, initialCategory, irDiretoParaLinha, defaultPurchaseDate, knownPayMethod, knownCardLast4]);
 
   useEffect(() => {
     if (step === 'value-payment' && open && !showItemPicker) {
@@ -174,7 +199,9 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
   // Campo "Descrição da despesa": aparece quando veio da IA (voz/foto) OU é
   // Lazer. Serve para o usuário nomear o lançamento (ex.: "camisetas") mantendo
   // a categoria — esse texto vira o rótulo do gasto em Gastos Frequentes.
-  const showDescField = source === 'ai' || category === CategoryType.PERSONAL_LEISURE;
+  // Vindo do Extrato (`knownPayMethod`) o campo vira "Nome do estabelecimento":
+  // quem recategoriza também corrige o nome (Eduardo, 2026-09-22).
+  const showDescField = source === 'ai' || category === CategoryType.PERSONAL_LEISURE || !!knownPayMethod;
   const hasItem = !!itemId || (category === CategoryType.VARIABLE_EXPENSE && variableDesc.trim().length > 0);
   // Exigir cartao escolhido SO quando o seletor esta visivel. Com o extrato
   // informando o cartao, o seletor fica escondido — e se a pre-selecao nao
@@ -184,7 +211,31 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
   const needsCard = isCredit
     && !knownCardLast4
     && items.filter(i => i.category === CategoryType.CREDIT_CARD).length > 0;
-  const canConfirm = hasItem && numericValue > 0 && payMethod !== '' && (!needsCard || !!selectedCardId);
+  /**
+   * Gasto que JÁ vem do banco não precisa ser lançado à mão.
+   *
+   * Lançar de novo conta o mesmo dinheiro duas vezes: uma no lançamento, outra
+   * quando a transação chega no Extrato e é categorizada. Marcando como débito,
+   * o estrago é maior — o valor entra como saída da conta e a fatura do banco
+   * já o contém (Eduardo, 2026-09-17).
+   *
+   * O aviso só aparece onde o risco existe: cartão CONECTADO, ou débito/Pix com
+   * conta conectada. Cartão de fora do app e dinheiro em espécie passam direto,
+   * porque para eles lançar à mão é o caminho certo.
+   */
+  const [avisoDispensado, setAvisoDispensado] = useState(false);
+  useEffect(() => { setAvisoDispensado(false); }, [open, payMethod, selectedCardId]);
+
+  const cartaoEscolhido = items.find(i => i.id === selectedCardId);
+  const cartaoEhConectado = !!(cartoesConectadosLast4 ?? []).find(
+    (l4) => l4 && (cartaoEscolhido?.description ?? '').includes(l4),
+  );
+  const avisoChegaDoBanco = !knownPayMethod && !avisoDispensado && (
+    (payMethod === 'credit' && cartaoEhConectado) ||
+    (payMethod === 'debit' && !!contaConectada)
+  );
+
+  const canConfirm = hasItem && numericValue > 0 && payMethod !== '' && (!needsCard || !!selectedCardId) && !avisoChegaDoBanco;
 
   const pickerItems = items.filter(i => {
     if (i.category === CategoryType.INCOME || i.category === CategoryType.CREDIT_CARD) return false;
@@ -200,11 +251,28 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
       )
     : [];
 
+  const [confirmarMes, setConfirmarMes] = useState(false);
+
+
   const handleConfirmClick = () => {
     if (!canConfirm) return;
+    // Lançamento à mão fora do mês atual pede confirmação no app. Os que vêm do
+    // extrato (forma de pagamento já conhecida) têm a data do banco — não pergunta.
+    if (!knownPayMethod && precisaConfirmarMes(purchaseYear, purchaseMonth)) {
+      setConfirmarMes(true);
+      return;
+    }
+    efetivarLancamento();
+  };
+
+  const efetivarLancamento = (dataHoje?: { day: number; month: number; year: number }) => {
+    setConfirmarMes(false);
 
     let finalItemId = itemId;
-    let finalDesc = (showDescField && expenseDesc.trim())
+    // Vindo do Extrato (`knownPayMethod`), o nome do lugar foi confirmado pelo
+    // cliente na pergunta anterior e vale para qualquer categoria. Antes, conta
+    // fixa gravava o nome da linha e "Sabesp" se perdia (Eduardo, 2026-09-22).
+    let finalDesc = ((showDescField || knownPayMethod) && expenseDesc.trim())
       ? expenseDesc.trim()
       : (selectedItem?.description ?? variableDesc.trim());
 
@@ -223,7 +291,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
       isCredit,
       category: category ?? selectedItem?.category,
       linkedCardId: isCredit && selectedCardId ? selectedCardId : undefined,
-      purchaseDate: { day: purchaseDay, month: purchaseMonth, year: purchaseYear },
+      purchaseDate: dataHoje ?? { day: purchaseDay, month: purchaseMonth, year: purchaseYear },
     });
   };
 
@@ -253,7 +321,7 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
       {showDescField && (
         <div className="px-4 py-3 bg-zinc-800 rounded-2xl border border-zinc-700 focus-within:border-green-400/40 transition-colors">
           <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-1">
-            Descrição da despesa
+            {knownPayMethod ? 'Nome do estabelecimento' : 'Descrição da despesa'}
           </p>
           <input
             type="text"
@@ -285,7 +353,9 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
             placeholder="0,00"
           />
         </div>
-        {isParcelado && numericValue > 0 && installments > 1 && (
+        {/* Só no lançamento à mão: com o extrato, quem conta a história das
+            parcelas é o bloco "como foi pago", com o número real (3/10). */}
+        {isParcelado && !knownPayMethod && numericValue > 0 && installments > 1 && (
           <p className="text-zinc-500 text-[10px] mt-1 font-mono">
             {installments}x de {formatCurrency(numericValue)} · total {formatCurrency(numericValue * installments)}
           </p>
@@ -389,9 +459,41 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
         </div>
       )}
 
-      {/* À vista ou parcelado — escondido quando o extrato ja informou as
-          parcelas. "3/10x" nao deixa duvida sobre ser parcelado. */}
-      {payMethod !== '' && !(knownPayMethod && (initialInstallments ?? 1) > 1) && (
+      {avisoChegaDoBanco && (
+        <div className="px-4 py-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col gap-3">
+          <div className="flex items-start gap-2.5">
+            <i className="fas fa-circle-info text-amber-400 text-sm mt-0.5" />
+            <p className="text-amber-200/90 text-[13px] leading-snug">
+              {payMethod === 'credit' ? (
+                <>As compras deste cartão <b>chegam sozinhas do seu banco</b> e aparecem no Extrato para você categorizar. Lançando agora, esse gasto pode ficar contado duas vezes.</>
+              ) : (
+                <>Se foi pago pela conta do banco conectado, esse gasto <b>chega sozinho</b> e aparece no Extrato. Lançando agora, ele pode ficar contado duas vezes. Se foi dinheiro em espécie, pode lançar.</>
+              )}
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={onClose}
+              className="py-2.5 rounded-xl bg-amber-400 text-black text-[12px] font-black active:scale-95"
+            >
+              Deixa chegar do banco
+            </button>
+            <button
+              onClick={() => setAvisoDispensado(true)}
+              className="py-2.5 rounded-xl bg-zinc-800 border border-zinc-700 text-zinc-300 text-[12px] font-black active:scale-95"
+            >
+              {payMethod === 'credit' ? 'Lançar mesmo assim' : 'Foi dinheiro, lançar'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* À vista ou parcelado — NUNCA aparece quando o lançamento veio do
+          extrato. O banco já disse como foi pago e em quantas vezes; perguntar
+          de novo só dava chance de contradizer o extrato. Na 21/21 do Michael
+          faltava uma parcela e a pergunta voltava, oferecendo parcelar de novo
+          uma compra que está acabando (2026-09-17). */}
+      {payMethod !== '' && !knownPayMethod && (
         <div data-tour="sheet-credit-type">
           <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-2">À vista ou parcelado?</p>
           <div className="grid grid-cols-2 gap-2">
@@ -411,8 +513,8 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
         </div>
       )}
 
-      {/* Installment count — chip picker (escondido quando o banco já informou o total) */}
-      {isParcelado && !(knownPayMethod && (initialInstallments ?? 1) > 1) && (
+      {/* Em quantas vezes — idem: só para lançamento digitado à mão. */}
+      {isParcelado && !knownPayMethod && (
         <div>
           <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-2">Em quantas vezes?</p>
           <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
@@ -437,14 +539,31 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
           )}
         </div>
       )}
-      {/* Badge read-only quando o banco informou as parcelas */}
-      {isParcelado && !!knownPayMethod && (initialInstallments ?? 1) > 1 && (
+      {/* Como foi pago, em texto: o extrato é a fonte, e o cliente só precisa
+          saber o que vai ser lançado. Vale também para a compra à vista e para
+          a última parcela, que antes caíam na pergunta. */}
+      {!!knownPayMethod && (
         <div className="px-4 py-3 bg-zinc-800/50 rounded-2xl border border-zinc-700/50">
-          <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-1">Parcelamento (informado pelo banco)</p>
-          <p className="text-zinc-400 text-sm font-black k-num">
-            {initialInstallments}x de {formatCurrency(numericValue)}
-          </p>
-          <p className="text-zinc-600 text-[9px] mt-0.5">Não editável — veio do extrato bancário</p>
+          <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider mb-1">Como foi pago (informado pelo banco)</p>
+          {parcelaDoBanco ? (
+            <>
+              <p className="text-zinc-400 text-sm font-black k-num">
+                Parcela {parcelaDoBanco.current} de {parcelaDoBanco.total} · {formatCurrency(numericValue)}
+              </p>
+              <p className="text-zinc-600 text-[9px] mt-0.5">
+                {(initialInstallments ?? 1) > 1
+                  ? `Lança esta e as ${(initialInstallments ?? 1) - 1} parcelas que faltam, na linha que você escolher.`
+                  : 'Última parcela — lança só esta.'}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-zinc-400 text-sm font-black k-num">
+                {knownPayMethod === 'credit' ? 'Crédito à vista' : 'Débito'} · {formatCurrency(numericValue)}
+              </p>
+              <p className="text-zinc-600 text-[9px] mt-0.5">Não editável — veio do extrato bancário</p>
+            </>
+          )}
         </div>
       )}
 
@@ -465,6 +584,26 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
     </div>
   );
 
+  /**
+   * Criar a linha pelo próprio seletor.
+   *
+   * Sem isto, quem ainda não tinha nenhuma linha de Lazer (ou de Conta Fixa)
+   * digitava "Semijoias", via "Nenhum item encontrado" e ficava preso — não
+   * havia como lançar o gasto (Giane, 2026-09-17). Agora o nome digitado vira
+   * a linha na categoria escolhida e o fluxo segue para valor e pagamento.
+   */
+  const nomeNovo = search.trim();
+  const podeCriar = source === 'manual' && !!category && !!onCreateItem && nomeNovo.length > 0
+    && !pickerItems.some(i => i.description.trim().toLowerCase() === nomeNovo.toLowerCase());
+  const criarLinha = () => {
+    if (!podeCriar || !category || !onCreateItem) return;
+    const novoId = onCreateItem(nomeNovo, category);
+    setItemId(novoId);
+    setExpenseDesc(prev => prev || nomeNovo);
+    setSearch('');
+    setStep('value-payment');
+  };
+
   const renderPicker = () => (
     <div className="space-y-3">
       <p className="text-white font-black text-sm uppercase tracking-wider">
@@ -474,7 +613,8 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
         type="text"
         value={search}
         onChange={e => setSearch(e.target.value)}
-        placeholder="Buscar..."
+        placeholder={source === 'manual' && category ? 'Buscar ou digitar um nome novo...' : 'Buscar...'}
+        onKeyDown={e => { if (e.key === 'Enter' && podeCriar && pickerItems.length === 0) criarLinha(); }}
         autoFocus
         className="w-full px-4 py-2.5 bg-zinc-800 rounded-2xl border border-zinc-700 text-white text-sm outline-none focus:border-green-400/50 placeholder:text-zinc-600"
       />
@@ -493,15 +633,43 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
             </button>
           );
         })}
-        {pickerItems.length === 0 && <p className="text-zinc-600 text-sm text-center py-8">Nenhum item encontrado</p>}
+        {podeCriar && (
+          <button
+            onClick={criarLinha}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left active:scale-[0.98] bg-green-400/10 border border-green-400/30"
+          >
+            <i className="fas fa-plus text-green-400 text-xs w-4 text-center shrink-0" />
+            <span className="text-white text-sm">Criar "<b>{nomeNovo}</b>"</span>
+          </button>
+        )}
+        {pickerItems.length === 0 && !podeCriar && (
+          <p className="text-zinc-600 text-sm text-center py-8">
+            {source === 'manual' && category && onCreateItem ? 'Digite o nome do gasto para criar' : 'Nenhum item encontrado'}
+          </p>
+        )}
       </div>
     </div>
   );
 
   return (
     <div className="fixed inset-0 z-[75] flex items-end justify-center">
+      {confirmarMes && (
+        <ConfirmarMesLancamento
+          ano={purchaseYear}
+          mes={purchaseMonth}
+          onMesAtual={() => {
+            const hoje = new Date();
+            efetivarLancamento({ day: hoje.getDate(), month: hoje.getMonth(), year: hoje.getFullYear() });
+          }}
+          onManter={() => efetivarLancamento()}
+          onFechar={() => setConfirmarMes(false)}
+        />
+      )}
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-[#111] rounded-t-3xl border-t border-zinc-800 shadow-2xl animate-in slide-in-from-bottom duration-300">
+      {/* `pb-20` no celular: a barra de baixo agora fica POR CIMA das folhas
+          (ela é fixa em qualquer tela), e sem esse respiro os botões da folha
+          ficavam escondidos atrás dela (Eduardo, 2026-09-20). */}
+      <div className="relative w-full max-w-lg bg-[#111] rounded-t-3xl border-t border-zinc-800 shadow-2xl animate-in slide-in-from-bottom duration-300 pb-20 lg:pb-0">
         <div className="w-10 h-1 bg-zinc-700 rounded-full mx-auto mt-3 mb-1" />
         <div className="px-5 pb-10 pt-2">
 
@@ -532,6 +700,61 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
           {/* CATEGORY */}
           {step === 'category' && source === 'manual' && (
             <div className="space-y-3" data-tour="sheet-categories">
+              {/* Atalhos de entrada antes da escolha de categoria: quem tem o
+                  comprovante na mão não deveria precisar decidir a categoria
+                  primeiro — a foto ou a voz já dizem o que foi o gasto. */}
+              {(onAbrirCamera || onAbrirGaleria || onAbrirVoz) && (
+                <div className="flex gap-2 pt-1">
+                  {onAbrirCamera && (
+                    <button
+                      onClick={onAbrirCamera}
+                      className="flex-1 flex flex-col items-center gap-1 py-2.5 rounded-2xl bg-white/5 border border-white/10 active:bg-white/10 transition-colors"
+                    >
+                      <i className="fas fa-camera text-[#a2d800] text-base" />
+                      <span className="text-zinc-400 text-[10px] font-bold">Foto</span>
+                    </button>
+                  )}
+                  {onAbrirGaleria && (
+                    <button
+                      onClick={onAbrirGaleria}
+                      className="flex-1 flex flex-col items-center gap-1 py-2.5 rounded-2xl bg-white/5 border border-white/10 active:bg-white/10 transition-colors"
+                    >
+                      <i className="fas fa-image text-[#a2d800] text-base" />
+                      <span className="text-zinc-400 text-[10px] font-bold">Anexar</span>
+                    </button>
+                  )}
+                  {onAbrirVoz && (
+                    <button
+                      onClick={onAbrirVoz}
+                      className="flex-1 flex flex-col items-center gap-1 py-2.5 rounded-2xl bg-white/5 border border-white/10 active:bg-white/10 transition-colors"
+                    >
+                      <i className="fas fa-microphone text-[#a2d800] text-base" />
+                      <span className="text-zinc-400 text-[10px] font-bold">Falar</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* A dúvida de categoria nasce AQUI, na hora de escolher — é o
+                  único lugar onde esse convite não é ruído. */}
+              {onPerguntarStets && (
+                <button
+                  onClick={() => onPerguntarStets(
+                    'Não sei em qual categoria lançar um gasto. Pode me ajudar a decidir se é conta fixa, conta variável ou gasto pessoal e lazer?',
+                  )}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-2xl bg-[#7ab800]/10 border border-[#7ab800]/30 active:bg-[#7ab800]/15 transition-colors"
+                >
+                  <span className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+                    style={{ background: 'linear-gradient(180deg,#c5f23a 0%,#a2d800 50%,#8cc400 100%)' }}>
+                    <i className="fas fa-bolt text-[#182200] text-[10px]" />
+                  </span>
+                  <span className="flex-1 text-left text-[#a2d800] text-[11px] font-bold leading-tight">
+                    Não sabe a categoria do seu gasto? Pergunte ao Stets
+                  </span>
+                  <i className="fas fa-chevron-right text-[#a2d800] text-[10px] shrink-0" />
+                </button>
+              )}
+
               <p className="text-white font-black text-base uppercase tracking-wider py-2">Qual tipo de despesa?</p>
               {CATEGORIES.map(cat => (
                 <button

@@ -9,10 +9,12 @@ import ExpenseSheet, { DetectedExpense } from './components/ExpenseSheet';
 import Diagnosis from './components/Diagnosis';
 import TetoGastos from './components/TetoGastos';
 import AICoach from './components/AICoach';
+import StetsConvite from './components/StetsConvite';
+import { useCapturaGasto } from './lib/useCapturaGasto';
 import OnboardingManager from './components/onboarding/OnboardingManager';
 import { useSupabase } from './lib/useSupabase';
-import { getOrCreateHousehold, getHousehold, loadFinanceItems, loadFinanceItemsForCoach, saveFinanceItem, deleteFinanceItem, addPartialExpense, deletePartialExpense, loadGoals, loadTetoColumns, saveSnapshot } from './lib/db';
-import { processInviteFromUrl, captureInviteFromUrl, hasPendingInvite } from './lib/invites';
+import { getOrCreateHousehold, getHousehold, loadFinanceItems, loadFinanceItemsForCoach, saveFinanceItem, deleteFinanceItem, addPartialExpense, deletePartialExpense, renomearPartialExpense, loadGoals, loadTetoColumns, saveSnapshot } from './lib/db';
+import { processInviteFromUrl, captureInviteFromUrl, hasPendingInvite, confirmMergeInvite, discardPendingInvite } from './lib/invites';
 
 // Captura o token de convite (?invite=...) ANTES de qualquer render/redirect do
 // Clerk. Fica em localStorage e sobrevive ao cadastro do cônjuge — ver
@@ -20,6 +22,7 @@ import { processInviteFromUrl, captureInviteFromUrl, hasPendingInvite } from './
 captureInviteFromUrl();
 import InvitePartner from './components/InvitePartner';
 import CoachDashboard from './components/CoachDashboard';
+import StaffTwoFactorGate from './components/StaffTwoFactorGate';
 import ClientSettings from './components/ClientSettings';
 import SubscriptionGate from './components/SubscriptionGate';
 import OnboardingWizard, { WizardResult } from './components/OnboardingWizard';
@@ -47,6 +50,7 @@ import SuporteAdmin from './components/SuporteAdmin';
 import FechamentoMes from './components/FechamentoMes';
 import { montarFechamento, aplicarFechamento, contarAcumulo, monthKeyOf, DecisaoFechamento } from './lib/fechamentoMes';
 import { hasOpenFinanceAccess } from './lib/ofAccess';
+import CoachChat from './components/CoachChat';
 import { fillVariableValuesFromPartials } from './lib/fillFromPartials';
 import { getSourceInfo } from './lib/paymentSource';
 
@@ -185,6 +189,10 @@ const App: React.FC = () => {
   const [currentWeekQuote, setCurrentWeekQuote] = useState<Quote | null>(null);
   const [showQuoteModal, setShowQuoteModal] = useState(false);
   const [dbLoading, setDbLoading] = useState(false);
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [mergeAuthToken, setMergeAuthToken] = useState<string | null>(null);
+  const [mergeLoading, setMergeLoading] = useState(false);
+  const [mergeError, setMergeError] = useState<string | null>(null);
   const [showInvitePanel, setShowInvitePanel] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showSuporte, setShowSuporte] = useState(false);
@@ -233,6 +241,8 @@ const App: React.FC = () => {
       ofTx?: { transactionId: string; merchantKey: string };
       knownPayMethod?: 'debit' | 'credit';
       knownCardLast4?: string | null;
+      irDiretoParaLinha?: boolean;
+      parcelaDoBanco?: { current: number; total: number } | null;
     }) | null
   >(null);
   // Guard: true only after items have been loaded from DB (prevents saving default items on load failure)
@@ -249,15 +259,26 @@ const App: React.FC = () => {
   const [isAdminByDb, setIsAdminByDb] = useState(false);
   const isAdmin = isAdminByEnv || isAdminByDb;
 
-  // Checa assistentes cadastradas na tabela admin_users
+  // Checa assistentes cadastradas em admin_users. Vai pelo servidor porque a
+  // tabela é a lista de quem tem poder de staff e está revogada para o cliente
+  // (lock-admin-users.sql) — consultar direto rendia 42501 em toda sessão.
   useEffect(() => {
-    if (!db || !user || isAdminByEnv) return;
-    const email = user.emailAddresses[0]?.emailAddress?.toLowerCase();
-    if (!email) return;
-    db.from('admin_users').select('id').eq('email', email).maybeSingle()
-      .then(({ data }) => { if (data) setIsAdminByDb(true); })
-      .catch(() => {});
-  }, [db, user, isAdminByEnv]);
+    if (!user || isAdminByEnv) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getToken({ template: 'supabase' });
+        if (!token || cancelled) return;
+        const res = await fetch('/api/check-staff', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok || cancelled) return;
+        const { isStaff } = await res.json() as { isStaff: boolean };
+        if (isStaff && !cancelled) setIsAdminByDb(true);
+      } catch { /* sem staff: segue como usuário comum */ }
+    })();
+    return () => { cancelled = true; };
+  }, [user, isAdminByEnv, getToken]);
 
   // Se o check de admin no banco confirmar depois do gate já ter sido ativado,
   // fecha o gate imediatamente (race condition entre load e admin check).
@@ -265,14 +286,111 @@ const App: React.FC = () => {
     if (isAdmin && showSubscriptionGate) setShowSubscriptionGate(false);
   }, [isAdmin, showSubscriptionGate]);
 
+  const [simulando, setSimulando] = useState(false);
+  const simulandoRef = useRef(false);
+  simulandoRef.current = simulando;
+  const backupSimulacaoRef = useRef<{ items: FinanceItem[]; startMonth: number; startYear: number } | null>(null);
+  const [aplicandoSimulacao, setAplicandoSimulacao] = useState(false);
+
   const [showProjectionModal, setShowProjectionModal] = useState(false);
   const [pendingStartMonth, setPendingStartMonth] = useState<{month: number, year: number} | null>(null);
   const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '' });
-  const [activeTab, setActiveTab] = useState<'plan' | 'teto' | 'metas' | 'desempenho' | 'dividas'>('plan');
+  const [activeTab, setActiveTab] = useState<'plan' | 'teto' | 'metas' | 'desempenho' | 'dividas' | 'coach'>('plan');
+
   const [showExtrato, setShowExtrato] = useState(false);
   const [ofInitialCardLast4, setOfInitialCardLast4] = useState<string | undefined>(undefined);
   /** Pop-up "X transações a categorizar" — só para quem tem Open Finance. */
   const [categorizeCount, setCategorizeCount] = useState(0);
+  /** Pergunta que abre o chat já digitada, vinda de um atalho contextual. */
+  const [stetsPerguntaInicial, setStetsPerguntaInicial] = useState('');
+  /** O que o Kashim lançou sozinho por reconhecer o comerciante. */
+  const [autoCategorizadas, setAutoCategorizadas] = useState<Array<{ id: string; descricao: string; valor: number; categoria: string; linha?: string }>>([]);
+  /**
+   * Pendentes que o app vai lançar SOZINHO quando o Extrato abrir (memória do
+   * estabelecimento). Ficam fora da contagem que a pessoa vê: ela via "2
+   * pendentes", abria e encontrava 1, sem explicação (Mariane, 2026-09-19).
+   */
+  const [pendentesAutomaticas, setPendentesAutomaticas] = useState(0);
+  /**
+   * Quem esta selecionado na barra de baixo.
+   *
+   * A folha de lancar e o Extrato sao camadas por cima da aba — se as duas
+   * coisas acendem ao mesmo tempo, a barra mostra dois destaques e o cliente
+   * nao sabe onde esta (Eduardo, 2026-09-20). Trocar de aba FECHA a camada.
+   */
+  /**
+   * MIGRACAO PARA O OPEN FINANCE — recomecar o plano no mes atual.
+   *
+   * Cliente antigo tem plano comecando meses atras. Ao conectar o banco, as
+   * faturas reais entram TAMBEM nos meses passados, que ele nunca planejou nem
+   * categorizou: foi o "R$145 mil" do Michael, que estava certo e era
+   * impossivel de interpretar (Eduardo, 2026-09-20).
+   *
+   * Reprojetar para o mes atual resolve, porque sem meses passados na janela
+   * nao ha onde a fatura antiga aparecer. Mas reprojetar APAGA esses meses do
+   * painel — por isso a decisao e do cliente, num toque, com o historico indo
+   * para o e-mail antes.
+   */
+  const [ofMigracaoAberta, setOfMigracaoAberta] = useState(false);
+  /** Onde o Plano estava quando um toque na linha levou para Gastos — o "voltar" devolve para lá. */
+  const [voltarAoPlanoY, setVoltarAoPlanoY] = useState<number | null>(null);
+  const [ofMigrando, setOfMigrando] = useState(false);
+  /** Relevo do item selecionado na barra de baixo (o mesmo do botão central). */
+  const ABA_ATIVA: React.CSSProperties = {
+    background: 'linear-gradient(180deg,#c5f23a 0%,#a2d800 50%,#8cc400 100%)',
+    boxShadow: '0 4px 12px rgba(130,192,0,0.4), inset 0 1px 0 rgba(255,255,255,0.45)',
+  };
+  /** Abre a conta aberta do "Sai da conta": de onde vem cada parte do número. */
+  const [saiDaContaAberto, setSaiDaContaAberto] = useState(false);
+  const [autoAvisoFechado, setAutoAvisoFechado] = useState(false);
+  /**
+   * O que o cliente já conferiu no resumo do lançamento automático.
+   *
+   * Sem guardar, o aviso voltava a cada abertura do app — o Eduardo concordou
+   * quatro vezes com os mesmos dois gastos (2026-09-20). Fica no aparelho: é
+   * preferência de leitura, não dado financeiro.
+   */
+  const [autoConferidas, setAutoConferidas] = useState<Set<string>>(new Set());
+  const chaveAutoConferidas = householdId ? `kashim_auto_ok_${householdId}` : '';
+  useEffect(() => {
+    if (!chaveAutoConferidas) return;
+    try {
+      const salvo = localStorage.getItem(chaveAutoConferidas);
+      setAutoConferidas(new Set(salvo ? JSON.parse(salvo) as string[] : []));
+    } catch { setAutoConferidas(new Set()); }
+  }, [chaveAutoConferidas]);
+  const marcarConferidas = (ids: string[]) => {
+    setAutoConferidas(prev => {
+      const proximo = new Set(prev);
+      ids.forEach(id => proximo.add(id));
+      if (chaveAutoConferidas) {
+        try { localStorage.setItem(chaveAutoConferidas, JSON.stringify([...proximo])); } catch { /* sem localStorage, o aviso volta — não quebra nada */ }
+      }
+      return proximo;
+    });
+  };
+
+  /**
+   * Bolinha vermelha com o número no ícone do app.
+   *
+   * É o que faz a pessoa lembrar sozinha que há algo a fazer, sem depender de
+   * abrir o app para descobrir. Some sozinha quando a fila zera.
+   *
+   * `setAppBadge` não existe em todo navegador (Safari desktop, Firefox) e pode
+   * lançar mesmo existindo — por isso o try/catch. Quando não há suporte, não
+   * acontece nada e o app segue igual.
+   */
+  useEffect(() => {
+    const nav = navigator as Navigator & {
+      setAppBadge?: (n?: number) => Promise<void>;
+      clearAppBadge?: () => Promise<void>;
+    };
+    if (!nav.setAppBadge) return;
+    try {
+      if (categorizeCount > 0) void nav.setAppBadge(categorizeCount)?.catch(() => {});
+      else void nav.clearAppBadge?.()?.catch(() => {});
+    } catch { /* badge é acessório */ }
+  }, [categorizeCount]);
   const [showCategorizePopup, setShowCategorizePopup] = useState(false);
   const categorizeCheckedRef = useRef(false);
   /**
@@ -288,6 +406,16 @@ const App: React.FC = () => {
   }>>([]);
   /** Cartões de cada conexão — resolve número virtual no cartão real. */
   const [ofCartoesPorConexao, setOfCartoesPorConexao] = useState<Record<string, string[]>>({});
+  /**
+   * Meses cuja fatura o banco JA PUBLICOU, por cartao ("7212" -> {"2026-08"}).
+   *
+   * Entre o fechamento e a publicacao, o valor da linha e estimativa e costuma
+   * vir alto: entram compras que ja pertencem a fatura seguinte. Foi a Renata
+   * vendo R$11.010 onde o Itau cobrava R$8.788 — e estava tudo certo, so nao
+   * estava publicado (2026-09-17). Marcar isso na tela evita a mesma ligacao
+   * com cada cliente novo.
+   */
+  const [faturasPublicadas, setFaturasPublicadas] = useState<Record<string, string[]>>({});
   /** Pop-up do diagnóstico no CELULAR (na web fica inline). */
   const [showDiagnosis, setShowDiagnosis] = useState(false);
   /** Transações do Extrato já lançadas nesta sessão — sai da lista sem recarregar. */
@@ -309,7 +437,10 @@ const App: React.FC = () => {
    * "Categorizada" quando o Eduardo abriu o plano dela (2026-09-10) — e,
    * sem portão nenhum na linha, para todos os clientes também.
    */
-  const planoEmModoOF = hasOpenFinanceAccess(user) && temBancoConectado;
+  // Se o household já tem banco conectado, todos os membros (inclusive o cônjuge
+  // no Modo Casal) enxergam o plano em modo OF. Quem pode CONECTAR um banco novo
+  // ainda é controlado por `hasOpenFinanceAccess(user)` no prop `hasOpenFinance`.
+  const planoEmModoOF = temBancoConectado;
 
   // Trocou de plano (coach abrindo cliente): o que era do plano anterior não
   // pode vazar para este enquanto a busca de conexões não volta.
@@ -368,6 +499,19 @@ const App: React.FC = () => {
         // Processa convite da URL antes de criar/buscar household (aceite server-side)
         const inviteAuthToken = await getToken({ template: 'supabase' });
         const inviteHouseholdId = await processInviteFromUrl(inviteAuthToken);
+        if (inviteHouseholdId === 'NEEDS_MERGE') {
+          // Usuário tem dados próprios e precisa confirmar a unificação antes de
+          // continuar. Pausa o carregamento e mostra o modal de merge.
+          setMergeAuthToken(inviteAuthToken);
+          setShowMergeModal(true);
+          setDbLoading(false);
+          return;
+        }
+        if (inviteHouseholdId && user) {
+          // Quem entrou via convite já está no household do parceiro — não deve
+          // ver o wizard (que foi pensado para onboarding do zero).
+          localStorage.setItem(`onboarding_done_${user.id}`, 'true');
+        }
         const hId = inviteHouseholdId ?? await getOrCreateHousehold(inviteAuthToken);
         setHouseholdId(hId);
 
@@ -616,10 +760,14 @@ const App: React.FC = () => {
       let extra = '';
       try {
         const jwt = await getToken({ template: 'supabase' });
+        // Ouvinte pronto ANTES do register: `addListener` é assíncrono e, sem
+        // esperar, o token chega antes dele existir e some sem deixar rastro.
         const tok = await new Promise<string | null>((resolve) => {
-          const t = setTimeout(() => resolve(null), 6000);
-          PushNotifications.addListener('registration', (x) => { clearTimeout(t); resolve(x?.value ?? null); });
-          PushNotifications.register();
+          const t = setTimeout(() => resolve(null), 15000);
+          void (async () => {
+            await PushNotifications.addListener('registration', (x) => { clearTimeout(t); resolve(x?.value ?? null); });
+            await PushNotifications.register();
+          })().catch(() => { clearTimeout(t); resolve(null); });
         });
         if (jwt && tok) {
           const r = await fetch('/api/push-register', {
@@ -677,6 +825,26 @@ const App: React.FC = () => {
     if (!householdId || coachViewHouseholdId || !user || !hasOpenFinanceAccess(user)) return;
     initPush(registrarAparelho);
   }, [householdId, coachViewHouseholdId, user, registrarAparelho]);
+
+  /**
+   * Pede o push para quem já tinha banco conectado antes do push existir.
+   *
+   * O pedido acontecia num único ponto: logo depois de conectar um banco, no
+   * Extrato. Quem conectou antes de 2026-09-10 nunca passou por ali e nunca
+   * passaria — `initPush` só reativa quem já aceitou, não pede nada. Resultado:
+   * zero aparelhos registrados e nenhum push saindo, mesmo com servidor e
+   * credenciais corretos.
+   *
+   * A hora escolhida é a fila de categorizar aparecer: chegou transação nova,
+   * então "quer ser avisado quando isso acontecer?" responde a uma pergunta que
+   * a pessoa acabou de ter. No iOS o "não" é definitivo, então pedir em momento
+   * vazio queima o canal para sempre.
+   */
+  useEffect(() => {
+    if (!showCategorizePopup || !householdId || coachViewHouseholdId) return;
+    if (!user || !hasOpenFinanceAccess(user)) return;
+    pedirPermissaoPush(registrarAparelho).catch(() => {});
+  }, [showCategorizePopup, householdId, coachViewHouseholdId, user, registrarAparelho]);
 
   // Heartbeat: marca "mexeu no app agora" (households.last_active_at). Base do
   // futuro push de reengajamento. Não conta a visualização do coach como
@@ -848,6 +1016,7 @@ const App: React.FC = () => {
   const savingRef = useRef(false);
   useEffect(() => {
     if (!db || !householdId || dbLoading || !dbItemsLoadedRef.current) return;
+    if (simulando) return; // rascunho não vai para o banco
 
     clearTimeout(saveTimeoutRef.current);
     const run = () => {
@@ -887,7 +1056,7 @@ const App: React.FC = () => {
       })();
     };
     saveTimeoutRef.current = setTimeout(run, 1500);
-  }, [items, db, householdId]);
+  }, [items, db, householdId, simulando]);
 
   // startMonth/startYear are saved explicitly in handleReproject and handleSetStartMonth only.
   // Auto-saving here caused a race condition: householdId becoming non-null triggered this effect
@@ -968,7 +1137,79 @@ const App: React.FC = () => {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
+  /**
+   * MODO SIMULAÇÃO — rascunho do plano na reunião.
+   *
+   * Enquanto ligado, NADA vai para o banco: nem valores, nem lançamentos, nem
+   * exclusões, e o efeito da fatura do Open Finance para de escrever por cima.
+   * O cliente com o app aberto não vê nada, porque nada foi gravado. No fim, o
+   * coach aplica tudo de uma vez ou descarta e o plano volta como estava
+   * (Eduardo, 2026-09-17: precisa mexer em vários números na frente do cliente
+   * antes de decidir).
+   */
+  const iniciarSimulacao = () => {
+    if (simulando) return;
+    backupSimulacaoRef.current = {
+      items: items.map(i => ({ ...i, values: [...i.values], paidStatus: [...i.paidStatus] })),
+      startMonth,
+      startYear,
+    };
+    setSimulando(true);
+  };
+
+  const descartarSimulacao = () => {
+    const bkp = backupSimulacaoRef.current;
+    setSimulando(false);
+    backupSimulacaoRef.current = null;
+    if (!bkp) return;
+    // Nada foi gravado, então a cópia da memória é igual ao que está no banco.
+    setItems(bkp.items);
+    setStartMonth(bkp.startMonth);
+    setStartYear(bkp.startYear);
+  };
+
+  const aplicarSimulacao = async () => {
+    if (aplicandoSimulacao) return;
+    const bkp = backupSimulacaoRef.current;
+    setAplicandoSimulacao(true);
+    try {
+      if (db && householdId) {
+        while (savingRef.current) await new Promise(r => setTimeout(r, 200));
+        savingRef.current = true;
+        try {
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (pendingDeletesRef.current.has(item.id)) continue;
+            const savedId = await saveFinanceItem(db, householdId, { ...item, id: itemIdMapRef.current[item.id] ?? item.id }, i);
+            if (savedId !== item.id) itemIdMapRef.current[item.id] = savedId;
+            savedItemHashRef.current[item.id] = itemPersistHash(item, i);
+          }
+        } finally {
+          savingRef.current = false;
+        }
+        // O início do plano só vai junto se a simulação o tiver mudado.
+        if (bkp && (bkp.startMonth !== startMonth || bkp.startYear !== startYear)) {
+          const token = await getToken({ template: 'supabase' });
+          const res = await fetch('/api/update-start-month', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ householdId, startMonth, startYear }),
+          });
+          if (!res.ok) throw new Error(await res.text());
+        }
+      }
+      backupSimulacaoRef.current = null;
+      setSimulando(false);
+    } catch (e: any) {
+      alert('Não consegui salvar a simulação inteira. A simulação continua aberta — tente aplicar de novo. Detalhe: ' + (e?.message ?? 'erro'));
+    } finally {
+      setAplicandoSimulacao(false);
+    }
+  };
+
+  const [reprojetando, setReprojetando] = useState(false);
   const handleReproject = async (newStartMonth: number, newStartYear: number) => {
+    if (reprojetando) return;
     exportBackup();
     const oldMonths = [...months];
     const newProjectionMonths = [];
@@ -977,54 +1218,80 @@ const App: React.FC = () => {
       newProjectionMonths.push({ monthName: MONTHS_BR[d.getMonth()], year: d.getFullYear(), index: d.getMonth() });
     }
 
-    // Categorias recorrentes: continuam mês a mês (renda, contas fixas, cartão e
-    // lazer/gastos pessoais). Variáveis (contas pontuais) NÃO se replicam.
-    const isRecurring = (cat: CategoryType) =>
-      cat === CategoryType.INCOME ||
-      cat === CategoryType.FIXED_EXPENSE ||
-      cat === CategoryType.CREDIT_CARD ||
-      cat === CategoryType.PERSONAL_LEISURE;
+    /**
+     * Só o que se REPETE todo mês ganha valor nos meses novos: renda, contas
+     * fixas e lazer. Cartão NÃO: fatura é valor do mês, não recorrência — a
+     * última fatura era copiada até o fim do plano, em todos os cartões
+     * (Eduardo, 2026-09-17, reprojetando na frente de uma cliente). Parcelado
+     * também não, porque termina. Variável nunca se repetiu.
+     */
+    const repeteNosMesesNovos = (item: FinanceItem) =>
+      item.linkType !== LinkType.INSTALLMENT && (
+        item.category === CategoryType.INCOME ||
+        item.category === CategoryType.FIXED_EXPENSE ||
+        item.category === CategoryType.PERSONAL_LEISURE);
 
-    setItems(prevItems => prevItems.map(item => {
+    const novosItens = items.map(item => {
       const newValues = new Array(12).fill(0);
       const newPaidStatus = new Array(12).fill(false);
       const newPartialExpenses: Record<string, PartialExpense[]> = {};
 
       newProjectionMonths.forEach((newM, newIdx) => {
-        const oldIdx = oldMonths.findIndex(oldM => oldM.monthName === newM.monthName && oldM.year === newM.year);
+        const oldIdx = oldMonths.findIndex(oldM => oldM.index === newM.index && oldM.year === newM.year);
         if (oldIdx !== -1) {
-          newValues[newIdx] = item.values[oldIdx];
-          newPaidStatus[newIdx] = item.paidStatus[oldIdx];
+          newValues[newIdx] = item.values[oldIdx] ?? 0;
+          newPaidStatus[newIdx] = item.paidStatus[oldIdx] ?? false;
           const oldMonthKey = `${oldMonths[oldIdx].year}-${oldMonths[oldIdx].index}`;
           if (item.partialExpenses && item.partialExpenses[oldMonthKey]) {
             newPartialExpenses[`${newM.year}-${newM.index}`] = item.partialExpenses[oldMonthKey];
           }
+        } else if (repeteNosMesesNovos(item)) {
+          // Mês que NÃO existia no plano antigo herda o valor do último mês do
+          // plano antigo. Mês que existia fica como estava, inclusive zerado:
+          // antes todo zero depois de um valor era preenchido, e uma conta que
+          // tinha terminado voltava a existir.
+          newValues[newIdx] = item.values[oldMonths.length - 1] ?? 0;
         }
       });
 
-      // Projeta para frente: para itens recorrentes, todo mês zerado APÓS o
-      // último mês preenchido herda o valor desse último mês preenchido. Assim,
-      // se o plano ia até fevereiro (mercado = X), as colunas novas (mar, abr,
-      // mai, jun...) recebem X — não ficam zeradas.
-      if (isRecurring(item.category)) {
-        let lastFilled = 0;
-        for (let i = 0; i < 12; i++) {
-          if (newValues[i] > 0) lastFilled = newValues[i];
-          else if (lastFilled > 0) newValues[i] = lastFilled;
-        }
-      }
-
       return { ...item, values: newValues, paidStatus: newPaidStatus, partialExpenses: newPartialExpenses };
-    }));
+    });
 
-    setStartMonth(newStartMonth);
-    setStartYear(newStartYear);
-    setShowProjectionModal(false);
+    // Em simulação, reprojetar é só na tela: grava tudo junto no "Aplicar".
+    if (simulandoRef.current) {
+      setItems(novosItens);
+      setStartMonth(newStartMonth);
+      setStartYear(newStartYear);
+      setShowProjectionModal(false);
+      return;
+    }
 
-    // Persiste o novo início e CONFIRMA que salvou. Se falhar, avisa em vez de
-    // deixar o plano voltar silenciosamente para o mês antigo no próximo load.
-    if (householdId) {
+    setReprojetando(true);
+
+    /**
+     * Grava TODAS as linhas antes de mudar o início do plano no servidor.
+     *
+     * Os valores ficam num vetor de 12 posições, e a posição 0 é o mês de
+     * início. Antes o início era gravado na hora e as linhas iam depois, uma a
+     * uma, pelo salvamento automático. Se o app fechava, recarregava ou o coach
+     * trocava de cliente no meio, as linhas que não chegaram a gravar voltavam
+     * com o vetor ANTIGO sob o início NOVO — tudo uma casa para frente: a
+     * fatura de agosto aparecia em setembro. As linhas de cartão ficam no fim
+     * da lista e eram as últimas a gravar, as que mais se perdiam.
+     */
+    if (householdId && db) {
+      // Segura o salvamento automático enquanto esta gravação roda: os dois
+      // juntos podiam inserir a mesma linha duas vezes.
+      while (savingRef.current) await new Promise(r => setTimeout(r, 200));
+      savingRef.current = true;
       try {
+        for (let i = 0; i < novosItens.length; i++) {
+          const item = novosItens[i];
+          if (pendingDeletesRef.current.has(item.id)) continue;
+          const savedId = await saveFinanceItem(db, householdId, { ...item, id: itemIdMapRef.current[item.id] ?? item.id }, i);
+          if (savedId !== item.id) itemIdMapRef.current[item.id] = savedId;
+          savedItemHashRef.current[item.id] = itemPersistHash(item, i);
+        }
         const token = await getToken({ template: 'supabase' });
         const res = await fetch('/api/update-start-month', {
           method: 'POST',
@@ -1033,9 +1300,21 @@ const App: React.FC = () => {
         });
         if (!res.ok) throw new Error(await res.text());
       } catch (e: any) {
-        alert('Não consegui salvar o novo início do plano no servidor. Recarregue a página e tente novamente. Detalhe: ' + (e?.message ?? 'erro'));
+        savingRef.current = false;
+        setReprojetando(false);
+        setShowProjectionModal(false);
+        alert('A reprojeção não terminou de salvar. Recarregue a página ANTES de mexer no plano e confira os valores. Detalhe: ' + (e?.message ?? 'erro'));
+        return;
       }
     }
+
+    // Tela muda só depois de o banco estar coerente: valores e início juntos.
+    setItems(novosItens);
+    setStartMonth(newStartMonth);
+    setStartYear(newStartYear);
+    savingRef.current = false;
+    setReprojetando(false);
+    setShowProjectionModal(false);
   };
 
   // Moves the 12-month window back to an earlier start WITHOUT remapping values.
@@ -1180,6 +1459,9 @@ const App: React.FC = () => {
    * `Math.max(0, fatura - rastreado)` — o que foi categorizado nas despesas e
    * descontado da fatura automaticamente.
    */
+  /** Itens como estão AGORA — o `items` de dentro de um efeito é fotografia. */
+  const itemsAgoraRef = useRef<FinanceItem[]>(items);
+  itemsAgoraRef.current = items;
   /** Cartões cuja linha já foi criada nesta sessão — ver o comentário no uso. */
   const cartoesCriadosRef = useRef<Set<string>>(new Set());
   /** Linhas de cartão já casadas nesta passada: dois cartões do mesmo banco não
@@ -1188,6 +1470,19 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!hasOpenFinanceAccess(user) || !householdId || items.length === 0 || months.length === 0) return;
+    /**
+     * Nada antes de os itens REAIS chegarem do banco.
+     *
+     * `items` começa com a lista padrão (`makeDefaultItems`), que não tem a
+     * linha do cartão do cliente. Rodando nessa janela, a busca por "Itaú
+     * ••7212" não acha nada e o efeito CRIA outra — foi assim que nasceu uma
+     * segunda linha idêntica, com os mesmos 12 meses (Eduardo, 2026-09-20,
+     * 17:46, ao lado da original de abril).
+     */
+    if (dbLoading || !dbItemsLoadedRef.current) return;
+    // Em simulação a fatura do banco não escreve por cima do que o coach está
+    // testando; ela volta a mandar assim que a simulação termina.
+    if (simulando) return;
     let cancelado = false;
 
     (async () => {
@@ -1208,7 +1503,14 @@ const App: React.FC = () => {
           }>;
         };
         if (cancelado) return;
-        setTemBancoConectado((d.connections ?? []).length > 0);
+        const temConexoes = (d.connections ?? []).length > 0;
+        setTemBancoConectado(temConexoes);
+
+        // Wizard concluído mas banco ainda não conectado → mostra o convite de novo.
+        // Cobre quem fechou o convite na primeira vez sem conectar.
+        if (!temConexoes && localStorage.getItem(`onboarding_done_${user!.id}`) === 'true') {
+          setShowConviteBanco(true);
+        }
         // Compra em cartão virtual chega com um número que não é de cartão
         // nenhum do cliente; este mapa devolve ela ao cartão real da conexão.
         setOfCartoesPorConexao(Object.fromEntries(
@@ -1216,6 +1518,22 @@ const App: React.FC = () => {
         ));
 
         const MES = /^\d{4}-\d{2}$/;
+
+        // O bloco de conferencia (`_conf:<4 digitos>`) ja lista os meses com
+        // total declarado pelo banco. E so ler o que a sincronizacao anotou.
+        const publicadas: Record<string, string[]> = {};
+        for (const conn of d.connections ?? []) {
+          for (const [chave, valor] of Object.entries(conn.billTotals ?? {})) {
+            if (!chave.startsWith('_conf:') || !valor || typeof valor !== 'object') continue;
+            const last4 = chave.slice(6);
+            const geral = (valor as { _geral?: { meses_com_total_declarado?: string[] } })._geral;
+            const meses = (geral?.meses_com_total_declarado ?? [])
+              .map(linha => String(linha).split(':')[0].trim())
+              .filter(m => MES.test(m));
+            if (meses.length > 0) publicadas[last4] = meses;
+          }
+        }
+        setFaturasPublicadas(publicadas);
 
         for (const conn of d.connections ?? []) {
           const bruto = conn.billTotals ?? {};
@@ -1325,6 +1643,18 @@ const App: React.FC = () => {
                */
               const chaveCartao = `${conn.bankName}|${last4 ?? ''}`;
               if (cartoesCriadosRef.current.has(chaveCartao)) continue;
+              /**
+               * Confere na lista mais recente, não na cópia deste render.
+               *
+               * Entre o carregamento e este ponto a linha pode já existir —
+               * criada pelo banco, por outra aba ou pelo próprio efeito. O
+               * `items` daqui é uma fotografia; `itemsAgoraRef` é o estado.
+               */
+              const jaExiste = last4
+                ? itemsAgoraRef.current.some(i =>
+                    i.category === CategoryType.CREDIT_CARD && (i.description ?? '').includes(last4))
+                : false;
+              if (jaExiste) continue;
               cartoesCriadosRef.current.add(chaveCartao);
               // Cartao identificado e sem linha no plano: cria ja preenchida.
               handleAddItem(CategoryType.CREDIT_CARD, {
@@ -1347,7 +1677,7 @@ const App: React.FC = () => {
     })();
 
     return () => { cancelado = true; };
-  }, [householdId, items.length, months.length, user]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [householdId, items.length, months.length, user, simulando, dbLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pop-up "X transações a categorizar" — só para quem tem Open Finance
   // liberado (hoje: só o Eduardo). Para todos os demais este efeito sai na
@@ -1380,15 +1710,74 @@ const App: React.FC = () => {
           transactionDate: String(t.transactionDate ?? ''),
           amount: Number(t.amount ?? 0),
         })));
+        const precisamDeVoce = lista.filter((t) => t.suggestionConfidence !== 'memory').length;
+        setPendentesAutomaticas(lista.length - precisamDeVoce);
         if (lista.length > 0) {
-          setCategorizeCount(lista.length);
+          setCategorizeCount(precisamDeVoce);
           setShowCategorizePopup(true);
         }
+        /**
+         * Carrega também o que o Kashim lançou sozinho nos últimos dias.
+         *
+         * Sem isto, o resumo "o Kashim lançou X por você" só nascia DEPOIS de
+         * abrir e fechar o Extrato — quem abria o app e ia para o Plano não via
+         * nada, e a fila tinha encolhido sem explicação (Eduardo, 2026-09-19).
+         */
+        void recontarPendentes();
       } catch { /* aviso é acessório: falha nunca trava o app */ }
     })();
 
     return () => { cancelado = true; };
   }, [householdId, coachViewHouseholdId, needsTermsAcceptance, user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * Oferece a migracao quando o plano comeca ANTES do mes atual e o banco ja
+   * esta conectado. Recusa fica guardada no aparelho: perguntar de novo a cada
+   * abertura seria assedio.
+   */
+  useEffect(() => {
+    if (!planoEmModoOF || !householdId || coachViewHouseholdId || dbLoading) return;
+    if (months.length === 0 || items.length === 0) return;
+    const inicio = months[0];
+    const comecaAntes = (inicio.year * 12 + inicio.index) < (currentActualYear * 12 + currentActualMonth);
+    if (!comecaAntes) return;
+    try {
+      if (localStorage.getItem(`kashim_of_migracao_${householdId}`) === 'recusada') return;
+    } catch { /* sem localStorage, pergunta de novo */ }
+    setOfMigracaoAberta(true);
+  }, [planoEmModoOF, householdId, coachViewHouseholdId, dbLoading, months, items.length, currentActualMonth, currentActualYear]);
+
+  /** Manda o resumo dos meses que vao sair, e so entao reprojeta. */
+  const migrarParaOF = async () => {
+    if (ofMigrando) return;
+    setOfMigrando(true);
+    try {
+      const corteAbs = currentActualYear * 12 + currentActualMonth;
+      const anteriores = months
+        .map((m, i) => ({ m, i }))
+        .filter(({ m }) => (m.year * 12 + m.index) < corteAbs)
+        .map(({ m, i }) => ({
+          mes: `${m.monthName} ${m.year}`,
+          entradas: monthlySummaries[i]?.totalIncome ?? 0,
+          custos: monthlySummaries[i]?.totalCost ?? 0,
+          sobra: monthlySummaries[i]?.balance ?? 0,
+        }));
+      if (anteriores.length > 0 && householdId) {
+        try {
+          const token = await getToken({ template: 'supabase' });
+          await fetch('/api/historico-antes-do-of', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ householdId, meses: anteriores }),
+          });
+        } catch { /* e-mail e acessorio: a reprojecao nao pode depender dele */ }
+      }
+      await handleReproject(currentActualMonth, currentActualYear);
+      setOfMigracaoAberta(false);
+    } finally {
+      setOfMigrando(false);
+    }
+  };
 
   const handleUpdateValue = (id: string, monthIdx: number, value: string) => {
     const numericValue = value === '' ? 0 : parseFloat(value);
@@ -1416,6 +1805,11 @@ const App: React.FC = () => {
 
   const handleRemoveItem = (id: string) => {
     const dbId = itemIdMapRef.current[id] ?? id;
+    // Em simulação a linha some só da tela; "Descartar" traz de volta.
+    if (simulandoRef.current) {
+      setItems(prev => prev.filter(item => item.id !== id));
+      return;
+    }
     pendingDeletesRef.current.add(id);
     pendingDeletesRef.current.add(dbId);
     addTombstone(id, dbId);
@@ -1685,10 +2079,16 @@ const App: React.FC = () => {
       const partials = item.partialExpenses || {};
       const newMonthPartials = [...(partials[monthKey] || []), expense];
       const withPartial = { ...item, partialExpenses: { ...partials, [monthKey]: newMonthPartials } };
-      // Ponto 1: Contas Variáveis com valor zerado recebem o total dos lançamentos automaticamente
+      // Conta variável: o valor da linha ACOMPANHA a soma dos lançamentos.
+      // Antes só era preenchido quando estava zerado — o primeiro gasto fixava o
+      // número e os seguintes somavam embaixo sem atualizar. Cartório de
+      // R$102,98 + R$202,98 ficava com R$102,98 na linha (Eduardo, 2026-09-17).
+      // Valor digitado à mão (diferente da soma anterior) é respeitado.
       if (item.category === CategoryType.VARIABLE_EXPENSE) {
         const mIdx = months.findIndex(m => m.year === targetYear && m.index === targetMonth);
-        if (mIdx >= 0 && (item.values[mIdx] || 0) === 0) {
+        const atual = mIdx >= 0 ? (item.values[mIdx] || 0) : 0;
+        const somaAnterior = (partials[monthKey] || []).reduce((sum, p) => sum + p.value, 0);
+        if (mIdx >= 0 && (atual === 0 || Math.abs(atual - somaAnterior) < 0.01)) {
           const newTotal = newMonthPartials.reduce((sum, p) => sum + p.value, 0);
           const newValues = [...withPartial.values];
           newValues[mIdx] = newTotal;
@@ -1698,7 +2098,24 @@ const App: React.FC = () => {
       return withPartial;
     }));
 
-    if (db) {
+    /**
+     * O card em Gastos nasce junto com o gasto.
+     *
+     * Antes ele só era criado quando o cliente tocava no valor no Plano: a
+     * primeira vez caía em Lazer (o primeiro card), a segunda criava o card e
+     * só a terceira acertava — Água R$ 73,20 do Eduardo, 2026-09-22. Aqui só
+     * muda a lista local; quem grava no banco continua sendo o TetoGastos.
+     */
+    setTetoColumns(prev => {
+      if (prev.some(c => c.linkedItemId === itemId)) return prev;
+      const alvo = items.find(i => i.id === itemId);
+      if (!alvo || alvo.category === CategoryType.INCOME || alvo.category === CategoryType.CREDIT_CARD) return prev;
+      if (alvo.category === CategoryType.PERSONAL_LEISURE
+        && prev.some(c => items.find(i => i.id === c.linkedItemId)?.category === CategoryType.PERSONAL_LEISURE)) return prev;
+      return [...prev, { id: crypto.randomUUID(), title: (alvo.description || 'GASTO').toUpperCase().slice(0, 24).trim(), linkedItemId: itemId }];
+    });
+
+    if (db && !simulandoRef.current) {
       const saveWithRetry = (attempt: number) => {
         const dbId = itemIdMapRef.current[itemId] ?? itemId;
         addPartialExpense(db!, dbId, targetYear, targetMonth, expense).catch(() => {
@@ -1714,6 +2131,79 @@ const App: React.FC = () => {
   const handleExpenseDetected = (data: DetectedExpense) => {
     const source = data.itemId ? 'ai' : 'manual';
     setPendingExpense({ ...data, source });
+  };
+
+  /**
+   * Foto, imagem e voz dentro do pop-up de lançar.
+   *
+   * Usa o mesmo hook que o AICoach vai usar, em vez de repetir a conversa com
+   * a IA: duas cópias divergem na primeira correção que só uma delas recebe.
+   */
+  const captura = useCapturaGasto({
+    systemPrompt: () => {
+      const s = monthlySummaries[mobileMonthIdx];
+      const fixo = s && s.totalIncome > 0 ? ((s.totalFixed / s.totalIncome) * 100).toFixed(1) : '0';
+      const lazer = s && s.totalIncome > 0 ? ((s.totalLeisure / s.totalIncome) * 100).toFixed(1) : '0';
+      return `Seu nome é Stets. Você é o mentor financeiro do método "RICO nessa vida", criado por Eduardo Stetner.
+Mês atual: ${months[mobileMonthIdx]?.monthName ?? ''} | Renda: ${s?.totalIncome ?? 0} | Fixos: ${fixo}% (ideal ≤55%) | Lazer: ${lazer}% (ideal ≤15%).
+
+REGRAS DE RESPOSTA (OBRIGATÓRIAS):
+- Máximo 2 frases curtas em português conversacional.
+- ZERO markdown e ZERO emojis.
+- Tom direto e encorajador.`;
+    },
+    availableItems: () => items
+      .filter(i => i.category === CategoryType.FIXED_EXPENSE
+        || i.category === CategoryType.VARIABLE_EXPENSE
+        || i.category === CategoryType.PERSONAL_LEISURE)
+      .map(i => ({ id: i.id, description: i.description })),
+    onResultado: (_texto, gastos) => {
+      const g = gastos?.[0];
+      if (!g) return;
+      handleExpenseDetected({
+        itemId: g.itemId ?? '',
+        value: g.value,
+        description: g.description,
+        installments: g.installments ?? 1,
+        isCredit: g.isCredit ?? false,
+      } as DetectedExpense);
+    },
+    // Não há toast global no App, e criar um só para isto seria exagero — o
+    // mesmo raciocínio já aplicado em outro ponto deste arquivo.
+    onErro: (msg) => window.alert(msg),
+  });
+
+  /**
+   * Troca o nome do estabelecimento num lançamento já gravado (Editar em Gastos).
+   * Grava no lançamento e ensina o dicionário, como a pergunta do Extrato faz.
+   */
+  const handleRenomearLancamento = (itemId: string, monthKey: string, partialId: string, nome: string) => {
+    const item = items.find(i => i.id === itemId);
+    const antigo = item?.partialExpenses?.[monthKey]?.find(p => p.id === partialId);
+    if (!item || !antigo || !nome.trim()) return;
+    const renomeado = { ...antigo, description: nome.trim() };
+    setItems(prev => prev.map(i => (i.id !== itemId ? i : {
+      ...i,
+      partialExpenses: {
+        ...i.partialExpenses,
+        [monthKey]: (i.partialExpenses?.[monthKey] ?? []).map(p => (p.id === partialId ? renomeado : p)),
+      },
+    })));
+    const [ano, mes] = monthKey.split('-').map(Number);
+    if (db && !simulandoRef.current) {
+      renomearPartialExpense(db, itemIdMapRef.current[itemId] ?? itemId, ano, mes, renomeado)
+        .catch(() => window.alert('Não consegui salvar o nome. Tente de novo.'));
+    }
+    (async () => {
+      try {
+        const token = await getToken({ template: 'supabase' });
+        await fetch('/api/merchant-nome', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token ?? ''}` },
+          body: JSON.stringify({ textoDoBanco: antigo.description, nome: renomeado.description }),
+        });
+      } catch { /* dicionário é acessório */ }
+    })();
   };
 
   const handleAddLeisureItem = (value: number) => {
@@ -1854,7 +2344,9 @@ const App: React.FC = () => {
       if (!r.ok) return;
       const json = await r.json() as { transactions?: Array<Record<string, unknown>> };
       const lista = json.transactions ?? [];
-      setCategorizeCount(lista.length);
+      const precisamDeVoce = lista.filter((t) => t.suggestionConfidence !== 'memory').length;
+      setCategorizeCount(precisamDeVoce);
+      setPendentesAutomaticas(lista.length - precisamDeVoce);
       setOfPendentes(lista.map((t) => ({
         connectionId: (t.connectionId as string) ?? null,
         cardLast4: (t.cardLast4 as string) ?? null,
@@ -1863,6 +2355,36 @@ const App: React.FC = () => {
         amount: Number(t.amount ?? 0),
       })));
       if (lista.length === 0) setShowCategorizePopup(false);
+
+      /**
+       * O que o Kashim lançou sozinho nos últimos dias.
+       *
+       * Sem mostrar isto, a fila encolhe sem explicação: o cliente viu 3
+       * pendentes, voltou depois e tinha 1, sem ter mexido em nada (Eduardo,
+       * 2026-09-14). Pior que a confusão é não poder conferir — lançamento
+       * automático erra, e errar escondido é o que quebra a confiança no saldo.
+       */
+      const pc = new URLSearchParams({ householdId, status: 'categorized', limit: '200' });
+      const rc = await fetch(`/api/of-transactions?${pc}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!rc.ok) return;
+      const jc = await rc.json() as { transactions?: Array<Record<string, unknown>> };
+      const limite = Date.now() - 3 * 24 * 60 * 60 * 1000;
+      const auto = (jc.transactions ?? []).filter((t) => {
+        if (t.suggestionConfidence !== 'memory') return false;
+        const quando = t.categorizedAt ? new Date(String(t.categorizedAt)).getTime() : 0;
+        return quando >= limite;
+      });
+      setAutoCategorizadas(auto.map((t) => {
+        const idDaLinha = String(t.kashimItemId ?? '');
+        const linha = itemsAgoraRef.current.find(i => i.id === idDaLinha || itemIdMapRef.current[i.id] === idDaLinha);
+        return {
+          id: String(t.id ?? t.transactionId ?? `${t.description}|${t.amount}`),
+          descricao: String(t.description ?? ''),
+          valor: Number(t.amount ?? 0),
+          categoria: String(t.kashimCategory ?? t.suggestedCategory ?? ''),
+          linha: linha?.description,
+        };
+      }));
     } catch { /* aviso é acessório */ }
   }, [user, householdId, getToken]);
 
@@ -1898,26 +2420,6 @@ const App: React.FC = () => {
     return newId;
   };
 
-  /** Troca a descrição de um lançamento já criado — usado pelo "dar um nome". */
-  const handleRenomearPartial = (itemId: string, partialId: string, nome: string, ano: number, mes: number) => {
-    const chave = `${ano}-${mes}`;
-    setItems(prev => prev.map(item => {
-      if (item.id !== itemId) return item;
-      const doMes = item.partialExpenses?.[chave];
-      if (!doMes) return item;
-      const atualizado = {
-        ...item,
-        partialExpenses: {
-          ...item.partialExpenses,
-          [chave]: doMes.map(p => (p.id === partialId ? { ...p, description: nome } : p)),
-        },
-      };
-      // O 4o argumento e a ordem da linha no bloco — preserva a posicao atual.
-      const ordem = prev.findIndex(i => i.id === itemId);
-      if (db && householdId) saveFinanceItem(db, householdId, atualizado, ordem).catch(console.error);
-      return atualizado;
-    }));
-  };
 
   const handleRemovePartial = (itemId: string, expenseId: string) => {
     setItems(prev => prev.map(item => {
@@ -1927,10 +2429,24 @@ const App: React.FC = () => {
       Object.keys(partials).forEach(key => {
         newPartials[key] = partials[key].filter(p => p.id !== expenseId);
       });
-      return { ...item, partialExpenses: newPartials };
+      // Espelho do handleAddPartial: na variável, se a linha seguia a soma,
+      // continua seguindo depois de apagar um lançamento.
+      if (item.category !== CategoryType.VARIABLE_EXPENSE) return { ...item, partialExpenses: newPartials };
+      const values = [...item.values];
+      Object.keys(partials).forEach(key => {
+        if (partials[key].length === newPartials[key].length) return;
+        const [y, m] = key.split('-').map(Number);
+        const mIdx = months.findIndex(md => md.year === y && md.index === m);
+        if (mIdx < 0) return;
+        const antes = partials[key].reduce((sum, p) => sum + p.value, 0);
+        if (Math.abs((values[mIdx] || 0) - antes) < 0.01) {
+          values[mIdx] = newPartials[key].reduce((sum, p) => sum + p.value, 0);
+        }
+      });
+      return { ...item, partialExpenses: newPartials, values };
     }));
 
-    if (db) {
+    if (db && !simulandoRef.current) {
       deletePartialExpense(db, expenseId).catch(console.error);
     }
   };
@@ -2241,7 +2757,7 @@ const App: React.FC = () => {
   const snapshotTimeoutRef = useRef<any>(null);
   useEffect(() => {
     if (!db || !householdId || dbLoading || !dbItemsLoadedRef.current) return;
-    if (items.length === 0) return;
+    if (items.length === 0 || simulando) return;
     clearTimeout(snapshotTimeoutRef.current);
     const hhAtSchedule = householdId;
     snapshotTimeoutRef.current = setTimeout(() => {
@@ -2262,7 +2778,7 @@ const App: React.FC = () => {
       }, items).catch(() => {});
     }, 6000);
     return () => clearTimeout(snapshotTimeoutRef.current);
-  }, [items, db, householdId, dbLoading, monthlySummaries, months, mobileMonthIdx, currentActualMonth, currentActualYear]);
+  }, [items, db, householdId, dbLoading, simulando, monthlySummaries, months, mobileMonthIdx, currentActualMonth, currentActualYear]);
 
   const allCards = useMemo(() => items.filter(i => i.category === CategoryType.CREDIT_CARD), [items]);
 
@@ -2405,7 +2921,7 @@ const App: React.FC = () => {
   // Coach/assistente sem cliente selecionado → Dashboard
   if (isLoaded && isSignedIn && isAdmin && !coachViewHouseholdId) {
     return (
-      <>
+      <StaffTwoFactorGate>
         <CoachDashboard
           onEnterClient={(hId, name) => {
             setCoachViewHouseholdId(hId);
@@ -2421,7 +2937,7 @@ const App: React.FC = () => {
         {showSuporteAdmin && (
           <SuporteAdmin onClose={() => setShowSuporteAdmin(false)} onMudou={carregarChamadosAbertos} />
         )}
-      </>
+      </StaffTwoFactorGate>
     );
   }
 
@@ -2527,9 +3043,252 @@ const App: React.FC = () => {
     );
   }
 
+  /**
+   * O elemento que rola a página. html/body têm altura fixa (index.html), então
+   * quem rola é o <body> e `window.scrollTo` não faz nada.
+   */
+  const rolador = (): HTMLElement => {
+    const b = document.body;
+    return b.scrollHeight > b.clientHeight + 1 ? b : (document.scrollingElement as HTMLElement ?? document.documentElement);
+  };
+
+  /** Fecha as camadas abertas (lancar/extrato) e vai para a aba pedida. */
+  const irParaAba = (aba: typeof activeTab) => {
+    // Tocar na aba em que já se está sobe para o topo (Eduardo, 2026-09-22).
+    if (aba === activeTab && !showExtrato && !pendingExpense) {
+      rolador().scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    setVoltarAoPlanoY(null);
+    setPendingExpense(null);
+    // Sair do Extrato pela barra tambem tem de recontar: antes so o X fazia
+    // isso, e o badge seguia com o numero antigo (Eduardo, 2026-09-22).
+    if (showExtrato) { setShowExtrato(false); void recontarPendentes(); }
+    setActiveTab(aba);
+  };
+  const destaqueBarra: string = showExtrato ? 'extrato' : (pendingExpense ? 'centro' : activeTab);
+
   return (
     <div className="min-h-screen bg-[#f5f5f7] text-[#1d1d1f] isolate">
       <AmbientBackground />
+
+      {/* Faixa da simulação — fica por cima de tudo para ninguém esquecer que
+          está num rascunho. Aparece no celular e na web. */}
+      {simulando && (
+        <div
+          className="fixed left-0 right-0 z-[9998] bg-[#b07500] text-white shadow-lg"
+          style={{ top: 0, paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)', paddingBottom: '8px' }}
+        >
+          <div className="px-4 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2 min-w-0">
+              <i className="fas fa-flask text-sm shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[11px] font-black uppercase tracking-widest leading-tight">Simulação</p>
+                <p className="text-[11px] leading-tight opacity-90">Nada foi salvo. O cliente não está vendo estas mudanças.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={descartarSimulacao}
+                disabled={aplicandoSimulacao}
+                className="px-3 py-2 rounded-xl bg-white/15 text-white text-[10px] font-black uppercase tracking-wider active:scale-95 disabled:opacity-50"
+              >
+                Descartar
+              </button>
+              <button
+                onClick={aplicarSimulacao}
+                disabled={aplicandoSimulacao}
+                className="px-3 py-2 rounded-xl bg-white text-[#b07500] text-[10px] font-black uppercase tracking-wider active:scale-95 disabled:opacity-60"
+              >
+                {aplicandoSimulacao ? 'Salvando…' : 'Aplicar no plano'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {ofMigracaoAberta && (
+        <div className="fixed inset-0 z-[320] flex items-center justify-center bg-black/75 backdrop-blur-sm p-6">
+          <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="w-12 h-12 rounded-2xl bg-[#f0fad0] flex items-center justify-center mb-4">
+              <i className="fas fa-calendar-check text-xl text-[#7ab800]" />
+            </div>
+            <h3 className="text-[#1d1d1f] font-black text-lg leading-tight mb-2">
+              Vamos recomeçar seu plano em {months[Math.max(0, months.findIndex(m => m.index === currentActualMonth && m.year === currentActualYear))]?.monthName ?? 'este mês'}?
+            </h3>
+            <p className="text-[#6e6e73] text-sm leading-relaxed mb-3">
+              Seu banco agora manda os gastos sozinho. Como seu plano começou em{' '}
+              <b className="text-[#1d1d1f]">{months[0]?.monthName} {months[0]?.year}</b>, as faturas antigas
+              apareceriam em meses que você nunca categorizou — e os números ficariam confusos.
+            </p>
+            <div className="rounded-2xl bg-[#f5f5f7] p-3 mb-5 flex flex-col gap-2">
+              <p className="text-[13px] text-[#1d1d1f] leading-snug">
+                <i className="fas fa-envelope text-[#7ab800] mr-2" />
+                Enviamos o resumo dos meses anteriores para o seu e-mail.
+              </p>
+              <p className="text-[13px] text-[#1d1d1f] leading-snug">
+                <i className="fas fa-eraser text-[#7ab800] mr-2" />
+                Esses meses saem do painel; do mês atual em diante fica tudo automático.
+              </p>
+            </div>
+            <button
+              onClick={migrarParaOF}
+              disabled={ofMigrando}
+              className="w-full py-3.5 rounded-2xl k-btn-lime font-black text-sm disabled:opacity-60"
+            >
+              {ofMigrando ? 'Preparando…' : 'Começar neste mês'}
+            </button>
+            <button
+              onClick={() => {
+                try { localStorage.setItem(`kashim_of_migracao_${householdId}`, 'recusada'); } catch { /* ok */ }
+                setOfMigracaoAberta(false);
+              }}
+              disabled={ofMigrando}
+              className="w-full py-3 mt-2 text-[#6e6e73] font-bold text-[13px]"
+            >
+              Manter meu histórico como está
+            </button>
+          </div>
+        </div>
+      )}
+
+      {saiDaContaAberto && monthlySummaries[mobileMonthIdx] && (() => {
+        const s = monthlySummaries[mobileMonthIdx];
+        const mes = months[mobileMonthIdx];
+        const linhas: Array<{ rotulo: string; valor: number; nota?: string; negativo?: boolean }> = [
+          { rotulo: 'Fatura dos cartões que vencem no mês', valor: s.totalCreditCard },
+          { rotulo: 'Contas fixas', valor: s.totalFixed },
+          { rotulo: 'Contas variáveis', valor: s.totalVariable },
+          { rotulo: 'Lazer e gastos pessoais', valor: s.totalLeisure },
+          {
+            rotulo: 'Já está dentro da fatura',
+            valor: -s.jaNaFatura,
+            nota: 'O que você paga no cartão não sai duas vezes da conta',
+            negativo: true,
+          },
+        ];
+        return (
+          <div className="fixed inset-0 z-[310] flex items-end justify-center lg:items-center" onClick={() => setSaiDaContaAberto(false)}>
+            <div className="absolute inset-0 bg-black/55 backdrop-blur-sm" />
+            <div
+              onClick={e => e.stopPropagation()}
+              className="relative w-full max-w-md bg-white rounded-t-3xl lg:rounded-3xl p-5 pb-8 shadow-2xl"
+            >
+              <div className="w-10 h-1 bg-[#e8e8ed] rounded-full mx-auto mb-4 lg:hidden" />
+              <p className="text-[10px] font-black uppercase tracking-widest text-[#aeaeb2]">
+                {mes?.monthName} {mes?.year}
+              </p>
+              <h3 className="text-[#1d1d1f] font-black text-lg leading-tight mb-1">
+                {planoEmModoOF ? 'De onde vem o "sai da conta"' : 'De onde vêm os gastos'}
+              </h3>
+              <p className="text-[#6e6e73] text-[13px] leading-snug mb-4">
+                É o dinheiro que sai da sua conta neste mês — não o que você consumiu. Compra no cartão sai
+                quando a fatura vence.
+              </p>
+              <div className="flex flex-col">
+                {linhas.filter(l => Math.abs(l.valor) >= 0.01).map(l => (
+                  <div key={l.rotulo} className="flex items-start justify-between gap-3 py-2.5 border-b border-[#f0f0f0]">
+                    <div className="min-w-0">
+                      <p className="text-[#1d1d1f] text-[13.5px] leading-snug">{l.rotulo}</p>
+                      {l.nota && <p className="text-[#aeaeb2] text-[11px] leading-snug mt-0.5">{l.nota}</p>}
+                    </div>
+                    <span className={`shrink-0 font-black k-num text-[14px] ${l.negativo ? 'text-[#7ab800]' : 'text-[#1d1d1f]'}`}>
+                      {l.negativo ? '− ' : ''}{formatCurrency(Math.abs(l.valor))}
+                    </span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between gap-3 pt-3">
+                  <p className="text-[#1d1d1f] font-black text-[14px] uppercase tracking-wide">Total</p>
+                  <span className="font-black k-num text-[18px] text-[#ff3b30]">{formatCurrency(s.totalCost)}</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setSaiDaContaAberto(false)}
+                className="mt-5 w-full py-3 rounded-2xl bg-[#f5f5f7] text-[#1d1d1f] font-black text-sm active:scale-[0.98]"
+              >
+                Entendi
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Modal de unificação de contas (Modo Casal: dois solos querendo se unir) */}
+      {showMergeModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-7 max-w-sm w-full flex flex-col gap-5 shadow-2xl">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 bg-green-400/10 rounded-full flex items-center justify-center shrink-0">
+                <i className="fas fa-user-friends text-green-400"></i>
+              </div>
+              <div>
+                <h2 className="text-white font-black text-base uppercase italic tracking-tighter">Unificar contas</h2>
+                <p className="text-zinc-500 text-[10px] uppercase tracking-widest">Modo Casal</p>
+              </div>
+            </div>
+
+            <p className="text-zinc-300 text-sm leading-relaxed">
+              Você já tem lançamentos na sua conta. Para entrar na conta do seu parceiro(a), seus dados serão <strong className="text-white">movidos para a conta compartilhada</strong>.
+            </p>
+
+            <ul className="flex flex-col gap-1.5">
+              <li className="flex items-start gap-2 text-zinc-400 text-xs">
+                <i className="fas fa-check text-green-400 mt-0.5 shrink-0"></i>
+                Seus lançamentos vão para o plano compartilhado
+              </li>
+              <li className="flex items-start gap-2 text-zinc-400 text-xs">
+                <i className="fas fa-check text-green-400 mt-0.5 shrink-0"></i>
+                Os dois ficam com acesso à mesma conta
+              </li>
+              <li className="flex items-start gap-2 text-zinc-400 text-xs">
+                <i className="fas fa-info-circle text-yellow-400 mt-0.5 shrink-0"></i>
+                Sua conta individual será encerrada
+              </li>
+            </ul>
+
+            {mergeError && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-2xl px-4 py-3 text-red-400 text-xs">
+                <i className="fas fa-exclamation-circle mr-2"></i>{mergeError}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2">
+              <button
+                disabled={mergeLoading}
+                onClick={async () => {
+                  if (!mergeAuthToken) return;
+                  setMergeLoading(true);
+                  setMergeError(null);
+                  try {
+                    await confirmMergeInvite(mergeAuthToken);
+                    if (user) localStorage.setItem(`onboarding_done_${user.id}`, 'true');
+                    window.location.reload();
+                  } catch (err: unknown) {
+                    setMergeError(err instanceof Error ? err.message : 'Erro ao unificar contas. Tente novamente.');
+                    setMergeLoading(false);
+                  }
+                }}
+                className="w-full bg-green-500 active:bg-green-400 text-black font-black py-3 rounded-2xl text-sm uppercase tracking-wider disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {mergeLoading
+                  ? <><i className="fas fa-circle-notch animate-spin"></i> Unificando...</>
+                  : 'Unificar e entrar'}
+              </button>
+              <button
+                disabled={mergeLoading}
+                onClick={() => {
+                  discardPendingInvite();
+                  setShowMergeModal(false);
+                  window.location.reload();
+                }}
+                className="w-full bg-zinc-800 active:bg-zinc-700 text-zinc-400 font-bold py-3 rounded-2xl text-sm disabled:opacity-50"
+              >
+                Cancelar — ficar na minha conta
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Consentimento LGPD — precede qualquer outra coisa (wizard, tour, app) */}
       {needsTermsAcceptance && (
@@ -2558,7 +3317,7 @@ const App: React.FC = () => {
           screen={showExtrato && hasOpenFinanceAccess(user) ? 'extrato' : activeTab}
           db={db}
           userId={user.id}
-          active={!needsTermsAcceptance && !showOnboarding && !showSubscriptionGate && !coachViewHouseholdId && !dbLoading}
+          active={!needsTermsAcceptance && !showOnboarding && !showSubscriptionGate && !coachViewHouseholdId && !dbLoading && activeTab !== 'coach'}
           onRequestScreen={setActiveTab}
           onAiPrompt={handleTourAiPrompt}
           // Ter acesso nao basta: os passos so mudam para quem REALMENTE
@@ -2773,11 +3532,12 @@ const App: React.FC = () => {
             <div className="flex flex-col gap-3">
               <button 
                 onClick={() => pendingStartMonth && handleReproject(pendingStartMonth.month, pendingStartMonth.year)}
-                className="w-full bg-green-500 hover:bg-green-400 text-black font-black py-4 rounded-2xl transition-all shadow-lg uppercase text-xs tracking-widest"
+                disabled={reprojetando}
+                className="w-full bg-green-500 hover:bg-green-400 disabled:opacity-60 text-black font-black py-4 rounded-2xl transition-all shadow-lg uppercase text-xs tracking-widest"
               >
-                Sim, Reprojetar e Baixar Backup
+                {reprojetando ? 'Salvando o plano… não feche' : 'Sim, Reprojetar e Baixar Backup'}
               </button>
-              <button onClick={() => { setShowProjectionModal(false); setPendingStartMonth(null); }} className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-4 rounded-2xl transition-all uppercase text-[10px] tracking-widest">Cancelar</button>
+              <button disabled={reprojetando} onClick={() => { setShowProjectionModal(false); setPendingStartMonth(null); }} className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-4 rounded-2xl transition-all uppercase text-[10px] tracking-widest">Cancelar</button>
             </div>
           </div>
         </div>
@@ -2839,6 +3599,20 @@ const App: React.FC = () => {
             {hasOpenFinanceAccess(user) && (
               <button onClick={async () => { const t = await getToken({ template: 'supabase' }); if (t) { setOfAuthToken(t); setShowExtrato(true); } }} className="px-6 py-2 rounded-lg text-xs font-black uppercase transition-all text-[#6e6e73] hover:text-[#1d1d1f] flex items-center gap-1.5"><i className="fas fa-university text-sm" />Extrato</button>
             )}
+            {/* Stets é para todo mundo — não passa pelo portão de Open Finance.
+                Reaberto em 2026-09-13, depois que a troca para a Maritaca
+                derrubou o custo por mensagem. Verde permanente para destacar
+                entre as abas; selecionado, ganha fundo sólido. */}
+            <button
+              onClick={() => irParaAba('coach')}
+              className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all flex items-center gap-1.5 ${
+                activeTab === 'coach'
+                  ? 'bg-[#7ab800] text-white shadow-sm'
+                  : 'text-[#7ab800] hover:bg-[#f0fad0]'
+              }`}
+            >
+              <i className={`fas fa-bolt text-sm ${activeTab === 'coach' ? '' : 'k-glow-lime'}`} />Stets
+            </button>
             {coachViewHouseholdId && (
               <div className="flex items-center gap-2 bg-[#f0fad0] border border-[rgba(122,184,0,0.3)] px-3 py-1.5 rounded-xl">
                 <i className="fas fa-eye text-[#7ab800] text-xs"></i>
@@ -2936,7 +3710,125 @@ const App: React.FC = () => {
       )}
 
       <main key={activeTab} className={`k-reveal ${activeTab === 'plan' ? 'max-w-[1600px]' : 'w-full px-2'} mx-auto px-2 lg:px-8 mt-2 lg:mt-8`} style={(activeTab === 'desempenho' || activeTab === 'metas') ? { maxWidth: '100%' } : {}}>
-        {activeTab === 'desempenho' ? (
+        {/* O que o Kashim lançou sozinho, na tela principal e não escondido no
+            Extrato. O cliente precisa saber que a fila encolheu porque o app
+            agiu — e poder conferir, porque palpite automático erra. */}
+        {(() => {
+          const naoConferidas = autoCategorizadas.filter(t => !autoConferidas.has(t.id));
+          if (naoConferidas.length === 0 || autoAvisoFechado || dbLoading) return null;
+          /**
+           * Confirmou, sumiu. Ponto.
+           *
+           * Tentei manter a linha na tela marcada como "conferido" para dar
+           * segurança, e o efeito foi o oposto: o Eduardo confirmou e viu os
+           * mesmos gastos de novo, achando que o app ignorou (2026-09-20).
+           */
+          const daLeva = naoConferidas;
+          const abrirExtrato = async () => {
+            const tk = await getToken({ template: 'supabase' });
+            if (tk) { setOfAuthToken(tk); setShowExtrato(true); }
+          };
+          return (
+          <div className="mb-3 bg-[#f0fad0] border border-[rgba(122,184,0,0.35)] rounded-2xl p-4">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-xl bg-[#7ab800] flex items-center justify-center shrink-0">
+                <i className="fas fa-wand-magic-sparkles text-white text-xs" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[#1d1d1f] font-black text-sm">
+                  O Kashim lançou {naoConferidas.length} gasto{naoConferidas.length === 1 ? '' : 's'} por você
+                </p>
+                <p className="text-[#6e6e73] text-xs mt-0.5 mb-2">
+                  {naoConferidas.length === 1 ? 'É um lugar' : 'São lugares'} que você já categorizou antes. Confira um por um.
+                </p>
+                {/* Uma decisão por gasto: concordar com um e discordar do outro
+                    era impossível com os botões só no rodapé (Eduardo, 2026-09-20). */}
+                <div className="space-y-1.5 mb-2.5">
+                  {daLeva.slice(0, 6).map((t) => (
+                    <div key={t.id} className="flex items-center gap-2 text-xs rounded-xl px-2.5 py-2 bg-white/70">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[#1d1d1f] truncate font-bold">{t.descricao}</p>
+                        {/* ONDE entrou, não só a categoria: "Conta Fixa" não diz
+                            em qual conta o gasto caiu (Eduardo, 2026-09-20). */}
+                        <p className="text-[#6e6e73] text-[11px] truncate">
+                          {t.linha ? `${t.categoria} · ${t.linha}` : t.categoria}
+                        </p>
+                      </div>
+                      <span className="text-[#1d1d1f] font-black shrink-0 tabular-nums">
+                        R$ {t.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </span>
+                      <button
+                        onClick={() => marcarConferidas([t.id])}
+                        title="Está certo"
+                        className="shrink-0 w-7 h-7 rounded-lg bg-[#7ab800] text-white flex items-center justify-center active:scale-95"
+                      >
+                        <i className="fas fa-check text-[11px]" />
+                      </button>
+                      <button
+                        onClick={abrirExtrato}
+                        title="Corrigir no Extrato"
+                        className="shrink-0 w-7 h-7 rounded-lg bg-white border border-[#e8e8ed] text-[#6e6e73] flex items-center justify-center active:scale-95"
+                      >
+                        <i className="fas fa-pen text-[10px]" />
+                      </button>
+                    </div>
+                  ))}
+                  {daLeva.length > 6 && (
+                    <p className="text-[#6e6e73] text-[11px]">e mais {daLeva.length - 6}…</p>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={abrirExtrato}
+                    className="px-3 py-1.5 rounded-lg bg-[#7ab800] text-white text-[11px] font-black uppercase tracking-wide active:scale-95 transition-transform"
+                  >
+                    Revisar no Extrato
+                  </button>
+                  <button
+                    onClick={() => marcarConferidas(naoConferidas.map(t => t.id))}
+                    className="px-3 py-1.5 rounded-lg text-[#6e6e73] text-[11px] font-black uppercase tracking-wide"
+                  >
+                    Está tudo certo
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          );
+        })()}
+
+        {/* Enquanto os lançamentos não chegaram, NÃO mostrar número nenhum.
+            Com os dados pela metade o saldo aparecia errado — o Eduardo abriu o
+            app e leu -R$7.000 onde havia +R$1.900, e só depois de ~20s o valor
+            se corrigiu sozinho (2026-09-14). Número errado com cara de certo é
+            pior que número nenhum: o cliente acredita nele. */}
+        {dbLoading && items.length === 0 && activeTab !== 'coach' ? (
+          <div className="flex flex-col items-center justify-center py-24 gap-4">
+            <div className="relative">
+              <div className="absolute inset-0 scale-150 rounded-2xl bg-[#7ab800]/15 blur-xl" />
+              <div className="relative w-14 h-14 rounded-2xl bg-[#7ab800] flex items-center justify-center shadow-lg">
+                <i className="fas fa-circle-notch fa-spin text-[#182200] text-xl" />
+              </div>
+            </div>
+            <div className="text-center">
+              <p className="text-[#1d1d1f] font-black text-sm">Carregando seus dados</p>
+              <p className="text-[#6e6e73] text-xs mt-1">Buscando seus lançamentos no servidor...</p>
+            </div>
+          </div>
+        ) : activeTab === 'coach' ? (
+          <div className="h-[calc(100dvh-210px)] lg:h-[calc(100dvh-140px)]">
+            <CoachChat
+              getToken={() => getToken({ template: 'supabase' })}
+              householdId={householdId}
+              summary={monthlySummaries[mobileMonthIdx]}
+              summaries={monthlySummaries}
+              monthNames={months.map(m => m.monthName)}
+              currentMonthIdx={mobileMonthIdx}
+              perguntaInicial={stetsPerguntaInicial}
+              onPerguntaConsumida={() => setStetsPerguntaInicial('')}
+            />
+          </div>
+        ) : activeTab === 'desempenho' ? (
           <Desempenho summary={monthlySummaries[mobileMonthIdx]} summaries={monthlySummaries.slice(0, mobileMonthIdx + 1)} items={items} goals={goals} monthIdx={mobileMonthIdx} />
         ) : activeTab === 'metas' ? (
           <Metas goals={goals} onGoalsChange={handleGoalsChange} db={db} householdId={householdId} />
@@ -2944,14 +3836,29 @@ const App: React.FC = () => {
           <Dividas householdId={householdId} />
         ) : activeTab === 'plan' ? (
           <>
-            <div id="stets"><AICoach summary={monthlySummaries[mobileMonthIdx]} items={items} monthName={months[mobileMonthIdx].monthName} onExpenseDetected={handleExpenseDetected} tetoColumns={tetoColumns} /></div>
+            {/* Em modo Open Finance o card de lançar dá lugar ao convite do
+                Stets: quem conectou o banco não precisa digitar gasto, e o
+                topo da tela deve puxar para a dúvida, não para o teclado. */}
+            {planoEmModoOF ? (
+              <div id="stets">
+                <StetsConvite onAbrir={(pergunta) => {
+                  setStetsPerguntaInicial(pergunta ?? '');
+                  setActiveTab('coach');
+                }} />
+              </div>
+            ) : (
+              <div id="stets"><AICoach summary={monthlySummaries[mobileMonthIdx]} items={items} monthName={months[mobileMonthIdx].monthName} onExpenseDetected={handleExpenseDetected} tetoColumns={tetoColumns} /></div>
+            )}
             {/* Web: diagnóstico inline (tem espaço). Celular: botão que abre em
                 pop-up, para não empurrar as contas do mês pra baixo. */}
             <div id="diagnosis" className="hidden lg:block">
               <Diagnosis summary={monthlySummaries[mobileMonthIdx]} items={items} monthIdx={mobileMonthIdx} monthName={months[mobileMonthIdx].monthName} isCurrentMonth={months[mobileMonthIdx].index === currentActualMonth && months[mobileMonthIdx].year === currentActualYear} />
             </div>
 
-            <div className="lg:hidden px-1 mb-3 -mt-5">
+            {/* A margem negativa existia para encostar no card antigo, que tinha
+                folga embaixo. Com o convite do Stets no lugar, ela passou a
+                sobrepor o card — some quando ele está na tela. */}
+            <div className={`lg:hidden px-1 mb-3 ${planoEmModoOF ? '' : '-mt-5'}`}>
               <button
                 onClick={() => setShowDiagnosis(true)}
                 className="group w-full flex items-center gap-3 rounded-2xl px-5 py-4 text-left active:scale-[.99] transition-all"
@@ -2971,8 +3878,17 @@ const App: React.FC = () => {
             {showDiagnosis && (
               <div className="lg:hidden fixed inset-0 z-[300] bg-black/60 backdrop-blur-sm flex flex-col">
                 {/* Header escuro temático — combina com o hero do próprio Diagnosis */}
-                <div className="flex items-center justify-between px-5 py-4 shrink-0"
-                  style={{ background: 'linear-gradient(160deg,#0d1f07 0%,#152f0a 100%)', borderBottom: '1px solid rgba(255,255,255,.08)' }}>
+                {/* O cabeçalho começava colado no topo e o X ficava debaixo da
+                    barra de status do iPhone — só dava para fechar deitando o
+                    telefone (Eduardo, 2026-09-21). A área segura resolve. */}
+                <div
+                  className="flex items-center justify-between px-5 pb-4 shrink-0"
+                  style={{
+                    background: 'linear-gradient(160deg,#0d1f07 0%,#152f0a 100%)',
+                    borderBottom: '1px solid rgba(255,255,255,.08)',
+                    paddingTop: 'calc(env(safe-area-inset-top, 0px) + 16px)',
+                  }}
+                >
                   <div className="flex items-center gap-3">
                     <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
                       style={{ background: 'rgba(74,222,128,.15)' }}>
@@ -3009,13 +3925,24 @@ const App: React.FC = () => {
                 {/* Pointer-following neon glow (decorative) */}
                 <div className="absolute inset-0 pointer-events-none z-0" style={{background:'radial-gradient(240px circle at var(--k-gx,50%) var(--k-gy,50%), rgba(168,231,22,0.16), transparent 60%)', transition:'background .2s'}}></div>
                 <div className="relative z-10">
-                  <div className="text-[10px] font-bold uppercase tracking-[2px] text-white/40 mb-1">Acumulado</div>
+                  {/* "Acumulado" não dizia acumulado do quê — a Mariane leu como
+                      acumulado de contas (2026-09-20). O rótulo agora diz o que o
+                      número é, e muda de acordo com o sinal. */}
+                  <div className="text-[10px] font-bold uppercase tracking-[2px] text-white/40 mb-1">
+                    {monthlySummaries[mobileMonthIdx].accumulated >= 0 ? 'Dinheiro guardado até aqui' : 'Faltou até aqui'}
+                  </div>
                   <div className="text-white font-black k-num" style={{fontSize:'36px',letterSpacing:'-0.04em',lineHeight:1}}>
                     <MoneyCountUp value={monthlySummaries[mobileMonthIdx].accumulated} />
                   </div>
                   <div className="text-white/30 text-[11px] mt-2">
                     {months[mobileMonthIdx].monthName} {months[mobileMonthIdx].year}
                   </div>
+                  {planoEmModoOF && (
+                    <div className="mt-2 flex items-center gap-1.5 text-white/35 text-[10px]">
+                      <i className="fas fa-sync-alt text-[8px]"></i>
+                      <span>Atualizado automaticamente pelo seu banco</span>
+                    </div>
+                  )}
 
                   {/* De onde vem o acumulado.
                       Sem isto a tela mostra dois negativos diferentes — o card
@@ -3056,10 +3983,22 @@ const App: React.FC = () => {
                 <div className="text-[7px] font-black uppercase text-[#aeaeb2] tracking-widest mb-1">Entradas</div>
                 <div className="text-[#34c759] font-black k-num text-xs leading-tight truncate"><MoneyCountUp value={monthlySummaries[mobileMonthIdx].totalIncome} duration={900} /></div>
               </div>
-              <div className="bg-white border border-[#e8e8ed] rounded-[18px] p-3 overflow-hidden shadow-sm">
-                <div className="text-[7px] font-black uppercase text-[#aeaeb2] tracking-widest mb-1">Gastos</div>
+              {/* O número é o que SAI DA CONTA no mês (fatura que vence + contas
+                  fora do cartão), não o que foi consumido. Com Open Finance a
+                  fatura real entra inteira e "Gastos" fazia a pessoa achar que
+                  tinha gastado R$12 mil num mês de R$7 mil de plano (Mariane,
+                  2026-09-17). Tocar abre a conta aberta: número grande sem
+                  explicação vira desconfiança. */}
+              <button
+                onClick={() => setSaiDaContaAberto(true)}
+                className="bg-white border border-[#e8e8ed] rounded-[18px] p-3 overflow-hidden shadow-sm text-left active:scale-[0.98] transition-transform"
+              >
+                <div className="text-[7px] font-black uppercase text-[#aeaeb2] tracking-widest mb-1 flex items-center gap-1">
+                  {planoEmModoOF ? 'Sai da conta' : 'Gastos'}
+                  <i className="fas fa-circle-info text-[7px] opacity-60" />
+                </div>
                 <div className="text-[#ff3b30] font-black k-num text-xs leading-tight truncate"><MoneyCountUp value={monthlySummaries[mobileMonthIdx].totalCost} duration={900} /></div>
-              </div>
+              </button>
               <div className={`border rounded-[18px] p-3 overflow-hidden shadow-sm ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'bg-[#f0fad0] border-[rgba(122,184,0,0.25)]' : 'bg-[#fff0f0] border-[rgba(255,59,48,0.2)]'}`}>
                 <div className="text-[7px] font-black uppercase tracking-widest mb-1 text-[#aeaeb2]">Sobra/Falta</div>
                 <div className={`font-black k-num text-xs leading-tight truncate ${monthlySummaries[mobileMonthIdx].balance >= 0 ? 'text-[#7ab800]' : 'text-[#ff3b30] animate-pulse'}`}><MoneyCountUp value={monthlySummaries[mobileMonthIdx].balance} duration={900} /></div>
@@ -3316,8 +4255,14 @@ const App: React.FC = () => {
                   mobileMonthIdx={mobileMonthIdx}
                   // Tocar no "Realizado" leva aos lançamentos que formam aquele
                   // número, onde dá para recategorizar um a um.
-                  onOpenSpending={(itemId, monthKey) => { setFocusSpendingItemId(itemId); setTetoInitialFilter(null); setTetoInitialMonthKey(monthKey ?? null); setActiveTab('teto'); }}
-                  onNavigateToGastos={(itemId, sourceKey) => { setFocusSpendingItemId(itemId); setTetoInitialFilter({ linkedItemId: itemId, sourceKey }); setActiveTab('teto'); }}
+                  onOpenSpending={(itemId, monthKey) => { setVoltarAoPlanoY(rolador().scrollTop); rolador().scrollTo({ top: 0 }); setFocusSpendingItemId(itemId); setTetoInitialFilter(null); setTetoInitialMonthKey(monthKey ?? null); setActiveTab('teto'); }}
+                  onNavigateToGastos={(itemId, sourceKey, monthKey) => { setVoltarAoPlanoY(rolador().scrollTop); rolador().scrollTo({ top: 0 }); setFocusSpendingItemId(itemId); setTetoInitialFilter({ linkedItemId: itemId, sourceKey }); setTetoInitialMonthKey(monthKey ?? null); setActiveTab('teto'); }}
+                  faturasPublicadas={faturasPublicadas}
+                  onRemovePartial={handleRemovePartial}
+                  onMovePartial={(origemId, destinoId, partial, ano, mes) => {
+                    handleRemovePartial(origemId, partial.id);
+                    handleAddPartial(destinoId, { ...partial, id: crypto.randomUUID() }, ano, mes);
+                  }}
                   onAddItem={handleAddItem} onUpdateValue={handleUpdateValue} onTogglePaid={handleTogglePaid}
                   onRemoveItem={handleRemoveItem} onUpdateDescription={handleUpdateDescription}
                   onReplicateValue={handleReplicateValue} onLinkCard={handleLinkCard}
@@ -3337,6 +4282,7 @@ const App: React.FC = () => {
                   onAddLeisureItem={block.type === CategoryType.PERSONAL_LEISURE ? handleAddLeisureItem : undefined}
                   isAdmin={isAdmin}
                   onOpenExtrato={block.type === CategoryType.CREDIT_CARD && hasOpenFinanceAccess(user) ? handleOpenExtrato : undefined}
+                  onPerguntarStets={(p) => { setStetsPerguntaInicial(p); setActiveTab('coach'); }}
                   // Só o cliente de Open Finance troca o seletor manual de forma de
                   // pagamento pelo detalhamento por fonte. No plano normal o seletor
                   // é a única maneira de informar débito x cartão.
@@ -3534,16 +4480,56 @@ const App: React.FC = () => {
                 >
                   Reprojetar Ciclo
                 </button>
+                {/* Rascunho na reunião: só o coach vê, e nada é gravado até aplicar. */}
+                {isAdmin && !simulando && (
+                  <button
+                    onClick={iniciarSimulacao}
+                    title="Testar cenários sem gravar nada"
+                    className="bg-white hover:bg-zinc-100 text-zinc-700 border border-zinc-300 text-[10px] font-black px-6 py-3.5 rounded-xl uppercase transition-all whitespace-nowrap"
+                  >
+                    Simular
+                  </button>
+                )}
               </div>
             </div>
           </>
         ) : (
-          <TetoGastos focusItemId={focusSpendingItemId} onFocusHandled={() => setFocusSpendingItemId(null)} initialFilter={tetoInitialFilter} onInitialFilterHandled={() => setTetoInitialFilter(null)} initialMonthKey={tetoInitialMonthKey} items={items} currentMonthIdx={currentActualMonth} currentYear={currentActualYear} months={months} onAddPartial={handleAddPartial} onRemovePartial={handleRemovePartial} db={db} householdId={householdId} resolveDbId={(localId) => itemIdMapRef.current[localId] ?? localId} tetoAlert={user ? (() => { const p = getNotifPrefs(user.id); return { enabled: p.tetoAlert, pct: p.tetoPct }; })() : undefined} onCreateItem={handleCreateItem} />
+          <TetoGastos focusItemId={focusSpendingItemId} onFocusHandled={() => setFocusSpendingItemId(null)} initialFilter={tetoInitialFilter} onInitialFilterHandled={() => setTetoInitialFilter(null)} initialMonthKey={tetoInitialMonthKey} items={items} currentMonthIdx={currentActualMonth} currentYear={currentActualYear} months={months} onAddPartial={handleAddPartial} onRemovePartial={handleRemovePartial} db={db} householdId={householdId} resolveDbId={(localId) => itemIdMapRef.current[localId] ?? localId} tetoAlert={user ? (() => { const p = getNotifPrefs(user.id); return { enabled: p.tetoAlert, pct: p.tetoPct }; })() : undefined} onCreateItem={handleCreateItem} modoOpenFinance={planoEmModoOF} colunasIniciais={tetoColumns} onColunasMudaram={setTetoColumns} onRenomearLancamento={handleRenomearLancamento} />
         )}
       </main>
 
       {/* ── MOBILE BOTTOM TAB BAR ──────────────────────────────────────── */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 safe-bottom" style={{background:'rgba(245,245,247,0.92)',backdropFilter:'blur(28px) saturate(1.8)',borderTop:'0.5px solid rgba(0,0,0,0.1)'}}>
+      {/**
+        * Barra de baixo: UM destaque só, no que está aberto.
+        *
+        * Antes Plano, Lançar e Stets ficavam realçados ao mesmo tempo e não
+        * dava para saber em que tela se estava (Mariane, 2026-09-20). Agora
+        * todos ficam cinza e o quadrado verde em relevo marca o selecionado —
+        * o mesmo relevo que o botão central já tinha.
+        */}
+      {voltarAoPlanoY !== null && activeTab === 'teto' && !showExtrato && !pendingExpense && (
+        <button
+          onClick={() => {
+            const y = voltarAoPlanoY;
+            setVoltarAoPlanoY(null);
+            setActiveTab('plan');
+            // O Plano monta depois da troca de aba; tenta até a página ter altura para o ponto.
+            const inicio = Date.now();
+            const tentar = () => {
+              const r = rolador();
+              r.scrollTo({ top: y, behavior: 'auto' });
+              if (Math.abs(r.scrollTop - y) > 4 && Date.now() - inicio < 1500) setTimeout(tentar, 80);
+            };
+            setTimeout(tentar, 30);
+          }}
+          className="fixed left-4 z-[90] flex items-center gap-2 rounded-full bg-[#1d1d1f] px-4 py-2.5 text-[12px] font-black uppercase tracking-wide text-white shadow-xl active:scale-95"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 84px)' }}
+        >
+          <i className="fas fa-arrow-left text-[11px]" /> Voltar ao Plano
+        </button>
+      )}
+
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-[95] safe-bottom" style={{background:'rgba(245,245,247,0.92)',backdropFilter:'blur(28px) saturate(1.8)',borderTop:'0.5px solid rgba(0,0,0,0.1)'}}>
         <div className="relative">
         {/* Right-edge scroll hint */}
         <div className="pointer-events-none absolute right-0 top-0 bottom-0 z-10 flex items-center pr-1" style={{width:'28px',background:'linear-gradient(to right,transparent,rgba(245,245,247,0.96))'}}>
@@ -3555,22 +4541,28 @@ const App: React.FC = () => {
         <div className="overflow-x-auto scrollbar-none">
           <div className={`flex min-w-max ${hasOpenFinanceAccess(user) ? 'pt-2.5' : ''}`}>
             <button
-              onClick={() => setActiveTab('plan')}
-              className={`min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'plan' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
+              onClick={() => irParaAba('plan')}
+              className={`min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 transition-colors active:scale-95 relative ${destaqueBarra === 'plan' ? 'text-[#182200]' : 'text-[#aeaeb2]'}`}
             >
-              <div className={`w-7 h-7 flex items-center justify-center rounded-[9px] transition-all ${activeTab === 'plan' ? 'bg-[#f0fad0]' : ''}`}>
-                <i className={`fas fa-chart-bar text-lg ${activeTab === 'plan' ? 'k-glow-lime' : ''}`}></i>
+              <div
+                className="w-9 h-9 flex items-center justify-center rounded-[12px] transition-all"
+                style={destaqueBarra === 'plan' ? ABA_ATIVA : undefined}
+              >
+                <i className="fas fa-chart-bar text-lg"></i>
               </div>
               <span className="text-[9px] font-black uppercase tracking-wide">Plano</span>
             </button>
 
             <button
               id="tab-teto-mobile"
-              onClick={() => setActiveTab('teto')}
-              className={`min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'teto' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
+              onClick={() => irParaAba('teto')}
+              className={`min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 transition-colors active:scale-95 relative ${destaqueBarra === 'teto' ? 'text-[#182200]' : 'text-[#aeaeb2]'}`}
             >
-              <div className={`w-7 h-7 flex items-center justify-center rounded-[9px] transition-all ${activeTab === 'teto' ? 'bg-[#f0fad0]' : ''}`}>
-                <i className={`fas fa-wallet text-lg ${activeTab === 'teto' ? 'k-glow-lime' : ''}`}></i>
+              <div
+                className="w-9 h-9 flex items-center justify-center rounded-[12px] transition-all"
+                style={destaqueBarra === 'teto' ? ABA_ATIVA : undefined}
+              >
+                <i className="fas fa-wallet text-lg"></i>
               </div>
               <span className="text-[9px] font-black uppercase tracking-wide">Gastos</span>
             </button>
@@ -3591,12 +4583,16 @@ const App: React.FC = () => {
              */}
             {(() => {
               const pendentes = hasOpenFinanceAccess(user) ? categorizeCount : 0;
+              // Acende so com a folha de lancar aberta — o Extrato tem aba propria.
+              const abertoNoCentro = destaqueBarra === 'centro';
               const abrirLancamento = () => {
+                setShowExtrato(false);
                 const vm = months[mobileMonthIdx];
                 const isNow = vm.index === currentActualMonth && vm.year === currentActualYear;
                 setPendingExpense({ source: 'manual', itemId: '', value: 0, description: '', installments: 1, isCredit: false, purchaseDate: { day: isNow ? new Date().getDate() : 1, month: vm.index, year: vm.year } });
               };
               const abrirExtrato = async () => {
+                setPendingExpense(null);
                 const t = await getToken({ template: 'supabase' });
                 if (t) { setOfAuthToken(t); setShowExtrato(true); }
               };
@@ -3608,23 +4604,26 @@ const App: React.FC = () => {
                   aria-label={pendentes > 0 ? `Categorizar ${pendentes} transações` : 'Lançar gasto'}
                   // Tamanho novo só para quem tem Open Finance (o badge precisa do
                   // espaço); o plano normal segue com o botão de sempre.
-                  className={`k-halo ${hasOpenFinanceAccess(user) ? 'min-w-[86px] py-2' : 'min-w-[72px] py-1.5'} flex flex-col items-center justify-center gap-0.5 mx-1 rounded-xl active:scale-95 transition-all k-btn-lime relative`}
-                  style={{background:'linear-gradient(180deg,#c5f23a 0%,#a2d800 50%,#8cc400 100%)',boxShadow:'0 4px 14px rgba(130,192,0,0.4),inset 0 1px 0 rgba(255,255,255,0.45)',borderRadius:'14px'}}
+                  className={`${hasOpenFinanceAccess(user) ? 'min-w-[86px]' : 'min-w-[72px]'} flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 rounded-xl active:scale-95 transition-all relative ${abertoNoCentro ? 'text-[#182200]' : 'text-[#aeaeb2]'}`}
                 >
                   {pendentes > 0 ? (
                     <>
                       {/* A borda branca é o que dá o relevo: sem ela o vermelho
                           encosta no verde e o badge parece parte do botão. */}
-                      <span className="absolute -top-2 -right-2 min-w-[22px] h-[22px] px-1.5 rounded-full bg-[#ff3b30] text-white text-[11px] font-black flex items-center justify-center ring-2 ring-white shadow-lg">
+                      <span className="absolute top-0 right-2 min-w-[20px] h-[20px] px-1.5 rounded-full bg-[#ff3b30] text-white text-[11px] font-black flex items-center justify-center ring-2 ring-white shadow-lg z-10">
                         {pendentes > 99 ? '99+' : pendentes}
                       </span>
-                      <i className="fas fa-list-check text-[#182200] text-lg font-black"></i>
-                      <span className="text-[9px] font-black uppercase tracking-wide text-[#182200]">Categorizar</span>
+                      <div className="w-9 h-9 flex items-center justify-center rounded-[12px] transition-all" style={abertoNoCentro ? ABA_ATIVA : undefined}>
+                        <i className="fas fa-list-check text-lg"></i>
+                      </div>
+                      <span className="text-[9px] font-black uppercase tracking-wide">Categorizar</span>
                     </>
                   ) : (
                     <>
-                      <i className="fas fa-plus text-[#182200] text-lg font-black"></i>
-                      <span className="text-[9px] font-black uppercase tracking-wide text-[#182200]">Lançar</span>
+                      <div className="w-9 h-9 flex items-center justify-center rounded-[12px] transition-all" style={abertoNoCentro ? ABA_ATIVA : undefined}>
+                        <i className="fas fa-plus text-lg"></i>
+                      </div>
+                      <span className="text-[9px] font-black uppercase tracking-wide">Lançar</span>
                     </>
                   )}
                 </button>
@@ -3633,32 +4632,66 @@ const App: React.FC = () => {
 
             {hasOpenFinanceAccess(user) && (
             <button
-              onClick={async () => { const t = await getToken({ template: 'supabase' }); if (t) { setOfAuthToken(t); setShowExtrato(true); } }}
-              className="min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 text-[#aeaeb2] transition-colors active:scale-95"
+              onClick={async () => {
+                // Já no Extrato: tocar de novo sobe a lista para o topo.
+                if (showExtrato && !pendingExpense) {
+                  document.querySelector('[data-extrato-rolagem]')?.scrollTo({ top: 0, behavior: 'smooth' });
+                  return;
+                }
+                setPendingExpense(null);
+                setVoltarAoPlanoY(null);
+                const t = await getToken({ template: 'supabase' });
+                if (t) { setOfAuthToken(t); setShowExtrato(true); }
+              }}
+              className={`min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 transition-colors active:scale-95 ${destaqueBarra === 'extrato' ? 'text-[#182200]' : 'text-[#aeaeb2]'}`}
             >
-              <div className="w-7 h-7 flex items-center justify-center rounded-[9px]">
+              <div
+                className="w-9 h-9 flex items-center justify-center rounded-[12px] transition-all"
+                style={destaqueBarra === 'extrato' ? ABA_ATIVA : undefined}
+              >
                 <i className="fas fa-university text-lg"></i>
               </div>
               <span className="text-[9px] font-black uppercase tracking-wide">Extrato</span>
             </button>
             )}
 
+            {/* Stets: sempre verde, mesmo sem estar selecionado — é o único item
+                colorido da barra, o que o destaca e convida ao clique. */}
             <button
-              onClick={() => setActiveTab('metas')}
-              className={`min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'metas' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
+              onClick={() => setActiveTab('coach')}
+              className={`min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 transition-colors active:scale-95 ${destaqueBarra === 'coach' ? 'text-[#182200]' : 'text-[#aeaeb2]'}`}
             >
-              <div className={`w-7 h-7 flex items-center justify-center rounded-[9px] transition-all ${activeTab === 'metas' ? 'bg-[#f0fad0]' : ''}`}>
-                <i className={`fas fa-bullseye text-lg ${activeTab === 'metas' ? 'k-glow-lime' : ''}`}></i>
+              <div
+                className="w-9 h-9 flex items-center justify-center rounded-[12px] transition-all"
+                style={destaqueBarra === 'coach' ? ABA_ATIVA : undefined}
+              >
+                <i className="fas fa-bolt text-lg"></i>
+              </div>
+              <span className="text-[9px] font-black uppercase tracking-wide">Stets</span>
+            </button>
+
+            <button
+              onClick={() => irParaAba('metas')}
+              className={`min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 transition-colors active:scale-95 relative ${destaqueBarra === 'metas' ? 'text-[#182200]' : 'text-[#aeaeb2]'}`}
+            >
+              <div
+                className="w-9 h-9 flex items-center justify-center rounded-[12px] transition-all"
+                style={destaqueBarra === 'metas' ? ABA_ATIVA : undefined}
+              >
+                <i className="fas fa-bullseye text-lg"></i>
               </div>
               <span className="text-[9px] font-black uppercase tracking-wide">Metas</span>
             </button>
 
             <button
-              onClick={() => setActiveTab('dividas')}
-              className={`min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'dividas' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
+              onClick={() => irParaAba('dividas')}
+              className={`min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 transition-colors active:scale-95 relative ${destaqueBarra === 'dividas' ? 'text-[#182200]' : 'text-[#aeaeb2]'}`}
             >
-              <div className={`w-7 h-7 flex items-center justify-center rounded-[9px] transition-all ${activeTab === 'dividas' ? 'bg-[#f0fad0]' : ''}`}>
-                <i className={`fas fa-file-invoice-dollar text-lg ${activeTab === 'dividas' ? 'k-glow-lime' : ''}`}></i>
+              <div
+                className="w-9 h-9 flex items-center justify-center rounded-[12px] transition-all"
+                style={destaqueBarra === 'dividas' ? ABA_ATIVA : undefined}
+              >
+                <i className="fas fa-file-invoice-dollar text-lg"></i>
               </div>
               <span className="text-[9px] font-black uppercase tracking-wide">Dívidas</span>
             </button>
@@ -3668,7 +4701,7 @@ const App: React.FC = () => {
                 onClick={() => setShowQuoteModal(true)}
                 className="min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 transition-colors active:scale-95 relative"
               >
-                <div className="w-7 h-7 flex items-center justify-center rounded-[9px]" style={showQuoteModal ? {background:'rgba(34,197,94,0.12)'} : {}}>
+                <div className="w-9 h-9 flex items-center justify-center rounded-[12px]" style={showQuoteModal ? {background:'rgba(34,197,94,0.12)'} : {}}>
                   <i className="fas fa-quote-left text-lg" style={{color:'#22c55e'}}></i>
                 </div>
                 <span className="text-[9px] font-black uppercase tracking-wide" style={{color:'#22c55e'}}>Frase</span>
@@ -3676,11 +4709,14 @@ const App: React.FC = () => {
             )}
 
             <button
-              onClick={() => setActiveTab('desempenho')}
-              className={`min-w-[80px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 transition-colors active:scale-95 relative ${activeTab === 'desempenho' ? 'text-[#7ab800]' : 'text-[#aeaeb2]'}`}
+              onClick={() => irParaAba('desempenho')}
+              className={`min-w-[80px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 transition-colors active:scale-95 relative ${destaqueBarra === 'desempenho' ? 'text-[#182200]' : 'text-[#aeaeb2]'}`}
             >
-              <div className={`w-7 h-7 flex items-center justify-center rounded-[9px] transition-all ${activeTab === 'desempenho' ? 'bg-[#f0fad0]' : ''}`}>
-                <i className={`fas fa-chart-pie text-lg ${activeTab === 'desempenho' ? 'k-glow-lime' : ''}`}></i>
+              <div
+                className="w-9 h-9 flex items-center justify-center rounded-[12px] transition-all"
+                style={destaqueBarra === 'desempenho' ? ABA_ATIVA : undefined}
+              >
+                <i className="fas fa-chart-pie text-lg"></i>
               </div>
               <span className="text-[9px] font-black uppercase tracking-wide">Desempenho</span>
             </button>
@@ -3689,7 +4725,7 @@ const App: React.FC = () => {
               onClick={() => setShowSettings(true)}
               className="min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 text-[#aeaeb2] transition-colors active:scale-95"
             >
-              <div className="w-7 h-7 flex items-center justify-center rounded-[9px]">
+              <div className="w-9 h-9 flex items-center justify-center rounded-[12px]">
                 <i className="fas fa-user-circle text-lg"></i>
               </div>
               <span className="text-[9px] font-black uppercase tracking-wide">Perfil</span>
@@ -3734,9 +4770,17 @@ const App: React.FC = () => {
           onLaunchExpense={(pre) => setPendingExpense({ source: 'manual', ...pre })}
           onCreateItem={handleCreateItem}
           onAddPartial={handleAddPartial}
-          onRenomearPartial={handleRenomearPartial}
           onBancoRemovido={handleBancoRemovido}
-          onClose={() => { setShowExtrato(false); setOfInitialCardLast4(undefined); }}
+          onFilaMudou={(pendentes) => setCategorizeCount(pendentes)}
+          /* Recontar ao sair: a categorização acontece dentro do Extrato, e sem
+             isto o badge e o pop-up seguiam anunciando o que o cliente acabou
+             de resolver. Ele categorizava, fechava, e o número continuava lá
+             (Eduardo, 2026-09-16). */
+          onClose={() => {
+            setShowExtrato(false);
+            setOfInitialCardLast4(undefined);
+            recontarPendentes();
+          }}
         />
       )}
 
@@ -3745,6 +4789,7 @@ const App: React.FC = () => {
       {showCategorizePopup && categorizeCount > 0 && hasOpenFinanceAccess(user) && (
         <CategorizePopup
           count={categorizeCount}
+          automaticas={pendentesAutomaticas}
           onCategorize={() => { setShowCategorizePopup(false); handleOpenExtrato(); }}
           onDismiss={() => setShowCategorizePopup(false)}
         />
@@ -3798,7 +4843,28 @@ const App: React.FC = () => {
       )}
 
       {/* Expense confirmation / entry sheet */}
+      {/* Os inputs precisam existir na árvore para os botões do pop-up
+          conseguirem dispará-los. */}
+      <input
+        ref={captura.inputsOcultos.inputFoto}
+        type="file" accept="image/*" capture="environment" className="hidden"
+        onChange={captura.inputsOcultos.aoEscolherArquivo}
+      />
+      <input
+        ref={captura.inputsOcultos.inputGaleria}
+        type="file" accept="image/*" className="hidden"
+        onChange={captura.inputsOcultos.aoEscolherArquivo}
+      />
+
       <ExpenseSheet
+        onAbrirCamera={captura.tirarFoto}
+        onAbrirGaleria={captura.anexarImagem}
+        onAbrirVoz={captura.falar}
+        onPerguntarStets={(p) => {
+          setPendingExpense(null);
+          setStetsPerguntaInicial(p);
+          setActiveTab('coach');
+        }}
         open={!!pendingExpense}
         source={pendingExpense?.source ?? 'manual'}
         items={items}
@@ -3807,6 +4873,10 @@ const App: React.FC = () => {
         initialDescription={pendingExpense?.description}
         initialInstallments={pendingExpense?.installments}
         initialCategory={pendingExpense?.category}
+        irDiretoParaLinha={pendingExpense?.irDiretoParaLinha}
+        parcelaDoBanco={pendingExpense?.parcelaDoBanco}
+        cartoesConectadosLast4={Object.values(ofCartoesPorConexao).flat()}
+        contaConectada={planoEmModoOF}
         knownPayMethod={pendingExpense?.knownPayMethod}
         knownCardLast4={pendingExpense?.knownCardLast4}
         defaultPurchaseDate={pendingExpense?.purchaseDate}
@@ -3837,6 +4907,17 @@ const App: React.FC = () => {
            * a fila, em vez de fingir que deu certo.
            */
           const ofTx = pendingExpense?.ofTx;
+          // Nome do estabelecimento trocado na tela de lançamento também ensina
+          // o dicionário, como a pergunta do Extrato.
+          const nomeDoBanco = pendingExpense?.description?.trim() ?? '';
+          const nomeEscolhido = data.description?.trim() ?? '';
+          if (ofTx && nomeDoBanco && nomeEscolhido && nomeEscolhido !== nomeDoBanco) {
+            getToken({ template: 'supabase' }).then((t) => fetch('/api/merchant-nome', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t ?? ''}` },
+              body: JSON.stringify({ textoDoBanco: nomeDoBanco, nome: nomeEscolhido }),
+            })).catch(() => { /* dicionário é acessório */ });
+          }
           if (ofTx && data.itemId) {
             const token = await getToken({ template: 'supabase' }).catch(() => null);
             const auth = { 'Content-Type': 'application/json', Authorization: `Bearer ${token ?? ofAuthToken ?? ''}` };

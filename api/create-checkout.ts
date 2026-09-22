@@ -76,6 +76,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!membership) return res.status(404).json({ error: 'Household not found' });
 
   const householdId = membership.household_id;
+
+  /**
+   * Plano compartilhado, cobrança única.
+   *
+   * A assinatura mora no household, então um casal usa uma só. Sem esta
+   * checagem, o segundo a abrir a tela de pagamento gerava um novo pedido e a
+   * casa era cobrada duas vezes pelo mesmo mês — e o webhook, que grava
+   * "hoje + 1 mês", ainda encurtaria a validade em vez de somar
+   * (auditoria de 2026-09-17).
+   */
+  const { data: casa } = await supabase
+    .from('households')
+    .select('subscription_status, subscription_expires_at')
+    .eq('id', householdId)
+    .maybeSingle();
+  const expiraEm = casa?.subscription_expires_at ? new Date(casa.subscription_expires_at as string) : null;
+  if (casa?.subscription_status === 'active' && expiraEm && expiraEm.getTime() > Date.now()) {
+    return res.status(409).json({
+      error: 'Este plano já está com a assinatura ativa. Se vocês dividem a conta, uma assinatura cobre as duas pessoas.',
+      jaAtiva: true,
+      expiraEm: expiraEm.toISOString(),
+    });
+  }
+
   const { origin, plan, tier } = req.body as { origin?: string; plan?: 'monthly' | 'annual'; tier?: 'base' | 'of' };
   const baseUrl = (origin ?? 'https://kashim.com.br').replace(/\/$/, '');
   const cycle: 'monthly' | 'annual' = plan === 'annual' ? 'annual' : 'monthly';

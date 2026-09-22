@@ -46,7 +46,11 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? '';
 const OF_BETA_USER_IDS = (process.env.OF_BETA_USER_IDS ?? '')
   .split(',').map((s) => s.trim()).filter(Boolean);
-const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com', 'remmachado@gmail.com'];
+const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com', 'remmachado.86@gmail.com', 'mouragiany@gmail.com', 'edununesbenedito@gmail.com',
+  'dlcosta.dev@gmail.com', 'arquiteturabrunamaia@gmail.com', 'hugoale09@gmail.com',
+  'luciana.luciano@gmail.com', 'cayolcarvalho@hotmail.com',
+  'alex.radiologia@icloud.com',
+  'kl_soares@yahoo.com.br'];
 
 /**
  * Destinatário do aviso — já filtrado pelo portão do Open Finance.
@@ -67,7 +71,109 @@ const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com', 'remmachado@gmail.com'];
  * push chegar na App Store, `push_devices` fica vazia e isto não faz nada. O
  * aviso continua saindo por e-mail.
  */
-async function pushParaCasa(householdId: string, titulo: string, corpo: string): Promise<boolean> {
+/**
+ * DICIONARIO DE ESTABELECIMENTOS — "AC ANTONIO FARIA LTDA" vira "Malharia".
+ *
+ * O banco manda razao social, ou a descricao crua da maquininha. O cliente
+ * abria o Google para descobrir o que tinha comprado (Eduardo, 2026-09-20).
+ *
+ * Duas fontes, nesta ordem:
+ *   1. o que o proprio Kashim ja descobriu (tabela `merchant_directory`) —
+ *      vale para TODOS os clientes e nao custa consulta nenhuma;
+ *   2. o CNPJ da outra parte, que o extrato ja entrega em Pix, boleto e TED,
+ *      consultado na BrasilAPI (gratuita) e guardado no dicionario.
+ *
+ * Compra no cartao raramente traz documento — para ela, quem alimenta o
+ * dicionario e o proprio cliente, ao renomear o gasto no app.
+ */
+const LIMITE_CONSULTAS_CNPJ = 20; // por rodada: BrasilAPI e gratuita, nao ilimitada
+
+function chaveDescricao(texto: string | null): string | null {
+  const limpo = memoryKey(texto);
+  return limpo.length >= 3 ? `desc:${limpo}` : null;
+}
+
+/** Nome mais curto e legivel que a razao social, quando a Receita tem um. */
+function melhorNome(dados: { nome_fantasia?: string | null; razao_social?: string | null }): string | null {
+  const fantasia = (dados.nome_fantasia ?? '').trim();
+  if (fantasia.length >= 3) return tidyMerchant(fantasia);
+  const razao = (dados.razao_social ?? '').trim();
+  return razao.length >= 3 ? tidyMerchant(razao) : null;
+}
+
+async function consultarCnpj(cnpj: string): Promise<string | null> {
+  try {
+    const r = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (!r.ok) return null;
+    const dados = await r.json() as { nome_fantasia?: string | null; razao_social?: string | null };
+    return melhorNome(dados);
+  } catch {
+    return null; // nome bonito e acessorio: falha aqui nunca derruba a importacao
+  }
+}
+
+/**
+ * Troca o nome cru pelo nome conhecido, nas transacoes que vao ser gravadas.
+ * Mexe so no campo `merchant` — a descricao original continua guardada.
+ */
+async function apelidarEstabelecimentos(txs: Array<{
+  description?: string | null;
+  merchant?: string | null;
+  counterpartyDoc?: string | null;
+}>): Promise<void> {
+  if (txs.length === 0) return;
+
+  const chaves = new Set<string>();
+  for (const t of txs) {
+    const doc = (t.counterpartyDoc ?? '').replace(/\D/g, '');
+    if (doc.length === 14) chaves.add(`cnpj:${doc}`);
+    const porDesc = chaveDescricao(t.merchant ?? t.description ?? null);
+    if (porDesc) chaves.add(porDesc);
+  }
+  if (chaves.size === 0) return;
+
+  const { data: conhecidos } = await db
+    .from('merchant_directory')
+    .select('chave, nome')
+    .in('chave', [...chaves]);
+  const nomePorChave = new Map<string, string>((conhecidos ?? []).map(r => [r.chave as string, r.nome as string]));
+
+  // CNPJs que ninguem consultou ainda: busca agora e guarda para sempre.
+  const novos: Array<{ chave: string; nome: string; fonte: string; origem_texto: string | null }> = [];
+  let consultas = 0;
+  for (const t of txs) {
+    const doc = (t.counterpartyDoc ?? '').replace(/\D/g, '');
+    if (doc.length !== 14) continue;
+    const chave = `cnpj:${doc}`;
+    if (nomePorChave.has(chave) || consultas >= LIMITE_CONSULTAS_CNPJ) continue;
+    consultas++;
+    const nome = await consultarCnpj(doc);
+    if (!nome) continue;
+    nomePorChave.set(chave, nome);
+    novos.push({ chave, nome, fonte: 'brasilapi', origem_texto: t.merchant ?? t.description ?? null });
+  }
+  if (novos.length > 0) {
+    await db.from('merchant_directory').upsert(novos, { onConflict: 'chave', ignoreDuplicates: true });
+  }
+
+  for (const t of txs) {
+    const doc = (t.counterpartyDoc ?? '').replace(/\D/g, '');
+    const porDoc = doc.length === 14 ? nomePorChave.get(`cnpj:${doc}`) : undefined;
+    const chaveDesc = chaveDescricao(t.merchant ?? t.description ?? null);
+    const porDesc = chaveDesc ? nomePorChave.get(chaveDesc) : undefined;
+    // Nome que o cliente ensinou ganha do da Receita: ele sabe onde comprou.
+    const escolhido = porDesc ?? porDoc;
+    if (escolhido) t.merchant = escolhido;
+  }
+}
+
+async function pushParaCasa(householdId: string, tituloBruto: string, corpo: string): Promise<boolean> {
+  // Todo push começa com o nome da marca: é o que aparece na tela bloqueada e
+  // no print que a pessoa compartilha (Eduardo, 2026-09-16). Garantido aqui,
+  // no único ponto de envio, para nenhum aviso novo esquecer.
+  const titulo = /^kashim/i.test(tituloBruto) ? tituloBruto : `Kashim · ${tituloBruto}`;
   const appId = process.env.ONESIGNAL_APP_ID;
   const apiKey = process.env.ONESIGNAL_REST_API_KEY;
   if (!appId || !apiKey) return false;
@@ -103,7 +209,36 @@ async function pushParaCasa(householdId: string, titulo: string, corpo: string):
         android_channel_id: undefined,
       }),
     });
-    return r.ok;
+
+    /**
+     * O OneSignal responde 200 mesmo quando não entrega para NINGUÉM.
+     *
+     * Inscrição antiga, app desinstalado ou notificação desligada no sistema
+     * viram `recipients: 0` com `errors` no corpo — e `r.ok` continua true. Era
+     * por isso que o cron dizia "pushed: 1" enquanto a cliente não recebia nada
+     * (Mariane, 2026-09-19). Agora só conta como enviado o que teve destinatário.
+     */
+    const corpoResp = await r.json().catch(() => ({})) as {
+      id?: string; recipients?: number; errors?: unknown;
+    };
+    /**
+     * `recipients` NÃO vem nesta API — só `id`. Tratar ausência como zero
+     * marcaria como falha um envio aceito (visto no teste de 2026-09-19).
+     * Falha é: HTTP ruim, corpo com `errors`, ou `recipients` explicitamente 0.
+     */
+    const semDestino = corpoResp.recipients === 0;
+    const comErro = !!corpoResp.errors;
+    if (!r.ok || semDestino || comErro) {
+      console.error('[push] nada entregue', {
+        householdId,
+        status: r.status,
+        recipients: corpoResp.recipients ?? null,
+        errors: corpoResp.errors,
+        inscricoes: ids.length,
+      });
+      return false;
+    }
+    return true;
   } catch {
     return false; // push é acessório: falha aqui nunca derruba a sincronização
   }
@@ -695,7 +830,7 @@ async function syncOne(
   forceType?: 'BANK' | 'CREDIT_CARD',
   /** Cartão desta passada. Cada um tem protocolo e janela de 6h próprios. */
   card?: StoredCard,
-): Promise<{ status: string; upserted?: number; reason?: string }> {
+): Promise<{ status: string; upserted?: number; reason?: string; comMemoria?: number }> {
   const statementType = forceType ?? (conn.account_type === 'credit_card' ? 'CREDIT_CARD' : 'BANK');
 
   // Conta e fatura têm protocolos e janelas próprias — misturar as duas numa
@@ -849,6 +984,7 @@ async function syncOne(
    */
   if (isCard && card) {
     const totals = computeBillTotals(todasAsTx);
+    const explicacao = explicarFatura(todasAsTx);
     const anterior = (conn.bill_totals && typeof conn.bill_totals === 'object' && !Array.isArray(conn.bill_totals))
       ? conn.bill_totals as Record<string, unknown>
       : {};
@@ -859,6 +995,11 @@ async function syncOne(
       porCartao[k] = v;
     }
     porCartao[card.last4] = totals;
+    // Conta aberta da fatura, ao lado dela. O extrato do cartão não é salvo em
+    // lugar nenhum — só a soma —, então sem isto não havia como saber DE QUÊ o
+    // número é feito. Chave com "_" e meses com objetos: quem lê faturas pega
+    // só valores numéricos e ignora esta entrada.
+    porCartao[`_conf:${card.last4}`] = explicacao;
 
     /**
      * A cópia em memória tem de acompanhar, senão o cartão seguinte apaga este.
@@ -904,7 +1045,32 @@ async function syncOne(
    * fatura), e a fila recebe só as compras feitas dali para frente — que vencem
    * na fatura do mês seguinte. É assim que a consultoria começa.
    */
-  let txs = todasAsTx.filter((t) => t.date >= cutoff);
+  /**
+   * O corte depende de quem é o dono da conta.
+   *
+   * CLIENTE DA CONSULTORIA (`categorize_from` carimbado): só o que aconteceu
+   * depois da conexão. As faturas anteriores entram cheias, como dívida
+   * assumida, e ninguém categoriza o que está dentro delas.
+   *
+   * USUÁRIO COMUM: o critério é a FATURA JÁ TER SIDO PAGA ou não — não a data
+   * da compra. Quem conecta hoje precisa categorizar tudo que ainda vai honrar,
+   * inclusive a compra de 20/08 que cai na fatura vencendo dia 17/09. Cortando
+   * pela data da compra, esse gasto sumia mesmo sem ter sido pago.
+   *
+   * Isso NÃO reintroduz o problema de 2026-09-10 (48 itens de agosto na fila de
+   * um plano de setembro): ali a fatura de 01/09 já tinha vencido quando o
+   * cliente conectou, e fatura vencida continua fora. O que mudou é que fatura
+   * A VENCER entra inteira, que é como o plano enxerga o mês.
+   *
+   * Lançamento sem vencimento (conta corrente) segue cortando pelo início do
+   * plano: ali não existe fatura, o dinheiro sai na hora.
+   */
+  const hojeStr = toDateStr(new Date());
+  let txs = todasAsTx.filter((t) => {
+    if (conn.categorize_from) return t.date >= cutoff;
+    if (t.billDueDate) return t.billDueDate >= hojeStr;
+    return t.date >= cutoff;
+  });
 
   if (txs.length === 0) {
     await db.from('bank_connections')
@@ -974,6 +1140,9 @@ async function syncOne(
     }
   }
 
+  // Nome do estabelecimento antes de gravar: a fila ja nasce legivel.
+  await apelidarEstabelecimentos(txs);
+
   const rows = txs.map((t) => {
     // Marketplace nunca herda a decisao anterior: mesmo nome, compra diferente.
     const remembered = ehMarketplace(t.merchant ?? t.description)
@@ -982,7 +1151,21 @@ async function syncOne(
     return {
       household_id: conn.household_id,
       connection_id: conn.id,
-      transaction_id: t.transactionId,
+      /**
+       * ID estável mesmo quando o banco não manda um.
+       *
+       * A deduplicação é `onConflict: household_id,transaction_id` — e no
+       * Postgres NULL nunca colide com NULL. Sem `transactionId`, cada
+       * reimportação inseria o extrato inteiro de novo e a fatura crescia a
+       * cada ciclo: a da Renata foi de R$10.516 para R$10.803 e depois
+       * R$11.010, sempre subindo, enquanto a conta do Eduardo — cujo banco
+       * manda o id — ficava correta (2026-09-16).
+       *
+       * A chave repete o mesmo critério que `computeBillTotals` já usava para
+       * não contar a mesma transação duas vezes.
+       */
+      transaction_id: t.transactionId
+        ?? `gen:${conn.id}|${t.date}|${t.amount}|${(t.description ?? '').slice(0, 80)}`,
       fitid: t.fitid,
       account_type: t.accountType,
       transaction_type: t.direction,
@@ -1011,14 +1194,18 @@ async function syncOne(
   const { data, error } = await db
     .from('bank_transactions')
     .upsert(rows, { onConflict: 'household_id,transaction_id', ignoreDuplicates: true })
-    .select('id');
+    .select('id, suggestion_confidence');
   if (error) throw error;
 
   await db.from('bank_connections')
     .update({ last_synced_at: new Date().toISOString(), needs_resync: false })
     .eq('id', conn.id);
 
-  return { status: 'done', upserted: data?.length ?? 0 };
+  // Quantas o app vai lançar sozinho: 'memory' é comerciante que o cliente já
+  // categorizou antes. Serve para o aviso dizer o que vai acontecer em vez de
+  // só contar tudo junto — a fila que ele vai encontrar é menor que o total.
+  const comMemoria = (data ?? []).filter((r) => r.suggestion_confidence === 'memory').length;
+  return { status: 'done', upserted: data?.length ?? 0, comMemoria };
 }
 
 /**
@@ -1227,6 +1414,270 @@ function computeBillTotals(txs: Array<{
   return totals;
 }
 
+/**
+ * Mesma classificação de `computeBillTotals`, mas aberta por origem, para os
+ * meses em volta do atual. Serve só para diagnóstico — não altera valor nenhum.
+ */
+function explicarFatura(txs: Array<{
+  transactionId?: string | null;
+  description?: string | null;
+  amount: number;
+  date: string;
+  direction: string;
+  billDueDate: string | null;
+  billTotal?: number | null;
+  installment: { current: number; total: number } | null;
+}>): Record<string, unknown> {
+  const MES = /^[0-9]{4}-[0-9]{2}$/;
+  const shift = (ym: string, k: number) => {
+    const [y, m] = ym.split('-').map(Number);
+    const d = new Date(Date.UTC(y, m - 1 + k, 1));
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  };
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+
+  const relevantes = txs.filter((t) => t.direction !== 'income' && t.direction !== 'ignore');
+  const meses = relevantes.map((t) => (t.billDueDate ?? '').slice(0, 7)).filter((m) => MES.test(m)).sort();
+  const ultimaReal = meses[meses.length - 1] ?? '';
+  const proximaFatura = ultimaReal ? shift(ultimaReal, 1) : '';
+
+  const declarado = new Map<string, number>();
+  for (const t of txs) {
+    const due = (t.billDueDate ?? '').slice(0, 7);
+    const v = Number(t.billTotal);
+    if (MES.test(due) && Number.isFinite(v) && v > 0) declarado.set(due, v);
+  }
+
+  const agora = new Date();
+  const mesCorrente = `${agora.getUTCFullYear()}-${String(agora.getUTCMonth() + 1).padStart(2, '0')}`;
+  const alvos = [shift(mesCorrente, -1), mesCorrente, shift(mesCorrente, 1)];
+
+  const saida: Record<string, unknown> = {
+    _geral: {
+      transacoes_no_extrato: txs.length,
+      com_vencimento: relevantes.filter((t) => MES.test((t.billDueDate ?? '').slice(0, 7))).length,
+      sem_vencimento: relevantes.filter((t) => !MES.test((t.billDueDate ?? '').slice(0, 7))).length,
+      ultima_fatura_carimbada: ultimaReal || null,
+      compras_sem_vencimento_vao_para: proximaFatura || null,
+      meses_com_total_declarado: [...declarado.entries()].map(([m, v]) => `${m}: ${v}`),
+    },
+  };
+
+  /**
+   * SIMULAÇÃO da correção, só para conferência — não muda valor nenhum.
+   *
+   * Quando o banco ainda não publicou a fatura recém-fechada, toda compra sem
+   * vencimento cai na "próxima fatura", inclusive as feitas DEPOIS do
+   * fechamento, que são da seguinte. Renata, 2026-09-16: setembro estimado em
+   * R$11.010 contra R$8.788 real, com compras até 14/09 numa fatura que fechou
+   * por volta de 08/09.
+   *
+   * O fechamento é inferido do próprio cartão: a compra mais recente que entrou
+   * na última fatura publicada marca o fechamento dela; o próximo cai no mesmo
+   * dia do mês seguinte.
+   */
+  const simulacao = (() => {
+    if (!MES.test(ultimaReal) || !proximaFatura) return null;
+    /**
+     * Fechamento = compra mais recente da última fatura publicada, IGNORANDO:
+     *  - lançamento no dia do vencimento ou depois (pagamento, tarifa, IOF —
+     *    na Renata um desses, datado 17/08, fez o fechamento sair 17 em vez de
+     *    09 e a simulação não separou nada);
+     *  - parcela 2 em diante, que carrega a data da compra original.
+     */
+    const candidatas = relevantes.filter((t) => {
+      const due = t.billDueDate ?? '';
+      if (due.slice(0, 7) !== ultimaReal) return false;
+      if (due.length >= 10 && t.date >= due.slice(0, 10)) return false;
+      if (t.installment && t.installment.current > 1) return false;
+      return Boolean(t.date);
+    }).sort((a, b) => a.date.localeCompare(b.date));
+    const fechUltima = candidatas[candidatas.length - 1]?.date;
+    if (!fechUltima) return null;
+    const ultimasDaFatura = candidatas.slice(-5).reverse()
+      .map((t) => `${t.date} ${r2(t.amount)} ${(t.description ?? '').slice(0, 35)}`);
+    const [fy, fm, fd] = fechUltima.split('-').map(Number);
+    const ultimoDiaMesSeg = new Date(Date.UTC(fy, fm + 1, 0)).getUTCDate();
+    const fechProxima = `${shift(`${fy}-${String(fm).padStart(2, '0')}`, 1)}-${String(Math.min(fd, ultimoDiaMesSeg)).padStart(2, '0')}`;
+    const depoisDaProxima = shift(proximaFatura, 1);
+
+    const vistos = new Set<string>();
+    const baseDe = new Map<object, string>();
+    const linha = (t: { date: string; amount: number; description?: string | null; installment: { current: number; total: number } | null }) =>
+      `${t.date} ${r2(t.amount)} ${(t.description ?? '').slice(0, 35)}${t.installment && t.installment.total > 1 ? ` [${t.installment.current}/${t.installment.total}]` : ''}`;
+    const itensAte: string[] = [];
+    const itensDepois: string[] = [];
+    // Variante com fechamento fixo no dia 9 (Renata: "melhor dia de compra 10").
+    const fechDia9 = `${proximaFatura}-09`;
+    let ateDia9 = 0, depoisDia9 = 0;
+    let ateFech = 0, qtdAte = 0, depois = 0, qtdDepois = 0;
+    for (const t of relevantes) {
+      const id = t.transactionId ?? `${t.date}|${t.amount}|${t.description ?? ''}`;
+      if (vistos.has(id)) continue;
+      vistos.add(id);
+      const due = (t.billDueDate ?? '').slice(0, 7);
+      if (MES.test(due)) { baseDe.set(t, due); continue; }
+      if (t.date <= fechDia9) ateDia9 += t.amount; else depoisDia9 += t.amount;
+      if (t.date <= fechProxima) { ateFech += t.amount; qtdAte++; baseDe.set(t, proximaFatura); itensAte.push(linha(t)); }
+      else { depois += t.amount; qtdDepois++; baseDe.set(t, depoisDaProxima); itensDepois.push(linha(t)); }
+    }
+
+    // Parcelas futuras projetadas com a base corrigida (mesma regra do cálculo real).
+    const ultimaPorCompra = new Map<string, { base: string; amount: number; current: number; total: number }>();
+    for (const t of relevantes) {
+      if (!t.installment || t.installment.total <= 1) continue;
+      const base = baseDe.get(t);
+      if (!base) continue;
+      const semParcela = (t.description ?? '').replace(/\s*\d{1,2}\s*\/\s*\d{1,2}\s*$/, '').trim();
+      const k = `${semParcela}|${t.installment.total}|${Math.round(t.amount)}`;
+      const a = ultimaPorCompra.get(k);
+      if (!a || t.installment.current > a.current) {
+        ultimaPorCompra.set(k, { base, amount: t.amount, current: t.installment.current, total: t.installment.total });
+      }
+    }
+    let projetadoProxima = 0;
+    let projetadoDepois = 0;
+    const projetadasNesta: string[] = [];
+    for (const [k0, { base, amount, current, total }] of ultimaPorCompra.entries()) {
+      for (let k = 1; k <= total - current; k++) {
+        const alvo = shift(base, k);
+        if (alvo <= ultimaReal || declarado.has(alvo)) continue;
+        if (alvo === proximaFatura) {
+          projetadoProxima += amount;
+          projetadasNesta.push(`${r2(amount)} ${k0.split('|')[0].slice(0, 35)} [${current + k}/${total}] base ${base}`);
+        }
+        if (alvo === depoisDaProxima) projetadoDepois += amount;
+      }
+    }
+
+    return {
+      fatura: proximaFatura,
+      ultimas_compras_da_fatura_anterior: ultimasDaFatura,
+      TOTAL_SIMULADO_FATURA_SEGUINTE_ATE_AGORA: r2(depois + projetadoDepois),
+      fechamento_inferido_da_ultima: fechUltima,
+      fechamento_inferido_desta: fechProxima,
+      compras_ate_o_fechamento: { qtd: qtdAte, soma: r2(ateFech) },
+      compras_depois_do_fechamento_iriam_para: depoisDaProxima,
+      compras_depois_do_fechamento: { qtd: qtdDepois, soma: r2(depois) },
+      parcelas_projetadas_nesta: r2(projetadoProxima),
+      TOTAL_SIMULADO: r2(ateFech + projetadoProxima),
+      VARIANTE_FECHAMENTO_DIA_9: {
+        fechamento: fechDia9,
+        compras_ate: r2(ateDia9),
+        compras_depois: r2(depoisDia9),
+      },
+      DETALHE_compras_nesta: itensAte,
+      DETALHE_parcelas_projetadas_nesta: projetadasNesta,
+      DETALHE_compras_depois_do_fechamento: itensDepois,
+    };
+  })();
+  saida._simulacao_correcao = simulacao;
+
+  /**
+   * TESTE CONTRA FATURAS JÁ FECHADAS — sem pedir nada ao cliente.
+   *
+   * A fatura aberta não tem gabarito; as fechadas têm: o banco carimbou cada
+   * item e declarou o total. Para cada uma das últimas, prevê as parcelas a
+   * partir do mês anterior (a mesma regra da projeção) e confere item a item
+   * contra o que o banco de fato cobrou. Mostra também de que dia a que dia vão
+   * as compras de cada fatura, que é o fechamento real, e se os créditos
+   * (estornos) entram no total declarado. Renata, 2026-09-17: simulação deu
+   * R$9.061 contra R$8.788, com R$4.758 só de parcelas previstas.
+   */
+  saida._teste_faturas_fechadas = (() => {
+    const semParc = (d?: string | null) => (d ?? '').replace(/\s*\d{1,2}\s*\/\s*\d{1,2}\s*$/, '').trim();
+    const ehParcelado = (t: { installment: { current: number; total: number } | null }) =>
+      !!t.installment && t.installment.total > 1;
+    const chave = (t: { description?: string | null; amount: number; installment: { current: number; total: number } | null }) =>
+      `${semParc(t.description)}|${t.installment?.total ?? 1}|${Math.round(t.amount)}`;
+    const txt = (t: { date: string; amount: number; description?: string | null; installment: { current: number; total: number } | null }) =>
+      `${t.date} ${r2(t.amount)} ${(t.description ?? '').slice(0, 35)}${ehParcelado(t) ? ` [${t.installment!.current}/${t.installment!.total}]` : ''}`;
+
+    const vistos = new Set<string>();
+    const porMes = new Map<string, typeof txs>();
+    for (const t of txs) {
+      const id = t.transactionId ?? `${t.date}|${t.amount}|${t.description ?? ''}`;
+      if (vistos.has(id)) continue;
+      vistos.add(id);
+      const due = (t.billDueDate ?? '').slice(0, 7);
+      if (!MES.test(due)) continue;
+      porMes.set(due, [...(porMes.get(due) ?? []), t]);
+    }
+    const despesa = (t: { direction: string }) => t.direction !== 'income' && t.direction !== 'ignore';
+    const soma = (l: Array<{ amount: number }>) => r2(l.reduce((a, t) => a + t.amount, 0));
+
+    return [...porMes.keys()].sort().slice(-3).map((mes) => {
+      const doMes = porMes.get(mes) ?? [];
+      const gastos = doMes.filter(despesa);
+      const creditos = doMes.filter((t) => t.direction === 'income');
+      const venc = doMes.find((t) => (t.billDueDate ?? '').length >= 10)?.billDueDate?.slice(0, 10) ?? null;
+      const avulsas = gastos
+        .filter((t) => !ehParcelado(t) || t.installment!.current === 1)
+        .filter((t) => !venc || t.date < venc)
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const noDiaDoVencimentoOuDepois = gastos.filter((t) => venc && t.date >= venc && (!ehParcelado(t) || t.installment!.current === 1));
+      const parcelasReais = gastos.filter((t) => ehParcelado(t) && t.installment!.current > 1);
+
+      const anterior = (porMes.get(shift(mes, -1)) ?? []).filter(despesa);
+      const previstas = anterior.filter((t) => ehParcelado(t) && t.installment!.current < t.installment!.total);
+      const chavesReais = new Set(parcelasReais.map(chave));
+      const chavesPrevistas = new Set(previstas.map(chave));
+      const naoCobradas = previstas.filter((t) => !chavesReais.has(chave(t)));
+      const naoPrevistas = parcelasReais.filter((t) => !chavesPrevistas.has(chave(t)));
+
+      return {
+        fatura: mes,
+        vencimento: venc,
+        TOTAL_DECLARADO_PELO_BANCO: declarado.get(mes) ?? null,
+        soma_dos_gastos_carimbados: soma(gastos),
+        soma_dos_creditos_carimbados: soma(creditos),
+        gastos_menos_creditos: r2(soma(gastos) - soma(creditos)),
+        compras_novas: {
+          qtd: avulsas.length,
+          soma: soma(avulsas),
+          primeira_data: avulsas[0]?.date ?? null,
+          ultima_data: avulsas[avulsas.length - 1]?.date ?? null,
+        },
+        lancamentos_no_dia_do_vencimento_ou_depois: noDiaDoVencimentoOuDepois.slice(0, 10).map(txt),
+        parcelas_cobradas_pelo_banco: { qtd: parcelasReais.length, soma: soma(parcelasReais) },
+        mes_anterior_disponivel: anterior.length > 0,
+        parcelas_previstas_pelo_kashim: { qtd: previstas.length, soma: soma(previstas) },
+        PREVISTAS_QUE_O_BANCO_NAO_COBROU: { soma: soma(naoCobradas), itens: naoCobradas.slice(0, 25).map(txt) },
+        COBRADAS_QUE_NAO_FORAM_PREVISTAS: { soma: soma(naoPrevistas), itens: naoPrevistas.slice(0, 25).map(txt) },
+      };
+    });
+  })();
+
+  for (const alvo of alvos) {
+    const vistos = new Set<string>();
+    const estampados: typeof relevantes = [];
+    const semVenc: typeof relevantes = [];
+    for (const t of relevantes) {
+      const id = t.transactionId ?? `${t.date}|${t.amount}|${t.description ?? ''}`;
+      if (vistos.has(id)) continue;
+      vistos.add(id);
+      const due = (t.billDueDate ?? '').slice(0, 7);
+      if (MES.test(due)) { if (due === alvo) estampados.push(t); }
+      else if (proximaFatura === alvo) semVenc.push(t);
+    }
+    const soma = (l: typeof relevantes) => r2(l.reduce((a, t) => a + t.amount, 0));
+    const datas = semVenc.map((t) => t.date).sort();
+    saida[alvo] = {
+      total_declarado_pelo_banco: declarado.get(alvo) ?? null,
+      lancamentos_com_vencimento_neste_mes: { qtd: estampados.length, soma: soma(estampados) },
+      compras_sem_vencimento_jogadas_aqui: {
+        qtd: semVenc.length,
+        soma: soma(semVenc),
+        de: datas[0] ?? null,
+        ate: datas[datas.length - 1] ?? null,
+        maiores: [...semVenc].sort((a, b) => b.amount - a.amount).slice(0, 6)
+          .map((t) => `${t.date} ${r2(t.amount)} ${(t.description ?? '').slice(0, 40)}`),
+      },
+    };
+  }
+  return saida;
+}
+
 // ─── Autorizações pendentes ──────────────────────────────────────────────────
 
 /**
@@ -1384,7 +1835,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
      * respeita o limite de 1 protocolo a cada 6 horas — e nenhuma janela do dia
      * fica descoberta.
      */
-    const GENERATE_HOURS_UTC = [4, 10, 16, 22];
+    // Technospeed consulta o Banco Central às 4h, 10h, 16h e 22h BRT.
+    // Geramos o protocolo às :45 do minuto ANTES de cada janela (cron: "45 * * * *")
+    // para que ele já esteja na fila quando eles consultarem.
+    // 3:45 BRT = 6:45 UTC → hora UTC 6; 9:45 BRT = 12:45 UTC → 12; etc.
+    const GENERATE_HOURS_UTC = [6, 12, 18, 0];
     const allowGenerate = GENERATE_HOURS_UTC.includes(new Date().getUTCHours())
       || String(req.query.force ?? '') === 'generate';
     // Manutenção: reprocessa o protocolo em aberto descartando as pendentes.
@@ -1396,7 +1851,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const detalhes: Array<Record<string, unknown>> = [];
     // Um aviso por household, não um por conexão: quem tem 3 bancos sincronizados
     // na mesma rodada receberia 3 e-mails idênticos.
-    const newByHousehold = new Map<string, number>();
+    // Por casa: quantas entraram e quantas o app vai lançar sozinho.
+    const newByHousehold = new Map<string, { total: number; memoria: number }>();
 
     for (const conn of conns) {
       if (Date.now() > deadline) break; // resto fica para a próxima execução
@@ -1416,7 +1872,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
          * nada sobre o outro.
          */
         const wantsAccount = (conn as Conn).account_import_enabled !== false;
-        let r: { status: string; upserted?: number; reason?: string };
+        let r: { status: string; upserted?: number; reason?: string; comMemoria?: number };
         if (!wantsAccount) {
           r = { status: 'skipped', reason: 'conta corrente desligada pelo cliente' };
         } else {
@@ -1453,7 +1909,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             if (rc.status === 'done') {
               const n = rc.upserted ?? 0;
               upserted += n;
-              if (n > 0) newByHousehold.set(c.household_id, (newByHousehold.get(c.household_id) ?? 0) + n);
+              if (n > 0) {
+                const antes = newByHousehold.get(c.household_id) ?? { total: 0, memoria: 0 };
+                newByHousehold.set(c.household_id, {
+                  total: antes.total + n,
+                  memoria: antes.memoria + (rc.comMemoria ?? 0),
+                });
+              }
             } else if (rc.status === 'processing') processing++;
           } catch (e) {
             detalhes.push({
@@ -1472,7 +1934,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           upserted += n;
           if (n > 0) {
             const hh = (conn as Conn).household_id;
-            newByHousehold.set(hh, (newByHousehold.get(hh) ?? 0) + n);
+            const antes = newByHousehold.get(hh) ?? { total: 0, memoria: 0 };
+            newByHousehold.set(hh, {
+              total: antes.total + n,
+              memoria: antes.memoria + (r.comMemoria ?? 0),
+            });
           }
         }
         else if (r.status === 'processing') processing++;
@@ -1489,16 +1955,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // um segundo e-mail.
     let notified = 0;
     let pushed = 0;
-    for (const [householdId, count] of newByHousehold) {
+    for (const [householdId, { total: count, memoria }] of newByHousehold) {
       const plural2 = count === 1 ? '' : 's';
+      const faltam = Math.max(0, count - memoria);
+
+      /**
+       * O aviso conta a história inteira: o que chegou, o que o Kashim já
+       * reconheceu e o que sobra para a pessoa.
+       *
+       * Só o total confundia — ela via "10 lançamentos" e encontrava 7 na fila,
+       * sem saber por que a conta não fechava (Eduardo, 2026-09-14). E dizer o
+       * que ele resolveu sozinho é o que faz o trabalho do app aparecer.
+       */
+      // Tom de incentivo, não de tarefa: o aviso é o convite para manter o mês
+      // em dia, e é ele que a pessoa vê (e printa) na tela bloqueada.
+      const chegaram = count === 1 ? 'Chegou 1 gasto novo' : `Chegaram ${count} gastos novos`;
+      /**
+       * O texto diz o que de fato acontece.
+       *
+       * O lançamento automático só ocorre quando o app abre o Extrato — falar
+       * "já categorizamos" antes disso fazia o cliente procurar na tela um
+       * gasto que ainda não tinha entrado (Eduardo, 2026-09-20).
+       */
+      const corpo = memoria > 0
+        ? (faltam > 0
+            ? `${chegaram}: ${memoria === 1 ? '1 eu já reconheci e lanço' : `${memoria} eu já reconheci e lanço`} por você ✨ ${faltam === 1 ? 'Falta só 1' : `Faltam só ${faltam}`} pra você categorizar. Toca aqui!`
+            : `${chegaram} e eu ${count === 1 ? 'já reconheci ele' : 'já reconheci todos'} ✨ Toca para eu lançar e você conferir!`)
+        : (count === 1
+            ? 'Chegou 1 gasto novo do seu banco. Leva 1 minuto: Categoriza agora pra manter suas finanças sob controle. 💪💰'
+            : `Chegaram ${count} gastos novos do seu banco. Leva 1 minuto: Categoriza agora pra manter suas finanças sob controle. 💪💰`);
+
       // Push primeiro: é o que chega na hora. O e-mail sai logo abaixo de
       // qualquer jeito — quem não instalou o app depende só dele.
       if (await pushParaCasa(
         householdId,
-        `${count} lançamento${plural2} novo${plural2}`,
-        count === 1
-          ? 'Chegou um gasto do seu banco. Toque para categorizar.'
-          : `Chegaram ${count} gastos do seu banco. Toque para categorizar.`,
+        `Kashim 💚 ${count} gasto${plural2} novo${plural2} no seu extrato`,
+        corpo,
       )) pushed++;
 
       const target = await notifyTargetFor(householdId);
@@ -1518,10 +2010,91 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       notified++;
     }
 
+    /**
+     * LEMBRETE DA FILA PARADA — uma vez por dia, de manhã.
+     *
+     * O aviso de cima só existe para o que entrou NAQUELA rodada. Gasto que
+     * chegou às 3h da manhã avisa às 3h da manhã: se o celular estava sem
+     * internet, ou a pessoa dormindo, não há segunda chance, e ela abre o app
+     * dias depois encontrando fila sem nunca ter sido avisada (Mariane,
+     * 2026-09-19). Aqui o gatilho é a FILA existir, não a chegada.
+     *
+     * Roda só na passada das 9:45 BRT (12h UTC) — é o que garante "uma vez por
+     * dia" sem precisar guardar estado de quem já recebeu. Casa que acabou de
+     * receber o aviso de chegada nesta mesma rodada fica de fora.
+     */
+    let lembretes = 0;
+    if (new Date().getUTCHours() === 12) {
+      const { data: pendentes } = await db
+        .from('bank_transactions')
+        .select('household_id, connection_id, account_type, card_last4, suggestion_confidence')
+        .eq('status', 'pending')
+        .limit(20000);
+
+      /**
+       * O lembrete conta o que a TELA mostra.
+       *
+       * Conta ou cartão com importação desligada some do Extrato, mas as
+       * transações que entraram antes continuavam na contagem — e o aviso
+       * prometia uma fila que o cliente não encontrava (Eduardo, 2026-09-20).
+       */
+      const { data: conexoes } = await db
+        .from('bank_connections')
+        .select('id, account_import_enabled, card_import_enabled, cards')
+        .neq('consent_status', 'revoked');
+      const ligado = new Map<string, { conta: boolean; cartao: boolean; cartoes: Set<string>; desligados: Set<string> }>();
+      for (const c of conexoes ?? []) {
+        const lista = Array.isArray(c.cards) ? c.cards as Array<{ last4?: string; enabled?: boolean }> : [];
+        ligado.set(c.id as string, {
+          conta: c.account_import_enabled !== false,
+          cartao: c.card_import_enabled !== false,
+          cartoes: new Set(lista.filter(k => k?.enabled && k?.last4).map(k => String(k.last4))),
+          desligados: new Set(lista.filter(k => k?.enabled === false && k?.last4).map(k => String(k.last4))),
+        });
+      }
+      const apareceNaTela = (t: { connection_id?: string | null; account_type?: string | null; card_last4?: string | null }) => {
+        const info = ligado.get(t.connection_id ?? '');
+        if (!info) return false; // conexão revogada ou inexistente: não avisa
+        if (t.account_type === 'credit_card') {
+          if (!info.cartao) return false;
+          if (!t.card_last4) return true;
+          const numero = String(t.card_last4);
+          if (info.cartoes.has(numero)) return true;
+          // Numero fora da lista e cartao virtual/adicional: gasto real.
+          return !info.desligados.has(numero);
+        }
+        return info.conta;
+      };
+
+      const porCasa = new Map<string, { precisa: number; memoria: number }>();
+      for (const t of pendentes ?? []) {
+        const hid = t.household_id as string;
+        if (newByHousehold.has(hid)) continue; // já avisada agora há pouco
+        if (!apareceNaTela(t)) continue;
+        const atual = porCasa.get(hid) ?? { precisa: 0, memoria: 0 };
+        if (t.suggestion_confidence === 'memory') atual.memoria++;
+        else atual.precisa++;
+        porCasa.set(hid, atual);
+      }
+
+      for (const [hid, { precisa, memoria }] of porCasa) {
+        if (precisa + memoria === 0) continue;
+        const titulo = precisa > 0
+          ? `Kashim 💚 ${precisa} gasto${precisa === 1 ? '' : 's'} esperando você`
+          : 'Kashim 💚 Tem gasto pronto para entrar';
+        const corpo = precisa > 0
+          ? (memoria > 0
+              ? `${precisa === 1 ? '1 gasto precisa' : `${precisa} gastos precisam`} da sua categoria, e ${memoria === 1 ? 'outro já reconhecemos' : `outros ${memoria} já reconhecemos`} ✨ Leva 1 minuto e seu mês fica em dia. 💪💰`
+              : `${precisa === 1 ? '1 gasto do seu banco está' : `${precisa} gastos do seu banco estão`} esperando sua categoria. Leva 1 minuto pra manter tudo sob controle. 💪💰`)
+          : `${memoria === 1 ? '1 gasto já reconhecido entra' : `${memoria} gastos já reconhecidos entram`} no seu plano assim que você abrir o app ✨`;
+        if (await pushParaCasa(hid, titulo, corpo)) lembretes++;
+      }
+    }
+
     return res.status(200).json({
       ok: true,
       mode: allowGenerate ? 'generate' : 'monitor',
-      done, processing, errors, skipped, upserted, promoted, notified, pushed,
+      done, processing, errors, skipped, upserted, promoted, notified, pushed, lembretes,
       // Sem isto, um contador de erro nao dizia QUAL conexao, QUAL cartao, nem
       // por que — e diagnosticar virava adivinhacao contra a producao.
       detalhes,

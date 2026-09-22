@@ -224,6 +224,13 @@ const InvitePartner: React.FC<InvitePartnerProps> = ({ db, householdId, currentU
                   {copied ? <i className="fas fa-check text-green-400"></i> : <i className="fas fa-copy"></i>}
                 </button>
               </div>
+              <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-2xl px-4 py-3 flex gap-2 items-start">
+                <i className="fas fa-exclamation-triangle text-yellow-400 text-xs mt-0.5 shrink-0"></i>
+                <p className="text-yellow-300 text-[11px] leading-relaxed">
+                  <strong>Importante:</strong> ao clicar no link, a conta conectada é a que estiver ativa no celular do(a) parceiro(a).
+                  Peça para ele(a) abrir o link <strong>logado(a) na própria conta</strong> — ou sair da conta antes de clicar, para cadastrar do zero.
+                </p>
+              </div>
             </div>
           )}
         </form>

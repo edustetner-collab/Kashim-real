@@ -133,6 +133,13 @@ interface StoredCard {
   enabled: boolean;
   protocolId: string | null;
   protocolAt: string | null;
+  /**
+   * Finais que o banco carimba nas compras e pertencem a ESTE cartao:
+   * adicional do conjuge, virtual da compra online, ou o numero do plastico
+   * quando difere do numero da conta do cartao. O Itau do Michael mandou
+   * quatro numeros para dois cartoes (2026-09-21).
+   */
+  adicionais?: string[];
 }
 
 interface TSAddress {
@@ -320,7 +327,11 @@ const BANK_NAMES: Record<string, string> = {
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? '';
 const OF_BETA_USER_IDS = (process.env.OF_BETA_USER_IDS ?? '')
   .split(',').map((s) => s.trim()).filter(Boolean);
-const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com', 'remmachado@gmail.com'];
+const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com', 'remmachado.86@gmail.com', 'mouragiany@gmail.com', 'edununesbenedito@gmail.com',
+  'dlcosta.dev@gmail.com', 'arquiteturabrunamaia@gmail.com', 'hugoale09@gmail.com',
+  'luciana.luciano@gmail.com', 'cayolcarvalho@hotmail.com',
+  'alex.radiologia@icloud.com',
+  'kl_soares@yahoo.com.br'];
 
 /**
  * Espelha `lib/ofAccess.ts` no servidor. Esconder o botão não impede ninguém de
@@ -570,19 +581,66 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // ── PATCH — status do consentimento ou liga/desliga do cartão ──────────────
     if (req.method === 'PATCH') {
-      const { householdId, connectionId, consentStatus, cardImport, accountImport, cardLast4 } = req.body as {
+      const { householdId, connectionId, consentStatus, cardImport, accountImport, cardLast4, vincularAdicional } = req.body as {
         householdId?: string;
         connectionId?: string;
         consentStatus?: string;
         cardImport?: boolean;
         accountImport?: boolean;
         cardLast4?: string;
+        /** { adicional: '1210', principal: '5198' } — ou principal vazio para desfazer. */
+        vincularAdicional?: { adicional?: string; principal?: string };
       };
 
       if (!householdId || !connectionId) {
         return res.status(400).json({ error: 'householdId e connectionId obrigatórios' });
       }
       if (!(await isMember(sub, householdId))) return res.status(403).json({ error: 'Forbidden' });
+
+      /**
+       * Dizer de qual cartao e o adicional.
+       *
+       * O banco nao informa isso, e sem a amarracao o cliente ve "Cartao
+       * ••1210 · adicional" solto, sem saber que e do 5198. Uma resposta dele
+       * resolve para sempre — e nada aqui muda valor: e so agrupamento.
+       */
+      if (vincularAdicional) {
+        const adicional = (vincularAdicional.adicional ?? '').trim();
+        const principal = (vincularAdicional.principal ?? '').trim();
+        if (!adicional) return res.status(400).json({ error: 'adicional obrigatório' });
+
+        const { data: conn } = await db
+          .from('bank_connections')
+          .select('cards')
+          .eq('id', connectionId)
+          .eq('household_id', householdId)
+          .maybeSingle();
+        if (!conn) return res.status(404).json({ error: 'Conexão não encontrada' });
+
+        const cards: StoredCard[] = Array.isArray(conn.cards) ? conn.cards : [];
+        // Tira o adicional de qualquer cartao antes de colocar no escolhido:
+        // sem isto, mudar de ideia deixaria o mesmo numero em dois lugares.
+        const limpos = cards.map((c) => ({
+          ...c,
+          adicionais: (c.adicionais ?? []).filter((n) => n !== adicional),
+        }));
+        const próximos = principal
+          ? limpos.map((c) => (c.last4 === principal
+              ? { ...c, adicionais: [...(c.adicionais ?? []), adicional] }
+              : c))
+          : limpos;
+
+        if (principal && !próximos.some((c) => c.last4 === principal)) {
+          return res.status(400).json({ error: 'Cartão principal não encontrado nesta conexão' });
+        }
+
+        const { error } = await db
+          .from('bank_connections')
+          .update({ cards: próximos })
+          .eq('id', connectionId).eq('household_id', householdId);
+        if (error) throw error;
+        return res.status(200).json({ ok: true, cards: próximos });
+      }
 
       // Liga/desliga: a conta corrente, ou UM cartão específico.
       if (typeof cardImport === 'boolean' || typeof accountImport === 'boolean') {

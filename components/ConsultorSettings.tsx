@@ -26,8 +26,18 @@ const ConsultorSettings: React.FC<ConsultorSettingsProps> = ({ db, onClose }) =>
   useEffect(() => { loadAssistants(); }, []);
 
   async function loadAssistants() {
-    const { data } = await db.from('admin_users').select('*').order('created_at');
-    setAssistants(data ?? []);
+    // Via servidor: admin_users é revogada para o cliente (lock-admin-users.sql).
+    try {
+      const token = await getToken({ template: 'supabase' });
+      const res = await fetch('/api/list-assistants', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) { setAssistants([]); return; }
+      const { assistants } = await res.json() as { assistants: { id: string; email: string; name: string }[] };
+      setAssistants(assistants ?? []);
+    } catch {
+      setAssistants([]);
+    }
   }
 
   async function handleAddAssistant(e: React.FormEvent) {

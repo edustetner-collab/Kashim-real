@@ -4,7 +4,7 @@
   "framework": "vite",
   "crons": [
     { "path": "/api/trial-reminders", "schedule": "0 12 * * *" },
-    { "path": "/api/of-cron", "schedule": "0 * * * *" }
+    { "path": "/api/of-cron", "schedule": "45 * * * *" }
   ],
   "functions": {
     "api/of-sync.ts": { "maxDuration": 60 },

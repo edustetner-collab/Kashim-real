@@ -1,38 +1,20 @@
 import { useAuth } from '@clerk/clerk-react';
-import { useEffect, useState } from 'react';
+import { useMemo } from 'react';
 import { createAuthClient } from './supabase';
 import { SupabaseClient } from '@supabase/supabase-js';
 
-// Retorna um cliente Supabase autenticado com o token do Clerk (template "supabase")
-// O token é assinado com HS256 usando o JWT secret do Supabase
-// O claim "sub" contém o Clerk user ID, usado pelas RLS policies
-export function useSupabase() {
-  const { getToken } = useAuth();
-  const [client, setClient] = useState<SupabaseClient | null>(null);
+// Cliente Supabase autenticado com o token do Clerk (template "supabase").
+// O token é assinado com HS256 usando o JWT secret do Supabase e o claim "sub"
+// carrega o Clerk user ID, que as policies de RLS usam.
+//
+// O client é criado uma vez e busca o token fresco a cada requisição, em vez de
+// ser recriado num intervalo: o token vive 60s e o timer parava em aba inativa,
+// o que derrubava requisições com "JWT expired".
+export function useSupabase(): SupabaseClient | null {
+  const { getToken, isLoaded, isSignedIn } = useAuth();
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function init() {
-      try {
-        const token = await getToken({ template: 'supabase' });
-        if (!token || cancelled) return;
-        setClient(createAuthClient(token));
-      } catch (e) {
-        console.error('Erro ao obter token Supabase:', e);
-      }
-    }
-
-    init();
-
-    // Renova o token a cada 50 segundos (lifetime é 60s)
-    const interval = setInterval(init, 50_000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [getToken]);
-
-  return client;
+  return useMemo(() => {
+    if (!isLoaded || !isSignedIn) return null;
+    return createAuthClient(() => getToken({ template: 'supabase' }));
+  }, [isLoaded, isSignedIn, getToken]);
 }
