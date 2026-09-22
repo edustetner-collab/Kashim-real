@@ -86,6 +86,16 @@ const CATEGORY_CONFIG: Record<string, { label: string; color: string; icon: stri
   [CategoryType.CREDIT_CARD]:      { label: 'Cartão',   color: '#ff3b30', icon: 'fa-credit-card'     },
 };
 
+/** "há 20 min" — sinal de vida do banco sem precisar de texto explicativo. */
+function desdeQuando(iso: string): string {
+  const min = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (min < 2) return 'agora';
+  if (min < 60) return `há ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `há ${h} h`;
+  return `há ${Math.round(h / 24)} d`;
+}
+
 function formatCurrencyBR(val: number) {
   return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
@@ -579,6 +589,15 @@ export default function ExtratoBancario({
   const [vinculando, setVinculando] = useState<{ conn: BankConn; adicional: string } | null>(null);
   const [salvandoVinculo, setSalvandoVinculo] = useState(false);
   const [renomear, setRenomear] = useState<{ tx: BankTransaction; original: string; depois: DepoisDoNome } | null>(null);
+  /** "Entendi, não mostrar mais": preferência de leitura, fica no aparelho. */
+  const chaveAvisoRitmo = householdId ? `kashim_aviso_ritmo_${householdId}` : '';
+  const [avisoRitmoFechado, setAvisoRitmoFechado] = useState(() => {
+    try { return !!chaveAvisoRitmo && localStorage.getItem(chaveAvisoRitmo) === '1'; } catch { return false; }
+  });
+  const fecharAvisoRitmo = () => {
+    setAvisoRitmoFechado(true);
+    try { if (chaveAvisoRitmo) localStorage.setItem(chaveAvisoRitmo, '1'); } catch { /* sem localStorage, só nesta sessão */ }
+  };
   const [nomeNovo, setNomeNovo] = useState('');
   /** Transação que o cliente pediu para descartar — aguardando confirmação */
   const [pendingDiscard, setPendingDiscard] = useState<BankTransaction | null>(null);
@@ -1495,7 +1514,31 @@ export default function ExtratoBancario({
               </p>
             </div>
           ) : (
-            banks.map((b) => {
+            <>
+            {/* Recado ÚNICO, antes da lista: repetido em cada banco, ele tomava
+                quase meia tela com dois bancos conectados (Eduardo, 2026-09-22).
+                Some de vez quando o cliente diz que entendeu. */}
+            {!avisoRitmoFechado && (
+              <div className="mb-2.5 flex items-start gap-2.5 rounded-2xl border border-[#7ab8e8] bg-[#e8f4fd] px-3.5 py-3">
+                <i className="fas fa-arrows-rotate text-[13px] text-[#1a6fa8] mt-[2px] flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[12px] font-black leading-snug text-[#0d2d44]">
+                    Seus bancos atualizam sozinhos, várias vezes ao dia
+                  </p>
+                  <p className="mt-1 text-[11px] leading-snug text-[#1a3d5c]">
+                    O gasto não chega na hora da compra: cada banco tem o próprio ritmo e pode levar até 24h.
+                    Você recebe um aviso quando chegar. <strong>Pode fechar o app.</strong>
+                  </p>
+                  <button
+                    onClick={fecharAvisoRitmo}
+                    className="mt-2 text-[11px] font-black text-[#1a6fa8] active:opacity-70"
+                  >
+                    Entendi, não mostrar mais
+                  </button>
+                </div>
+              </div>
+            )}
+            {banks.map((b) => {
               const ready = b.consentStatus === 'active';
               const pendentesNoBanco = transactions.filter((t) => t.connectionId === b.id).length;
 
@@ -1551,8 +1594,20 @@ export default function ExtratoBancario({
                           <span className="text-[#8e8e93] font-semibold text-sm"> · {b.ownerFirstName}</span>
                         )}
                       </p>
-                      {!ready && (
+                      {/* Em que ponto ESTE banco está, numa linha. Antes essa
+                          explicação era um parágrafo por banco, mais o balão
+                          azul repetido em cada um (Eduardo, 2026-09-22). */}
+                      {!ready ? (
                         <p className="text-xs text-[#8e8e93] truncate">{bankSubtitle(b, pendentesNoBanco)}</p>
+                      ) : (
+                        <p className={`text-xs truncate font-semibold ${pendentesNoBanco > 0 ? 'text-[#5a8c00]' : 'text-[#8e8e93]'}`}>
+                          {!b.lastSyncedAt ? 'Sincronizando com o banco'
+                            : pendentesNoBanco === 0 ? 'Em dia · nada a categorizar'
+                            : `Pronto · ${pendentesNoBanco} esperando você`}
+                          {b.lastSyncedAt && (
+                            <span className="font-normal text-[#aeaeb2]"> · {desdeQuando(b.lastSyncedAt)}</span>
+                          )}
+                        </p>
                       )}
                       {(b.consentStatus === 'pending_authorization' || b.consentStatus === 'failed') && b.openFinanceLink && (
                         <a
@@ -1609,7 +1664,6 @@ export default function ExtratoBancario({
                     const etapaAtual = !b.lastSyncedAt ? 1
                       : pendentesNoBanco === 0 ? 2
                       : 3;
-                    const etapaLabel = etapas[etapaAtual].detalhe;
                     return (
                       <div className="px-4 pt-2 pb-3 border-t border-[#f0f0f0]">
                         {/* Bolinhas + linhas */}
@@ -1638,23 +1692,8 @@ export default function ExtratoBancario({
                             </span>
                           ))}
                         </div>
-                        {/* Frase explicativa do estágio atual */}
-                        <p className="text-[11px] text-[#6e6e73] leading-snug">
-                          {etapaLabel}
-                        </p>
-                        {/* Balão azul permanente: deixa claro que o ciclo nunca
-                            para e que o usuário não precisa fazer nada. */}
-                        <div className="mt-3 flex items-start gap-2.5 bg-[#e8f4fd] border border-[#7ab8e8] rounded-xl px-3 py-2.5">
-                          <i className="fas fa-arrows-rotate text-[#1a6fa8] text-[12px] mt-[2px] flex-shrink-0" />
-                          <div>
-                            <p className="text-[12px] font-bold text-[#0d2d44] leading-snug">
-                              Isso acontece automaticamente, várias vezes ao dia
-                            </p>
-                            <p className="mt-1 text-[11px] text-[#1a3d5c] leading-snug">
-                              Seus gastos não chegam na hora da compra — cada banco tem o próprio ritmo e pode levar até 24h. Assim que os dados chegarem, você recebe uma notificação e as transações aparecem aqui sozinhas. <strong>Pode fechar o app.</strong>
-                            </p>
-                          </div>
-                        </div>
+                        {/* A frase do estágio e o balão azul saíram daqui: o
+                            recado agora é ÚNICO, no topo da lista de bancos. */}
                       </div>
                     );
                   })()}
@@ -1721,7 +1760,8 @@ export default function ExtratoBancario({
                   )}
                 </div>
               );
-            })
+            })}
+            </>
           )}
 
           {cardError && (

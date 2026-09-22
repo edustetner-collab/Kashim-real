@@ -66,7 +66,9 @@ const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com', 'remmachado.86@gmail.com', 'm
   'dlcosta.dev@gmail.com', 'arquiteturabrunamaia@gmail.com', 'hugoale09@gmail.com',
   'luciana.luciano@gmail.com', 'cayolcarvalho@hotmail.com',
   'alex.radiologia@icloud.com',
-  'kl_soares@yahoo.com.br'];
+  'kl_soares@yahoo.com.br',
+  'edu.stetner@gmail.com',
+  'elisamarodriguees@hotmail.com'];
 
 async function hasOpenFinanceAccess(sub: string): Promise<boolean> {
   if (OF_BETA_USER_IDS.includes(sub)) return true;
