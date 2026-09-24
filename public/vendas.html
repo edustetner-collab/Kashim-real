@@ -151,6 +151,8 @@
   .passo{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:22px;}
   .passo .n{font-family:'Archivo';font-weight:800;font-size:13px;color:var(--lime);letter-spacing:.1em;}
   .planos{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;align-items:start;}
+  /* Oferta unica: o card centralizado, sem a largura de duas colunas. */
+  .planos-unico{max-width:460px;margin:0 auto;}
   .plano{background:var(--surface);border:1px solid var(--line);border-radius:24px;padding:26px;display:flex;flex-direction:column;gap:14px;}
   .plano.destaque{border-color:var(--lime);box-shadow:0 18px 44px rgba(122,184,0,.16);}
   .preco{font-family:'Archivo';font-weight:800;font-size:40px;line-height:1;}
@@ -727,41 +729,29 @@
     <p class="eyebrow">Planos</p>
     <h2 style="margin:10px 0 8px">Comece grátis. Decida depois.</h2>
     <p class="lede" style="margin-bottom:22px">30 dias para usar inteiro. Sem cartão agora, sem pegadinha depois.</p>
-    <div class="planos">
-      <div class="plano">
-        <span class="fita">Essencial</span>
-        <div class="precos">
-          <div class="opcao"><p class="rot">Mensal</p><p class="preco">R$ 14,99<span>/mês</span></p></div>
-          <div class="opcao anual"><p class="rot">Anual <b class="ganho">2 meses grátis</b></p><p class="preco">R$ 10,99<span>/mês</span></p></div>
-        </div>
-        <p class="small">No anual você paga uma vez só: R$ 131,88 por 12 meses e economiza R$ 48.</p>
-        <ul>
-          <li>Plano de 12 meses com o método Kashim</li>
-          <li>Diagnóstico mensal, Desempenho e metas</li>
-          <li>Lembretes de conta a vencer</li>
-          <li>Stets, o consultor com IA, incluído</li>
-          <li>Modo casal sem custo extra</li>
-        </ul>
-        <a class="btn btn-ghost" href="https://app.kashim.com.br">Testar grátis</a>
-      </div>
+    <div class="planos planos-unico">
       <div class="plano destaque">
-        <span class="fita">Com Open Finance · recomendado</span>
+        <span class="fita">Com Open Finance</span>
         <div class="precos">
           <div class="opcao"><p class="rot">Mensal</p><p class="preco">R$ 29,90<span>/mês</span></p></div>
           <div class="opcao anual"><p class="rot">Anual <b class="ganho">2 meses grátis</b></p><p class="preco">R$ 24,90<span>/mês</span></p></div>
         </div>
         <p class="small">No anual você paga uma vez só: R$ 298,80 por 12 meses e economiza R$ 60.</p>
         <ul>
-          <li><b>Tudo do Essencial, mais:</b></li>
           <li>Bancos conectados: os gastos entram sozinhos</li>
           <li>Fatura do cartão direto do banco, sempre certa</li>
           <li>Aviso no celular quando chega gasto novo</li>
           <li>O app aprende seus estabelecimentos</li>
+          <li>Plano de 12 meses com o método Kashim</li>
+          <li>Diagnóstico mensal, Desempenho e metas</li>
+          <li>Stets, o consultor com IA, incluído</li>
+          <li>Modo casal sem custo extra</li>
         </ul>
         <a class="btn btn-lime" href="https://app.kashim.com.br">Começar grátis por 30 dias</a>
       </div>
     </div>
-    <p class="small" style="margin-top:16px">Quer acompanhamento humano? A consultoria do Eduardo Stetner é contratada à parte e inclui o app.</p>
+    <p class="small" style="margin-top:16px">Seu banco ainda não conecta? Existe uma versão mais simples, com lançamento manual — fale com a gente e a gente libera.</p>
+    <p class="small" style="margin-top:6px">Quer acompanhamento humano? A consultoria do Eduardo Stetner é contratada à parte e inclui o app.</p>
   </section>
 
   <!-- FAQ -->

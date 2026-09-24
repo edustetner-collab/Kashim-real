@@ -27,7 +27,9 @@ export interface PlanTotals {
   leisure: number;
 }
 
-export function getPlanTotals(items: FinanceItem[], monthIdx: number): PlanTotals {
+export function getPlanTotals(todas: FinanceItem[], monthIdx: number): PlanTotals {
+  // Linha oculta não entra em conta nenhuma — é como se não existisse.
+  const items = todas.filter((i) => !i.oculto);
   const sum = (list: FinanceItem[]) =>
     list.reduce((total, item) => total + (item.values[monthIdx] || 0), 0);
 

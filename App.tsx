@@ -160,6 +160,25 @@ function seedItemHashes(items: FinanceItem[]): Record<string, string> {
   return h;
 }
 
+/** Os 12 meses do plano a partir do mês inicial REAL, sem depender do estado. */
+function janelaDeMeses(startMonth: number, startYear: number): Array<{ year: number; index: number }> {
+  return Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(startYear, startMonth + i, 1);
+    return { index: d.getMonth(), year: d.getFullYear() };
+  });
+}
+
+/** "há 3 h" — saldo do banco é sempre da última leitura, nunca tempo real. */
+function tempoDesde(iso: string | null): string {
+  if (!iso) return '';
+  const min = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (min < 2) return 'agora';
+  if (min < 60) return `há ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `há ${h} h`;
+  return `há ${Math.round(h / 24)} d`;
+}
+
 const App: React.FC = () => {
   const { isSignedIn, user, isLoaded } = useUser();
   const { signOut } = useClerk();
@@ -304,7 +323,7 @@ const App: React.FC = () => {
   /** Pergunta que abre o chat já digitada, vinda de um atalho contextual. */
   const [stetsPerguntaInicial, setStetsPerguntaInicial] = useState('');
   /** O que o Kashim lançou sozinho por reconhecer o comerciante. */
-  const [autoCategorizadas, setAutoCategorizadas] = useState<Array<{ id: string; descricao: string; valor: number; categoria: string; linha?: string }>>([]);
+  const [autoCategorizadas, setAutoCategorizadas] = useState<Array<{ id: string; transactionId: string; descricao: string; valor: number; categoria: string; linha?: string }>>([]);
   /**
    * Pendentes que o app vai lançar SOZINHO quando o Extrato abrir (memória do
    * estabelecimento). Ficam fora da contagem que a pessoa vê: ela via "2
@@ -334,6 +353,8 @@ const App: React.FC = () => {
   const [ofMigracaoAberta, setOfMigracaoAberta] = useState(false);
   /** Onde o Plano estava quando um toque na linha levou para Gastos — o "voltar" devolve para lá. */
   const [voltarAoPlanoY, setVoltarAoPlanoY] = useState<number | null>(null);
+  /** Evita lançar duas vezes se a recontagem rodar em paralelo. */
+  const lancandoAutoRef = useRef(false);
   const [ofMigrando, setOfMigrando] = useState(false);
   /** Relevo do item selecionado na barra de baixo (o mesmo do botão central). */
   const ABA_ATIVA: React.CSSProperties = {
@@ -360,6 +381,21 @@ const App: React.FC = () => {
     } catch { setAutoConferidas(new Set()); }
   }, [chaveAutoConferidas]);
   const marcarConferidas = (ids: string[]) => {
+    /**
+     * Grava no SERVIDOR: o localStorage abaixo é só o eco imediato na tela.
+     * Guardado só no aparelho, o mesmo aviso reaparecia na web depois de
+     * conferido no celular (Eduardo, 2026-09-23).
+     */
+    const transacoes = autoCategorizadas
+      .filter((t) => ids.includes(t.id) && t.transactionId)
+      .map((t) => t.transactionId);
+    if (transacoes.length > 0 && householdId) {
+      getToken({ template: 'supabase' }).then((token) => fetch('/api/of-transactions', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token ?? ''}` },
+        body: JSON.stringify({ householdId, action: 'resumo_visto', transactionIds: transacoes }),
+      })).catch(() => { /* o eco local já tirou da tela */ });
+    }
     setAutoConferidas(prev => {
       const proximo = new Set(prev);
       ids.forEach(id => proximo.add(id));
@@ -406,6 +442,9 @@ const App: React.FC = () => {
   }>>([]);
   /** Cartões de cada conexão — resolve número virtual no cartão real. */
   const [ofCartoesPorConexao, setOfCartoesPorConexao] = useState<Record<string, string[]>>({});
+  /** Saldo somado das contas conectadas, como o banco informou na última leitura. */
+  const [saldoNoBanco, setSaldoNoBanco] = useState<{ total: number; contas: number; lido: string | null } | null>(null);
+  const [explicandoSaldo, setExplicandoSaldo] = useState(false);
   /**
    * Meses cuja fatura o banco JA PUBLICOU, por cartao ("7212" -> {"2026-08"}).
    *
@@ -659,7 +698,16 @@ const App: React.FC = () => {
             }
             return true;
           });
-          const fixedItems = fillVariableValuesFromPartials(liveItems, months);
+          /**
+           * A janela de meses vem do BANCO, não do estado.
+           *
+           * `months` ainda reflete o mês inicial guardado no navegador quando o
+           * load roda — `setStartMonth` acima é assíncrono. Com a janela errada,
+           * o preenchimento escrevia o gasto de setembro na coluna de novembro,
+           * e o valor fantasma era salvo (Eduardo, 2026-09-23).
+           */
+          const janelaDoPlano = janelaDeMeses(loadedStartMonth, loadedStartYear);
+          const fixedItems = fillVariableValuesFromPartials(liveItems, janelaDoPlano);
           savedItemHashRef.current = seedItemHashes(fixedItems);
           setItems(fixedItems);
         }
@@ -941,7 +989,7 @@ const App: React.FC = () => {
         if (dbItems.length > 0) {
           const { deduped, toDelete } = dedupeItems(dbItems);
           toDelete.forEach(id => deleteFinanceItem(db!, id).catch(() => {}));
-          const dedupedFixed = fillVariableValuesFromPartials(deduped, months);
+          const dedupedFixed = fillVariableValuesFromPartials(deduped, janelaDeMeses(clientStartMonth, clientStartYear));
           savedItemHashRef.current = seedItemHashes(dedupedFixed);
           setItems(dedupedFixed);
         } else {
@@ -1500,6 +1548,10 @@ const App: React.FC = () => {
             cardLast4: string | null;
             cards?: Array<{ last4: string }>;
             billTotals?: Record<string, unknown>;
+            saldoAtual?: number | null;
+            saldoEm?: string | null;
+            accountImportEnabled?: boolean;
+            consentStatus?: string | null;
           }>;
         };
         if (cancelado) return;
@@ -1513,6 +1565,18 @@ const App: React.FC = () => {
         }
         // Compra em cartão virtual chega com um número que não é de cartão
         // nenhum do cliente; este mapa devolve ela ao cartão real da conexão.
+        /**
+         * Saldo REAL das contas, só das conexões vivas que importam conta.
+         * É a linha "No banco hoje" — o número que o cliente compara com o app.
+         */
+        const comSaldo = (d.connections ?? []).filter((c) => typeof c.saldoAtual === 'number'
+          && c.consentStatus !== 'revoked' && c.accountImportEnabled !== false);
+        setSaldoNoBanco(comSaldo.length === 0 ? null : {
+          total: comSaldo.reduce((soma, c) => soma + Number(c.saldoAtual ?? 0), 0),
+          contas: comSaldo.length,
+          lido: comSaldo.map((c) => String(c.saldoEm ?? '')).filter(Boolean).sort().slice(-1)[0] ?? null,
+        });
+
         setOfCartoesPorConexao(Object.fromEntries(
           (d.connections ?? []).map((c) => [c.id, (c.cards ?? []).map((x) => x.last4)]),
         ));
@@ -2067,6 +2131,21 @@ const App: React.FC = () => {
     setItems(prev => prev.filter(i => !blankIds.has(i.id)));
   };
 
+  /**
+   * Tira a linha das somas sem apagar nada (decisão de coach).
+   * O histórico continua no banco — é para isso que ela existe.
+   */
+  const handleToggleOculto = (itemId: string, oculto: boolean) => {
+    setItems(prev => prev.map((item, ordem) => {
+      if (item.id !== itemId) return item;
+      const atualizado = { ...item, oculto };
+      if (db && householdId && !simulandoRef.current) {
+        saveFinanceItem(db, householdId, atualizado, ordem).catch(() => window.alert('Não consegui salvar. Tente de novo.'));
+      }
+      return atualizado;
+    }));
+  };
+
   const handleAddPartial = (itemId: string, expense: PartialExpense, overrideYear?: number, overrideMonth?: number) => {
     // Always record in the month the expense actually happened.
     // The credit card "fatura" month is informational only (shown as a label in TetoGastos).
@@ -2343,7 +2422,63 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
       const r = await fetch(`/api/of-transactions?${params}`, { headers: { Authorization: `Bearer ${token}` } });
       if (!r.ok) return;
       const json = await r.json() as { transactions?: Array<Record<string, unknown>> };
-      const lista = json.transactions ?? [];
+      let lista = json.transactions ?? [];
+
+      /**
+       * O que o cliente já ensinou entra sozinho AQUI, na abertura do app.
+       *
+       * Antes isso só acontecia quando o Extrato abria: o push dizia "já lancei
+       * 1 por você", o cliente abria o app e o resumo não vinha — ele passava
+       * por Extrato e Gastos e só depois o aviso aparecia (Eduardo, 2026-09-23).
+       * Só memória lança sozinho; palpite continua esperando a pessoa.
+       */
+      const acharItem = (idDoBanco: string) => itemsAgoraRef.current.find(
+        (i) => i.id === idDoBanco || itemIdMapRef.current[i.id] === idDoBanco,
+      );
+      const daMemoria = lista.filter((t) => t.suggestionConfidence === 'memory'
+        && t.suggestedItemId && acharItem(String(t.suggestedItemId)));
+      const lancadasAgora: Array<{ id: string; transactionId: string; descricao: string; valor: number; categoria: string; linha?: string }> = [];
+      if (daMemoria.length > 0 && !lancandoAutoRef.current) {
+        lancandoAutoRef.current = true;
+        try {
+          for (const t of daMemoria) {
+            const item = acharItem(String(t.suggestedItemId))!;
+            const dateStr = String(t.billDueDate ?? t.transactionDate ?? '');
+            const [y, rawM] = dateStr.split('-').map(Number);
+            if (!y || !rawM) continue;
+            const partialId = crypto.randomUUID();
+            handleAddPartial(item.id, {
+              id: partialId,
+              date: String(t.transactionDate ?? ''),
+              description: String(t.merchant || t.description || ''),
+              value: Number(t.amount ?? 0),
+              paymentSource: t.accountType === 'credit_card' ? 'credit' : 'debit',
+              cardLast4: (t.cardLast4 as string) ?? undefined,
+            }, y, rawM - 1);
+            fetch('/api/of-transactions', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({
+                householdId, transactionId: t.transactionId, action: 'categorize',
+                itemId: t.suggestedItemId, category: t.suggestedCategory, partialId,
+              }),
+            }).catch(() => { /* a próxima recontagem tenta de novo */ });
+            lancadasAgora.push({
+              id: String(t.id ?? t.transactionId ?? ''),
+              transactionId: String(t.transactionId ?? ''),
+              descricao: String(t.description ?? ''),
+              valor: Number(t.amount ?? 0),
+              categoria: String(t.suggestedCategory ?? ''),
+              linha: item.description,
+            });
+          }
+        } finally {
+          lancandoAutoRef.current = false;
+        }
+        const idsLancados = new Set(daMemoria.map((t) => t.transactionId));
+        lista = lista.filter((t) => !idsLancados.has(t.transactionId));
+      }
+
       const precisamDeVoce = lista.filter((t) => t.suggestionConfidence !== 'memory').length;
       setCategorizeCount(precisamDeVoce);
       setPendentesAutomaticas(lista.length - precisamDeVoce);
@@ -2371,20 +2506,27 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
       const limite = Date.now() - 3 * 24 * 60 * 60 * 1000;
       const auto = (jc.transactions ?? []).filter((t) => {
         if (t.suggestionConfidence !== 'memory') return false;
+        // Conferido no servidor = conferido em TODO aparelho (Eduardo, 2026-09-23).
+        if (t.resumoVisto === true) return false;
         const quando = t.categorizedAt ? new Date(String(t.categorizedAt)).getTime() : 0;
         return quando >= limite;
       });
-      setAutoCategorizadas(auto.map((t) => {
+      const doServidor = auto.map((t) => {
         const idDaLinha = String(t.kashimItemId ?? '');
         const linha = itemsAgoraRef.current.find(i => i.id === idDaLinha || itemIdMapRef.current[i.id] === idDaLinha);
         return {
           id: String(t.id ?? t.transactionId ?? `${t.description}|${t.amount}`),
+          transactionId: String(t.transactionId ?? ''),
           descricao: String(t.description ?? ''),
           valor: Number(t.amount ?? 0),
           categoria: String(t.kashimCategory ?? t.suggestedCategory ?? ''),
           linha: linha?.description,
         };
-      }));
+      });
+      // O PATCH pode não ter chegado ainda: o que acabou de entrar sozinho
+      // aparece no resumo na hora, sem esperar a próxima leitura.
+      const vistos = new Set(doServidor.map((t) => t.id));
+      setAutoCategorizadas([...lancadasAgora.filter((t) => !vistos.has(t.id)), ...doServidor]);
     } catch { /* aviso é acessório */ }
   }, [user, householdId, getToken]);
 
@@ -2514,8 +2656,14 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
    * contas no cartao so no mes corrente, e nos meses ja passados somava as
    * categorias cheias MAIS a fatura cheia — contando o mesmo gasto duas vezes.
    */
+  /** Apelido só para deixar explícito o que entra no cálculo abaixo. */
+  const todosOsItens = items;
+
   const monthlySummaries = useMemo((): SummaryData[] => {
     const summaries: SummaryData[] = [];
+    // Linha oculta fica FORA de toda soma — é a dívida que o coach decidiu
+    // deixar para trás, guardada só para consulta (Eduardo, 2026-09-23).
+    const items = todosOsItens.filter((i) => !i.oculto);
     const creditCardItems = items.filter(i => i.category === CategoryType.CREDIT_CARD);
     let accumulated = 0;
     /**
@@ -2747,7 +2895,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
       summaries.push({ totalIncome, totalCreditCard, totalFixed, totalVariable, totalLeisure, jaNaFatura, fixoNoCartao, totalCost, balance, accumulated });
     }
     return summaries;
-  }, [items, months, currentActualMonth, currentActualYear, ofCartoesPorConexao]);
+  }, [todosOsItens, months, currentActualMonth, currentActualYear, ofCartoesPorConexao]);
 
   // Backup automático: snapshot do PLANO INTEIRO (todos os itens) marcado no mês
   // vigente. Rede de segurança contra perda de dados — o saveSnapshot existia mas
@@ -3151,6 +3299,63 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
           </div>
         </div>
       )}
+
+      {/* POR QUE O BANCO E O KASHIM MOSTRAM NÚMEROS DIFERENTES.
+          O cliente olhava os dois e concluía que o app estava errado; na maioria
+          das vezes a diferença é dinheiro já comprometido (Eduardo, 2026-09-23). */}
+      {explicandoSaldo && saldoNoBanco && (() => {
+        const s = monthlySummaries[mobileMonthIdx];
+        const naFila = ofPendentes.reduce((soma, t) => soma + Math.abs(Number(t.amount) || 0), 0);
+        const linhas = [
+          { rotulo: 'Fatura do cartão que ainda vai vencer', valor: s?.totalCreditCard ?? 0,
+            nota: 'Está na sua conta hoje, mas já tem dono' },
+          { rotulo: 'Contas do mês ainda não pagas', valor: (s?.totalFixed ?? 0) + (s?.totalVariable ?? 0),
+            nota: 'Previstas no seu plano, ainda não saíram' },
+          { rotulo: 'Gastos esperando você categorizar', valor: naFila,
+            nota: naFila > 0 ? `${ofPendentes.length} na fila do Extrato` : undefined },
+        ].filter((l) => Math.abs(l.valor) >= 0.01);
+        return (
+          <div className="fixed inset-0 z-[310] flex items-end justify-center lg:items-center" onClick={() => setExplicandoSaldo(false)}>
+            <div className="absolute inset-0 bg-black/55 backdrop-blur-sm" />
+            <div onClick={e => e.stopPropagation()} className="relative w-full max-w-md bg-white rounded-t-3xl lg:rounded-3xl p-5 pb-8 shadow-2xl">
+              <div className="w-10 h-1 bg-[#e8e8ed] rounded-full mx-auto mb-4 lg:hidden" />
+              <h3 className="text-[#1d1d1f] font-black text-lg leading-tight mb-1">Por que os números são diferentes</h3>
+              <p className="text-[#6e6e73] text-[13px] leading-snug mb-4">
+                Os dois estão certos, e medem coisas diferentes.
+              </p>
+              <div className="flex items-start justify-between gap-3 rounded-2xl bg-[#f5f5f7] px-4 py-3">
+                <div>
+                  <p className="text-[#1d1d1f] text-[13.5px] font-bold">No banco {saldoNoBanco.contas > 1 ? `(${saldoNoBanco.contas} contas)` : ''}</p>
+                  <p className="text-[#aeaeb2] text-[11px]">Última leitura {tempoDesde(saldoNoBanco.lido)}</p>
+                </div>
+                <span className="shrink-0 font-black k-num text-[15px] text-[#1d1d1f]">{formatCurrency(saldoNoBanco.total)}</span>
+              </div>
+              <p className="mt-4 mb-1 text-[10px] font-black uppercase tracking-widest text-[#aeaeb2]">Desse dinheiro, já tem destino</p>
+              <div className="flex flex-col">
+                {linhas.map((l) => (
+                  <div key={l.rotulo} className="flex items-start justify-between gap-3 border-b border-[#f0f0f0] py-2.5">
+                    <div className="min-w-0">
+                      <p className="text-[#1d1d1f] text-[13.5px] leading-snug">{l.rotulo}</p>
+                      {l.nota && <p className="mt-0.5 text-[11px] leading-snug text-[#aeaeb2]">{l.nota}</p>}
+                    </div>
+                    <span className="shrink-0 font-black k-num text-[14px] text-[#1d1d1f]">{formatCurrency(l.valor)}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-4 text-[12px] leading-snug text-[#6e6e73]">
+                O saldo do banco é o que existe agora. O número grande do Kashim é o que <strong>sobra</strong> depois
+                que tudo isso acontecer. O saldo é da última leitura do banco, que pode levar até 24h.
+              </p>
+              <button
+                onClick={() => setExplicandoSaldo(false)}
+                className="mt-4 w-full rounded-2xl bg-[#1d1d1f] py-3.5 text-sm font-black text-white active:opacity-80"
+              >
+                Entendi
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {saiDaContaAberto && monthlySummaries[mobileMonthIdx] && (() => {
         const s = monthlySummaries[mobileMonthIdx];
@@ -3940,8 +4145,31 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
                   {planoEmModoOF && (
                     <div className="mt-2 flex items-center gap-1.5 text-white/35 text-[10px]">
                       <i className="fas fa-sync-alt text-[8px]"></i>
-                      <span>Atualizado automaticamente pelo seu banco</span>
+                      {/* NÃO é o saldo do banco: é a conta do plano (entradas −
+                          saídas). Dizer "atualizado pelo seu banco" fazia o
+                          cliente esperar o número da conta dele e não bater
+                          (Eduardo, 2026-09-23). */}
+                      <span>Os lançamentos vêm do seu banco; a sobra é a conta do seu plano</span>
                     </div>
+                  )}
+
+                  {/* O FATO, ao lado da conta do plano: é o número que o cliente
+                      compara com o app do banco. Tocando, ele vê por que os dois
+                      não são iguais, em vez de concluir que o app está errado
+                      (Eduardo, 2026-09-23). */}
+                  {planoEmModoOF && saldoNoBanco && (
+                    <button
+                      onClick={() => setExplicandoSaldo(true)}
+                      className="mt-3 flex w-full items-center gap-2 rounded-2xl bg-white/8 px-3 py-2.5 text-left active:bg-white/12"
+                    >
+                      <i className="fas fa-building-columns text-[10px] text-white/40" />
+                      <span className="text-[11px] text-white/50">No banco hoje</span>
+                      <span className="flex-1 text-right text-[13px] font-black text-white k-num">
+                        {formatCurrency(saldoNoBanco.total)}
+                      </span>
+                      <span className="text-[10px] text-white/35">{tempoDesde(saldoNoBanco.lido)}</span>
+                      <i className="fas fa-circle-info text-[10px] text-white/40" />
+                    </button>
                   )}
 
                   {/* De onde vem o acumulado.
@@ -4281,6 +4509,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
                     : undefined}
                   onAddLeisureItem={block.type === CategoryType.PERSONAL_LEISURE ? handleAddLeisureItem : undefined}
                   isAdmin={isAdmin}
+                  onToggleOculto={handleToggleOculto}
                   onOpenExtrato={block.type === CategoryType.CREDIT_CARD && hasOpenFinanceAccess(user) ? handleOpenExtrato : undefined}
                   onPerguntarStets={(p) => { setStetsPerguntaInicial(p); setActiveTab('coach'); }}
                   // Só o cliente de Open Finance troca o seletor manual de forma de

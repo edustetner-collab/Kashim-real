@@ -28,6 +28,8 @@ interface BlockSectionProps {
   onReplicateValue: (id: string, monthIdx: number) => void;
   onLinkCard?: (itemId: string, cardId: string, linkType?: LinkType) => void;
   onUpdateCardConfig?: (id: string, field: 'closingDay' | 'dueDay', value: number) => void;
+  /** Tira (ou devolve) a linha das somas, mantendo o histórico. Só o coach vê. */
+  onToggleOculto?: (id: string, oculto: boolean) => void;
   onMoveItem?: (id: string, direction: 'up' | 'down') => void;
   trackedByCardId?: Record<string, number>;
   trackedByCardAllMonths?: Record<string, Record<number, number>>;
@@ -89,6 +91,7 @@ interface BlockSectionProps {
 const BlockSection: React.FC<BlockSectionProps> = ({
   title, subtitle, category, items, allCards = [], months, totalIncome, mobileMonthIdx = 0,
   onAddItem, onUpdateValue, onTogglePaid, onRemoveItem, onUpdateDescription, onReplicateValue, onLinkCard,
+  onToggleOculto,
   onUpdateCardConfig, onMoveItem, trackedByCardId, trackedByCardAllMonths, categorizedByCardLast4, categorizedByCardAllMonths, aCategorizarPorCartaoMes, onRequestExpenseSheet, onAddLeisureItem, onPerguntarStets,
   isAdmin = false, onOpenSpending, onOpenExtrato, onNavigateToGastos, faturasPublicadas, onRemovePartial, onMovePartial, hasOpenFinance = false, modoOpenFinance = false,
 }) => {
@@ -971,7 +974,12 @@ const BlockSection: React.FC<BlockSectionProps> = ({
 
           const canReplicate = category === CategoryType.INCOME || category === CategoryType.FIXED_EXPENSE || category === CategoryType.PERSONAL_LEISURE || category === CategoryType.VARIABLE_EXPENSE;
           return (
-            <div key={item.id} className={`relative px-3 py-3 ${canReplicate ? 'pb-9' : ''} ${isPaid ? 'bg-[#f8fdf0]' : ''}`}>
+            <div key={item.id} className={`relative px-3 py-3 ${canReplicate ? 'pb-9' : ''} ${isPaid ? 'bg-[#f8fdf0]' : ''} ${item.oculto ? 'bg-[#fafafa] opacity-60' : ''}`}>
+              {item.oculto && (
+                <span className="absolute right-3 top-1 rounded-full bg-[#8e8e93]/12 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-[#8e8e93]">
+                  Fora da soma
+                </span>
+              )}
               <div className="flex items-center gap-2">
                 <button onClick={() => onRemoveItem(item.id)} className="text-[#ff3b30]/30 active:text-[#ff3b30] shrink-0 p-1">
                   <i className="fas fa-trash-alt text-[11px]"></i>
@@ -987,6 +995,18 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                 <div className="flex items-center gap-1.5 shrink-0">
                   {/* Botão de zerar — só para o coach (isAdmin) acessando o perfil
                       do cliente. Evita ter que selecionar e apagar dígito por dígito. */}
+                  {/* Ocultar: a linha sai de TODAS as somas e continua
+                      consultável em cinza. Só o coach, porque é decisão de
+                      consultoria (Eduardo, 2026-09-23). */}
+                  {isAdmin && onToggleOculto && (
+                    <button
+                      onClick={() => onToggleOculto(item.id, !item.oculto)}
+                      className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${item.oculto ? 'bg-[#7ab800]/15 text-[#5a8c00]' : 'bg-[#8e8e93]/10 text-[#8e8e93]'}`}
+                      title={item.oculto ? 'Voltar a somar esta linha' : 'Ocultar da soma (guarda o histórico)'}
+                    >
+                      <i className={`fas ${item.oculto ? 'fa-eye' : 'fa-eye-slash'} text-[8px]`} />
+                    </button>
+                  )}
                   {isAdmin && (item.values[mobileMonthIdx] ?? 0) > 0 && (
                     <button
                       onClick={() => onUpdateValue(item.id, mobileMonthIdx, '0')}
@@ -1089,16 +1109,8 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                 if (!tracked || !prevMonthName) {
                   const remaining = Math.max(0, fatura - alreadyCategorized);
                   if (!onOpenExtrato) return null;
-                  if (remaining <= 0 && fatura > 0) {
-                    return (
-                      <div className="mt-2 ml-7 px-2.5 py-2 bg-[#f0fad0] border border-[rgba(122,184,0,0.2)] rounded-xl text-[10px]">
-                        <div className="flex items-center gap-1.5 text-[#7ab800]">
-                          <i className="fas fa-check-circle text-xs" />
-                          <span className="font-black text-[9px] uppercase tracking-wider">Fatura categorizada</span>
-                        </div>
-                      </div>
-                    );
-                  }
+                  // Sem pendência, sem recado — ver o comentário na tabela da web.
+                  if (remaining <= 0) return null;
                   if (!fatura) return null;
                   return (
                     <div className="mt-2 ml-7 px-2.5 py-2 bg-orange-50 border border-orange-200 rounded-xl text-[10px]">
@@ -1188,16 +1200,8 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                 // aviso vive no topo da seção, uma vez só.
                 if (mobileMonthIdx === 0 && aCategorizar <= 0) return null;
 
-                if (aCategorizar <= 0) {
-                  return (
-                    <div className="mt-2 ml-7 px-2.5 py-2 bg-[#f0fad0] border border-[rgba(122,184,0,0.2)] rounded-xl text-[10px]">
-                      <div className="flex items-center gap-1.5 text-[#7ab800]">
-                        <i className="fas fa-check-circle text-xs" />
-                        <span className="font-black text-[9px] uppercase tracking-wider">Fatura categorizada</span>
-                      </div>
-                    </div>
-                  );
-                }
+                // Sem pendência, sem recado.
+                if (aCategorizar <= 0) return null;
 
                 return (
                   <div className="mt-2 ml-7 px-2.5 py-2 bg-orange-50 border border-orange-200 rounded-xl text-[10px]">
@@ -1459,7 +1463,10 @@ const BlockSection: React.FC<BlockSectionProps> = ({
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
             <div
               onClick={e => e.stopPropagation()}
-              className="relative w-full max-w-lg bg-white rounded-t-3xl p-5 pb-8 shadow-2xl animate-in slide-in-from-bottom duration-300"
+              /* A barra de baixo cobria a última entrada da lista (Eduardo,
+                 2026-09-23). O respiro soma a barra e a área segura do iPhone. */
+              className="relative w-full max-w-lg bg-white rounded-t-3xl p-5 shadow-2xl animate-in slide-in-from-bottom duration-300"
+              style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 92px)' }}
             >
               <div className="w-10 h-1 bg-[#e8e8ed] rounded-full mx-auto mb-4" />
               <p className="text-[10px] font-black uppercase tracking-widest text-[#aeaeb2]">Entradas recebidas</p>
@@ -1994,14 +2001,11 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                           const aCategorizar = aCategorizarPorCartaoMes?.[last4 ?? '']?.[mIdx] ?? 0;
                           if (!val && !aCategorizar) return null;
 
-                          if (aCategorizar <= 0) {
-                            return (
-                              <div className="mt-1 flex items-center justify-center gap-1 rounded-lg border border-[rgba(122,184,0,0.3)] bg-[#f0fad0]/70 px-1.5 py-1">
-                                <i className="fas fa-check-circle text-[#7ab800] text-[8px]" />
-                                <span className="text-[7px] text-[#7ab800] font-black uppercase tracking-wide">Categorizada</span>
-                              </div>
-                            );
-                          }
+                          // Nada pendente, nada a dizer: o selo "Categorizada"
+                          // aparecia em TODO mês — inclusive nos futuros, que são
+                          // projeção e não foram categorizados por ninguém. Recado
+                          // só quando há o que fazer (Eduardo, 2026-09-23).
+                          if (aCategorizar <= 0) return null;
                           return (
                             <div className="mt-1 border border-orange-200 bg-orange-50 rounded-lg px-1.5 py-1">
                               <div className="flex justify-between items-center gap-1">

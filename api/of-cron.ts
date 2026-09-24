@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
+import { limparNomeEstabelecimento } from '../lib/openfinance/nomeEstabelecimento';
 
 /**
  * Sincronização automática do Extrato Open Finance.
@@ -52,7 +53,9 @@ const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com', 'remmachado.86@gmail.com', 'm
   'alex.radiologia@icloud.com',
   'kl_soares@yahoo.com.br',
   'edu.stetner@gmail.com',
-  'elisamarodriguees@hotmail.com'];
+  'elisamarodriguees@hotmail.com',
+  'lucas.coppede.damiao@gmail.com', 'coppede.bruna@gmail.com',
+  'zaidandesouza@gmail.com'];
 
 /**
  * Destinatário do aviso — já filtrado pelo portão do Open Finance.
@@ -246,7 +249,7 @@ async function pushParaCasa(householdId: string, tituloBruto: string, corpo: str
   }
 }
 
-async function notifyTargetFor(householdId: string): Promise<{ email: string; firstName: string } | null> {
+async function notifyTargetFor(householdId: string): Promise<{ email: string; firstName: string; uid: string } | null> {
   if (!CLERK_SECRET_KEY) return null;
 
   const { data: members } = await db
@@ -275,7 +278,7 @@ async function notifyTargetFor(householdId: string): Promise<{ email: string; fi
       const allowed = OF_BETA_USER_IDS.includes(uid) || OF_BETA_EMAILS.includes(email.toLowerCase());
       if (!allowed) continue;
 
-      return { email, firstName: u.first_name ?? '' };
+      return { email, firstName: u.first_name ?? '', uid };
     } catch { /* tenta o próximo membro */ }
   }
   return null;
@@ -288,6 +291,23 @@ function emailShell(title: string, body: string, cta: string): string {
   <a href="https://kashim.com.br" style="display:inline-block;margin-top:24px;background:#7ab800;color:#fff;font-weight:700;font-size:14px;text-decoration:none;padding:13px 26px;border-radius:12px">${cta}</a>
   <p style="font-size:12px;color:#8e8e93;margin-top:28px">Kashim · seus gastos, sem digitar</p>
 </div>`;
+}
+
+/**
+ * Quem desligou o e-mail de gasto novo nas Configurações não recebe.
+ * Na dúvida (sem linha, erro de leitura), MANDA: silenciar por engano é pior.
+ */
+async function querEmailDeTransacao(uid: string): Promise<boolean> {
+  try {
+    const { data } = await db
+      .from('user_preferences')
+      .select('email_transacoes')
+      .eq('clerk_user_id', uid)
+      .maybeSingle();
+    return data?.email_transacoes !== false;
+  } catch {
+    return true;
+  }
 }
 
 async function sendMail(to: string, subject: string, html: string): Promise<void> {
@@ -554,7 +574,9 @@ interface RawTx {
   participantPayer?: OFParticipant | null;
   participantReceiver?: OFParticipant | null;
   /** Estabelecimento do cartão — nome completo, CNPJ e categoria própria. */
-  creditCardMerchant?: { name?: string | null; category?: string | null } | null;
+  // `cpfCnpj` existe no extrato real do cartão e faltava aqui — era por isso
+  // que o CNPJ da compra no cartão nunca chegava à consulta da Receita.
+  creditCardMerchant?: { name?: string | null; category?: string | null; cpfCnpj?: string | null } | null;
   creditCardInstallmentNumber?: string | number | null;
   creditCardTotalInstallments?: string | number | null;
 }
@@ -573,6 +595,17 @@ function onlyDigits(v: string | null | undefined): string {
 
 /** CPF/CNPJ de quem recebeu (saída) ou pagou (entrada). */
 function extractCounterpartyDoc(raw: RawTx): string | null {
+  /**
+   * COMPRA NO CARTÃO TAMBÉM TEM CNPJ — e estava sendo jogado fora.
+   *
+   * Só se olhava `participant*`, que existe em Pix, TED e boleto. O cartão traz
+   * o documento em `creditCardMerchant.cpfCnpj`, e é ele que permite trocar
+   * "DLKNET *AC PARQUE INDU" pelo nome real na Receita (Eduardo, 2026-09-23:
+   * "joguei no Google e achei o CNPJ sem esforço nenhum").
+   */
+  const doCartao = onlyDigits(raw.creditCardMerchant?.cpfCnpj);
+  if (doCartao.length >= 11) return doCartao;
+
   const party = raw.transactionType === 'debit' ? raw.participantReceiver : raw.participantPayer;
   const doc = onlyDigits(party?.documentNumber?.value);
   return doc.length >= 11 ? doc : null;
@@ -597,7 +630,7 @@ function memoryKey(source: string | null): string {
 
 /** Deixa "EDP SAO PAULO ... S.A." legível. Espelha lib/openfinance/parser.ts. */
 function tidyMerchant(s: string): string {
-  const clean = s.trim().replace(/\s+/g, ' ');
+  const clean = limparNomeEstabelecimento(s).replace(/\s+/g, ' ');
   if (clean !== clean.toUpperCase()) return clean;
   const minor = new Set(['de', 'da', 'do', 'das', 'dos', 'e']);
   return clean.toLowerCase().split(' ').map((w, i) => {
@@ -628,6 +661,8 @@ function extractMerchant(raw: RawTx): string | null {
 
 interface Envelope {
   statement: { status?: string; type?: string; totalTransactions?: string };
+  /** O extrato já traz o saldo da conta — e o Kashim ignorava os dois campos. */
+  balance?: { inicial?: { date?: string; balance?: string }; final?: { date?: string; balance?: string } };
   transaction?: RawBlock;
   transactionDuplicated?: RawBlock;
 }
@@ -941,6 +976,26 @@ async function syncOne(
     return { status: 'error', reason: motivo || 'processamento falhou' };
   }
   if (status === 'PROCESSING' || status === 'PENDING') return { status: 'processing' };
+
+  /**
+   * Saldo da conta corrente, para a linha "No banco hoje".
+   *
+   * Falha aqui (coluna ainda não criada, número estranho) nunca pode derrubar a
+   * importação: saldo é informação a mais, transação é o essencial.
+   */
+  if (!isCard) {
+    // "1.234,56" (pt-BR) e "1234.56" (ponto decimal) chegam dos dois jeitos.
+    // Tratar tudo como pt-BR multiplicaria o segundo caso por 100.
+    const cru = String(env.balance?.final?.balance ?? '').trim();
+    const saldo = Number(cru.includes(',') ? cru.replace(/\./g, '').replace(',', '.') : cru);
+    if (cru && Number.isFinite(saldo)) {
+      try {
+        await db.from('bank_connections')
+          .update({ saldo_atual: saldo, saldo_em: new Date().toISOString() })
+          .eq('id', conn.id);
+      } catch { /* sem a migração rodada, segue sem saldo */ }
+    }
+  }
 
   /**
    * O corte da fila: a data da conexão manda, quando existe.
@@ -1997,6 +2052,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const target = await notifyTargetFor(householdId);
       if (!target) continue;
+      if (!(await querEmailDeTransacao(target.uid))) { continue; }
       const plural = count === 1 ? '' : 's';
       const hi = target.firstName ? `${target.firstName}, seus` : 'Seus';
       await sendMail(

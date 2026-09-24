@@ -53,6 +53,9 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
    */
   const [avisosBanco, setAvisosBanco] = useState<boolean | null>(null);
   const [mexendoAvisos, setMexendoAvisos] = useState(false);
+  /** E-mail de gasto novo: canal separado do push, preferência guardada no banco. */
+  const [emailTransacoes, setEmailTransacoes] = useState<boolean | null>(null);
+  const [mexendoEmail, setMexendoEmail] = useState(false);
   /** Quem divide esta conta (nome e e-mail), para o Modo Casal deixar de ser anonimo. */
   const [pessoasDaConta, setPessoasDaConta] = useState<Array<{ clerkUserId: string; papel: string; nome: string | null; email: string | null; ehVoce: boolean }>>([]);
   const [convitesPendentes, setConvitesPendentes] = useState<Array<{ email: string; enviadoEm: string }>>([]);
@@ -63,10 +66,15 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
       try {
         const jwt = await getToken({ template: 'supabase' });
         if (!jwt) return;
-        const [rPush, rMembros] = await Promise.all([
+        const [rPush, rMembros, rEmail] = await Promise.all([
           fetch(`/api/push-register?householdId=${encodeURIComponent(householdId)}`, { headers: { Authorization: `Bearer ${jwt}` } }),
           fetch(`/api/household-membros?householdId=${encodeURIComponent(householdId)}`, { headers: { Authorization: `Bearer ${jwt}` } }),
+          fetch('/api/avisos-email', { headers: { Authorization: `Bearer ${jwt}` } }),
         ]);
+        if (rEmail.ok) {
+          const d = await rEmail.json() as { ligado?: boolean };
+          if (vivo) setEmailTransacoes(d.ligado !== false);
+        }
         if (!vivo) return;
         if (rPush.ok) {
           const d = await rPush.json() as { ligado?: boolean };
@@ -85,6 +93,25 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
     return () => { vivo = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [householdId]);
+
+  const alternarEmailTransacoes = async () => {
+    if (mexendoEmail || emailTransacoes === null) return;
+    setMexendoEmail(true);
+    const novo = !emailTransacoes;
+    try {
+      const jwt = await getToken({ template: 'supabase' });
+      if (!jwt) return;
+      const r = await fetch('/api/avisos-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+        body: JSON.stringify({ ligado: novo }),
+      });
+      if (r.ok) setEmailTransacoes(novo);
+      else alert('Não consegui salvar essa preferência. Tente de novo.');
+    } finally {
+      setMexendoEmail(false);
+    }
+  };
 
   const alternarAvisosBanco = async () => {
     if (mexendoAvisos) return;
@@ -883,6 +910,30 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
                 As notificações no celular (frase, contas e atualização) chegam pelo
                 aplicativo instalado. O alerta de teto aparece aqui na tela.
               </p>
+            )}
+
+            {/* E-mail é outro canal: dá para querer o push e não querer a caixa
+                de entrada cheia (Eduardo, 2026-09-23). */}
+            {hasOpenFinanceAccess(user) && (
+              <div className="mt-5 bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-bold text-sm">Receber e-mail de gasto novo</p>
+                    <p className="text-zinc-500 text-[11px] leading-snug mt-0.5">
+                      Um e-mail sempre que o banco manda lançamentos novos. Desligar não afeta o aviso
+                      no celular nem os e-mails importantes, como banco autorizado.
+                    </p>
+                  </div>
+                  <button
+                    onClick={alternarEmailTransacoes}
+                    disabled={mexendoEmail || emailTransacoes === null}
+                    aria-label={emailTransacoes ? 'Desligar e-mails de gasto novo' : 'Ligar e-mails de gasto novo'}
+                    className={`shrink-0 w-12 h-7 rounded-full transition-colors relative disabled:opacity-50 ${emailTransacoes ? 'bg-[#7ab800]' : 'bg-zinc-700'}`}
+                  >
+                    <span className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-all ${emailTransacoes ? 'left-6' : 'left-1'}`} />
+                  </button>
+                </div>
+              </div>
             )}
 
             {/* O "testar notificações" era ferramenta de diagnóstico da fase de

@@ -361,6 +361,7 @@ function rowToFinanceItem(row: any): FinanceItem {
     id: row.id,
     description: row.description,
     category: row.category as CategoryType,
+    oculto: row.oculto === true,
     values: row.values ?? new Array(12).fill(0),
     paidStatus: row.paid_status ?? new Array(12).fill(false),
     linkedCardId: row.linked_card_id ?? undefined,
@@ -382,6 +383,7 @@ function financeItemToRow(householdId: string, item: FinanceItem, sortOrder: num
     link_type: item.linkType ?? null,
     closing_day: item.closingDay ?? null,
     due_day: item.dueDay ?? null,
+    oculto: item.oculto === true,
     sort_order: sortOrder,
     updated_at: new Date().toISOString(),
   };

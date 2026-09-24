@@ -30,6 +30,26 @@ const IGNORE_CODES = new Set([
 ]);
 
 /**
+ * Dinheiro indo para, ou voltando de, investimento do próprio cliente.
+ *
+ * O banco carimba isso no código: "APLIC.INVEST FACIL" do Eduardo veio como
+ * AUTOMATICINVESTMENT e mesmo assim recebeu palpite de Conta Variável
+ * (2026-09-23). Não é gasto nem renda — é o dinheiro mudando de lugar.
+ * PROCEEDSINTERESTSANDDIVIDENDS fica de fora de propósito: rendimento PAGO na
+ * conta é renda de verdade.
+ */
+const SAVINGS_CODES = new Set([
+  'AUTOMATICINVESTMENT',
+  'INVESTMENT',
+  'INVESTMENTS',
+  'INVESTMENTREDEMPTION',
+  'INVESTMENTAPPLICATION',
+  'SAVINGS',
+  'SAVINGSDEPOSIT',
+  'SAVINGSWITHDRAWAL',
+]);
+
+/**
  * Códigos ambíguos: pode ser gasto de verdade (pagar o pedreiro) ou só
  * remanejamento. Não chutamos — entram sem sugestão para o cliente decidir.
  */
@@ -231,6 +251,18 @@ export function categoryFromMerchant(nome: string | null): CategoryType | null {
   return null;
 }
 
+/**
+ * Aplicação, resgate e rendimento creditado na própria aplicação.
+ * `RENTAB`/`RENDIMENTO` só contam quando vêm junto de investimento: "PGTO DE
+ * RENDIMENTO - B3" é renda de verdade e continua entrando como renda.
+ */
+function ehMovimentacaoDeInvestimento(texto: string): boolean {
+  const t = texto.toUpperCase();
+  const movimento = /(APLIC|RESGATE|RENTAB)/.test(t);
+  const investimento = /(INVEST|POUPAN|CDB|LCI|LCA|TESOURO|FUNDO|APLIC)/.test(t);
+  return movimento && investimento;
+}
+
 export function suggestCategory(params: {
   accountType: OFAccountType;
   rawDirection: 'credit' | 'debit';
@@ -245,6 +277,19 @@ export function suggestCategory(params: {
 
   // Fatura de cartão, transferência entre contas próprias e saque: nunca gasto.
   if (IGNORE_CODES.has(upperCode)) return { category: null, direction: 'ignore', confidence: 'high' };
+
+  /**
+   * Dinheiro indo para (ou voltando de) investimento do próprio cliente.
+   *
+   * "APLIC.INVEST FACIL" virava palpite de Conta Variável e "RESGATE INVEST
+   * FACIL" entrava como renda, inflando os dois lados (Eduardo, 2026-09-23).
+   * Não é gasto nem receita: é o dinheiro mudando de lugar. Sem palpite — a
+   * pessoa decide, como nos PIX ambíguos.
+   */
+  if (SAVINGS_CODES.has(upperCode)
+    || ehMovimentacaoDeInvestimento(`${params.merchantName ?? ''} ${code ?? ''} ${ofCategory ?? ''}`)) {
+    return { category: null, direction: 'savings', confidence: 'high' };
+  }
 
   const normalizedLabel = ofCategory ? normalizeLabel(ofCategory) : '';
 

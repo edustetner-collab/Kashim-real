@@ -102,11 +102,21 @@ const Dividas: React.FC<DividasProps> = ({ householdId }) => {
       <div className="flex items-center justify-between mb-4 pt-2">
         <div>
           <h2 className="text-[#1d1d1f] font-black text-xl uppercase italic tracking-tighter">Dívidas</h2>
-          <p className="text-[#6e6e73] text-xs mt-0.5">Empréstimos e dívidas em aberto do cliente</p>
+          {/* "do cliente" era linguagem de coach; a aba agora é do próprio
+              cliente (Eduardo, 2026-09-24). */}
+          <p className="text-[#6e6e73] text-xs mt-0.5">Empréstimos e dívidas</p>
         </div>
         <button onClick={addDebt} className="k-btn-lime px-4 py-2.5 flex items-center gap-2 shrink-0">
           <i className="fas fa-plus-circle"></i> Adicionar
         </button>
+      </div>
+
+      <div className="mb-4 flex items-start gap-2.5 rounded-2xl border border-[#e8e8ed] bg-[#f5f5f7] px-4 py-3">
+        <i className="fas fa-lightbulb text-[#7ab800] text-xs mt-0.5" />
+        <p className="text-[12.5px] leading-snug text-[#3a3a3c]">
+          Lance aqui suas dívidas, empréstimos e financiamentos. Assim você tem mais controle de
+          <strong> quanto juntar para pagar mais rápido</strong>.
+        </p>
       </div>
 
       {debts.length === 0 ? (

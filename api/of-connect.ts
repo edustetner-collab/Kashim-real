@@ -333,7 +333,9 @@ const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com', 'remmachado.86@gmail.com', 'm
   'alex.radiologia@icloud.com',
   'kl_soares@yahoo.com.br',
   'edu.stetner@gmail.com',
-  'elisamarodriguees@hotmail.com'];
+  'elisamarodriguees@hotmail.com',
+  'lucas.coppede.damiao@gmail.com', 'coppede.bruna@gmail.com',
+  'zaidandesouza@gmail.com'];
 
 /**
  * Espelha `lib/ofAccess.ts` no servidor. Esconder o botão não impede ninguém de
@@ -432,6 +434,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ownerFirstName: (r.payer_name ?? '').trim().split(' ')[0] || null,
           billTotals: (r.bill_totals && typeof r.bill_totals === 'object') ? r.bill_totals : {},
           cards: Array.isArray(r.cards) ? r.cards : [],
+          saldoAtual: typeof r.saldo_atual === 'number' ? r.saldo_atual : null,
+          saldoEm: r.saldo_em ?? null,
           lastSyncedAt: r.last_synced_at,
           createdAt: r.created_at,
         })),

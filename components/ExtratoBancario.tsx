@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/clerk-react';
 import { CategoryType, FinanceItem, PartialExpense } from '../types';
 import type { BankTransaction } from '../lib/openfinance/types';
 import { merchantKey } from '../lib/openfinance/categoryMap';
+import { limparNomeEstabelecimento } from '../lib/openfinance/nomeEstabelecimento';
 import ConectarBanco from './ConectarBanco';
 import Assinaturas from './Assinaturas';
 import { pedirPermissaoPush } from '../lib/push';
@@ -348,6 +349,8 @@ function CategoryPicker({ tx, items, onConfirm, onIgnore, onClose }: PickerProps
 
 interface TxRowProps {
   tx: BankTransaction;
+  /** Linha do plano que vai receber o gasto, quando já se sabe qual é. */
+  linhaSugerida?: string;
   onSelect: (tx: BankTransaction) => void;
   onDiscard: (tx: BankTransaction) => void;
   onConfirm: (tx: BankTransaction) => void;
@@ -370,7 +373,7 @@ const COR_DA_FRASE: Record<string, string> = {
  * que tocar (Eduardo, 2026-09-22 — aprovou a "Proposta A" do desenho). Os
  * botões fazem o mesmo de antes: confirmar = o visto; mudar = o editar.
  */
-const TxRow: React.FC<TxRowProps> = ({ tx, onSelect, onDiscard, onConfirm }) => {
+const TxRow: React.FC<TxRowProps> = ({ tx, linhaSugerida, onSelect, onDiscard, onConfirm }) => {
   const isIncome = tx.transactionType === 'income';
   const categoria = tx.suggestedCategory ?? null;
   const meio = tx.accountType === 'credit_card'
@@ -385,7 +388,7 @@ const TxRow: React.FC<TxRowProps> = ({ tx, onSelect, onDiscard, onConfirm }) => 
         <div className="min-w-0 flex-1">
           {/* O nome de quem recebeu vem primeiro: "Edp São Paulo" é reconhecível,
               "PIX QR CODE DINAMICO - DES: EDP SP" não. */}
-          <p className="truncate text-[15px] font-bold leading-snug text-[#1d1d1f]">{tx.merchant || tx.description}</p>
+          <p className="truncate text-[15px] font-bold leading-snug text-[#1d1d1f]">{limparNomeEstabelecimento(tx.merchant || tx.description) || tx.description}</p>
           <p className="text-xs text-[#8e8e93]">{formatDateBR(tx.transactionDate)} · {meio}{parcela}</p>
           {/* O rótulo do banco ajuda a reconhecer maquininha sem nome ("CVS"). */}
           {detalhe && <p className="truncate text-[10px] leading-tight text-[#c7c7cc]">{detalhe}</p>}
@@ -399,8 +402,16 @@ const TxRow: React.FC<TxRowProps> = ({ tx, onSelect, onDiscard, onConfirm }) => 
         {categoria ? (
           <>
             <p className="text-[13px] leading-snug text-[#3a3a3c]">
-              Sugerimos <span className="font-extrabold" style={{ color: COR_DA_FRASE[categoria] ?? '#1d1d1f' }}>{categoria}</span>. Está certo?
+              Sugerimos <span className="font-extrabold" style={{ color: COR_DA_FRASE[categoria] ?? '#1d1d1f' }}>{categoria}</span>
+              {linhaSugerida && <>, na linha <span className="font-extrabold text-[#1d1d1f]">{linhaSugerida}</span></>}. Está certo?
             </p>
+            {/* Sem linha conhecida em conta fixa, confirmar NÃO chuta: o passo
+                seguinte pergunta qual conta é (Eduardo, 2026-09-23). */}
+            {!linhaSugerida && categoria === CategoryType.FIXED_EXPENSE && (
+              <p className="mt-1 text-[11px] leading-snug text-[#8e8e93]">
+                Você escolhe qual conta fixa no passo seguinte.
+              </p>
+            )}
             <div className="mt-2.5 flex gap-2">
               <button
                 onClick={() => onConfirm(tx)}
@@ -941,76 +952,12 @@ export default function ExtratoBancario({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactions.length]);
 
-  /** Quantos lançamentos entraram sozinhos nesta abertura da tela. */
-  const [autoFiled, setAutoFiled] = useState(0);
-
   /**
-   * Lançamento automático pela memória.
-   *
-   * Só entra sozinho o que o CLIENTE já categorizou antes (`confidence
-   * 'memory'`) e cujo item ainda existe no plano. Palpite nosso continua
-   * perguntando — errar sozinho em heurística seria mexer no dinheiro dele sem
-   * ele ter dito nada. Onde corrigir, se errar: Gastos → toque no lançamento →
-   * Editar, que agora troca de categoria.
+   * O lançamento automático pela memória MUDOU DE LUGAR: acontece na abertura
+   * do app (App.tsx, `recontarPendentes`). Ficando aqui, o resumo "o Kashim
+   * lançou X por você" só aparecia depois de abrir o Extrato, e o push já
+   * tinha anunciado (Eduardo, 2026-09-23).
    */
-  useEffect(() => {
-    /**
-     * SÓ MEMÓRIA. Palpite nosso não lança sozinho.
-     *
-     * O `?? resolveItemByCode(...)` que existia aqui fazia o app lançar TODA
-     * transação cujo código do banco casasse com algum item do plano — sem o
-     * cliente ter ensinado nada. Efeito em produção (Eduardo, 21/09): o push
-     * anunciava 2 gastos novos, ele abria o Extrato, a fila esvaziava sozinha e
-     * nada aparecia no resumo (que só lista as de memória). "204 SHIBATA",
-     * mercado, foi parar em Contas Fixas desse jeito.
-     *
-     * Entra sozinho apenas o que o PRÓPRIO cliente já categorizou antes, com o
-     * item ainda vivo no plano. O resto espera a decisão dele.
-     */
-    const resolved = transactions
-      .map((t) => {
-        const daMemoria = t.suggestionConfidence === 'memory'
-          && t.suggestedItemId
-          && items.some((i) => i.id === t.suggestedItemId);
-        return daMemoria ? { tx: t, itemId: t.suggestedItemId as string } : null;
-      })
-      .filter((x): x is { tx: BankTransaction; itemId: string } => x !== null);
-
-    if (resolved.length === 0) return;
-    const ready = resolved.map((r) => r.tx);
-    const itemById = new Map<string, string>(
-      resolved.map((r) => [r.tx.transactionId, r.itemId] as [string, string]),
-    );
-
-    for (const tx of ready) {
-      const dateStr = tx.billDueDate ?? tx.transactionDate;
-      const [y, rawM] = dateStr.split('-').map(Number);
-      const partial: PartialExpense = {
-        id: crypto.randomUUID(),
-        date: tx.transactionDate,
-        description: tx.merchant || tx.description || '',
-        value: Number(tx.amount),
-        // O extrato sabe a origem: cartão vai para a fatura, conta já saiu.
-        paymentSource: tx.accountType === 'credit_card' ? 'credit' : 'debit',
-        cardLast4: cartaoVisivel(tx),
-      };
-      const itemId = itemById.get(tx.transactionId)!;
-      onAddPartial(itemId, partial, y, rawM - 1);
-
-      cabecalho().then((h) => fetch('/api/of-transactions', {
-        method: 'PATCH',
-        headers: h,
-        body: JSON.stringify({
-          householdId, transactionId: tx.transactionId, action: 'categorize',
-          itemId, category: tx.suggestedCategory, partialId: partial.id,
-        }),
-      })).catch(() => { /* não crítico */ });
-    }
-
-    const ids = new Set(ready.map((t) => t.transactionId));
-    setTransactions((prev) => prev.filter((t) => !ids.has(t.transactionId)));
-    setAutoFiled((n) => n + ready.length);
-  }, [transactions, items, householdId, cabecalho, onAddPartial]);
 
   // Bancos conectados — a transação guarda só o connectionId, o nome e o
   // código COMPE (para a logo) vêm daqui.
@@ -1956,26 +1903,7 @@ export default function ExtratoBancario({
 
       {/* Transaction list */}
       <div data-extrato-rolagem className="flex-1 overflow-y-auto">
-        {autoFiled > 0 && (
-          <div className="mx-2 mt-2 bg-[#f0fad0] border border-[#d4e8a0] rounded-2xl px-4 py-3 flex items-start gap-2.5">
-            <i className="fas fa-wand-magic-sparkles text-[#7ab800] text-sm mt-0.5" />
-            <p className="text-[#3a3a3c] text-xs leading-relaxed">
-              <strong className="text-[#1d1d1f]">
-                {autoFiled} lançamento{autoFiled === 1 ? '' : 's'} o Kashim já categorizou sozinho
-              </strong>{' '}
-              — ou você já categorizou aquele lugar antes, ou o nome era claro (luz, mercado, escola).
-              {' '}
-              <button
-                onClick={onClose}
-                className="underline font-bold text-[#5a8c00]"
-              >
-                Confira em Gastos
-              </button>{' '}
-              e, se algo foi parar no lugar errado, toque no lançamento e use <strong>Editar</strong> para
-              trocar a categoria.
-            </p>
-          </div>
-        )}
+
         {loading ? (
           <div className="flex items-center justify-center h-40">
             <i className="fas fa-circle-notch fa-spin text-[#7ab800] text-2xl" />
@@ -2001,7 +1929,7 @@ export default function ExtratoBancario({
         ) : (
           <div className="pb-2">
             {displayed.map((tx) => (
-              <TxRow key={tx.transactionId} tx={tx} onSelect={openLaunch} onDiscard={setPendingDiscard} onConfirm={confirmarRapido} />
+              <TxRow key={tx.transactionId} tx={tx} linhaSugerida={items.find((i) => i.id === tx.suggestedItemId)?.description} onSelect={openLaunch} onDiscard={setPendingDiscard} onConfirm={confirmarRapido} />
             ))}
           </div>
         )}

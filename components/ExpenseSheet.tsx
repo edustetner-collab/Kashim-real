@@ -83,7 +83,27 @@ const CATEGORIES = [
   },
 ];
 
+/**
+ * Vindo do Extrato, RENDA precisa estar na lista.
+ *
+ * Rendimento e resgate de investimento chegavam com palpite de gasto e não
+ * havia como levá-los para a renda: só restava excluir, e excluído não volta
+ * (Eduardo, 2026-09-23).
+ */
+const CATEGORIES_COM_RENDA = [
+  {
+    type: CategoryType.INCOME,
+    label: 'Entrou dinheiro',
+    sub: 'Salário, recebimento, rendimento, resgate — vai para a Renda',
+    icon: 'fa-arrow-down',
+    color: 'text-green-400',
+    bg: 'bg-green-500/10 border-green-500/30',
+  },
+  ...CATEGORIES,
+];
+
 function catStyle(cat: CategoryType) {
+  if (cat === CategoryType.INCOME) return { icon: 'fa-arrow-down', color: 'text-green-400' };
   if (cat === CategoryType.VARIABLE_EXPENSE) return { icon: 'fa-bolt', color: 'text-blue-400' };
   if (cat === CategoryType.PERSONAL_LEISURE) return { icon: 'fa-cocktail', color: 'text-pink-400' };
   return { icon: 'fa-anchor', color: 'text-purple-400' };
@@ -238,7 +258,11 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
   const canConfirm = hasItem && numericValue > 0 && payMethod !== '' && (!needsCard || !!selectedCardId) && !avisoChegaDoBanco;
 
   const pickerItems = items.filter(i => {
-    if (i.category === CategoryType.INCOME || i.category === CategoryType.CREDIT_CARD) return false;
+    // Linha de renda só aparece quando o lançamento É renda — senão um gasto
+    // poderia cair dentro do salário.
+    if (i.category === CategoryType.INCOME) return category === CategoryType.INCOME;
+    if (category === CategoryType.INCOME) return false;
+    if (i.category === CategoryType.CREDIT_CARD) return false;
     if (source === 'manual' && category && i.category !== category) return false;
     if (!search) return true;
     return i.description.toLowerCase().includes(search.toLowerCase());
@@ -755,8 +779,10 @@ const ExpenseSheet: React.FC<ExpenseSheetProps> = ({
                 </button>
               )}
 
-              <p className="text-white font-black text-base uppercase tracking-wider py-2">Qual tipo de despesa?</p>
-              {CATEGORIES.map(cat => (
+              <p className="text-white font-black text-base uppercase tracking-wider py-2">
+                {knownPayMethod ? 'O que é este lançamento?' : 'Qual tipo de despesa?'}
+              </p>
+              {(knownPayMethod ? CATEGORIES_COM_RENDA : CATEGORIES).map(cat => (
                 <button
                   key={cat.type}
                   onClick={() => {

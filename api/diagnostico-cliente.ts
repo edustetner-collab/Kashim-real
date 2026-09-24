@@ -195,7 +195,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
    * apagada, para não voltar a confundir a próxima varredura.
    */
   if (req.method === 'POST') {
-    const corpo = req.body as { acao?: string; householdId?: string; email?: string; som?: string };
+    const corpo = req.body as { acao?: string; householdId?: string; email?: string; som?: string; aplicar?: boolean };
 
     /**
      * Push de teste, disparado como o cron dispara.
@@ -204,6 +204,56 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
      * resposta crua do OneSignal volta na tela, com quantos destinatários ele
      * encontrou e quais erros devolveu.
      */
+    /**
+     * Apaga os valores FANTASMA das contas variáveis.
+     *
+     * Conta variável não tem previsão: o valor de cada mês é a soma dos
+     * lançamentos daquele mês. O bug da janela de meses gravou valores em meses
+     * sem lançamento nenhum (Eduardo, 2026-09-23). Sem `aplicar: true` apenas
+     * mostra o que mudaria — escrita em dado de cliente nunca acontece sozinha.
+     */
+    if (corpo.acao === 'recalcular_variaveis') {
+      const alvo = corpo.householdId;
+      if (!alvo) return res.status(400).json({ error: 'householdId obrigatório' });
+      const { data: casa } = await db.from('households').select('start_month, start_year').eq('id', alvo).maybeSingle();
+      const mes0 = casa?.start_month ?? new Date().getMonth();
+      const ano0 = casa?.start_year ?? new Date().getFullYear();
+      const janela = Array.from({ length: 12 }, (_, i) => {
+        const d = new Date(ano0, mes0 + i, 1);
+        return { ano: d.getFullYear(), mes: d.getMonth() };
+      });
+      const { data: linhas } = await db
+        .from('finance_items')
+        .select('id, description, category, values, partial_expenses(year, month, value)')
+        .eq('household_id', alvo)
+        .eq('category', 'Contas Variáveis');
+
+      const mudancas: Array<{ id: string; linha: string; de: number[]; para: number[] }> = [];
+      for (const l of linhas ?? []) {
+        const atuais = (l.values as number[] | null) ?? new Array(12).fill(0);
+        const lancamentos = (l.partial_expenses ?? []) as Array<{ year: number; month: number; value: number }>;
+        const novos = janela.map(({ ano, mes }) => {
+          const soma = lancamentos
+            .filter(p => p.year === ano && p.month === mes)
+            .reduce((t, p) => t + Number(p.value ?? 0), 0);
+          return Math.round(soma * 100) / 100;
+        });
+        const mudou = novos.some((v, i) => Math.abs(v - (atuais[i] ?? 0)) > 0.009);
+        if (mudou) mudancas.push({ id: l.id as string, linha: String(l.description ?? ''), de: atuais, para: novos });
+      }
+
+      if (corpo.aplicar === true) {
+        for (const m of mudancas) {
+          await db.from('finance_items').update({ values: m.para, updated_at: new Date().toISOString() }).eq('id', m.id);
+        }
+      }
+      return res.status(200).json({
+        aplicado: corpo.aplicar === true,
+        linhas_afetadas: mudancas.length,
+        mudancas,
+      });
+    }
+
     if (corpo.acao === 'push_teste') {
       /**
        * `som` compara o som da marca com o do sistema no MESMO aparelho.
@@ -775,6 +825,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ total_casas: (casas ?? []).length, suspeitos });
   }
 
+  // ── Saldo que o banco informou na última leitura ─────────────────────────
+  if (req.query.saldos === '1') {
+    const e = String(req.query.email ?? '').toLowerCase().trim();
+    const us = e ? await usuariosPorEmail(e) : [];
+    const { data: vinc } = us.length
+      ? await db.from('household_members').select('household_id').in('clerk_user_id', us.map(u => u.id))
+      : { data: [] as Array<{ household_id: string }> };
+    const casas = (vinc ?? []).map(v => v.household_id as string);
+    if (casas.length === 0) return res.status(400).json({ error: 'Passe ?saldos=1&email=...' });
+    const { data, error } = await db
+      .from('bank_connections')
+      .select('bank_name, consent_status, account_import_enabled, saldo_atual, saldo_em, last_synced_at')
+      .in('household_id', casas);
+    if (error) return res.status(500).json({ error: error.message, dica: 'Rodou a migração saldo-bancario.sql?' });
+    return res.status(200).json({
+      agora: new Date().toISOString(),
+      conexoes: (data ?? []).map(c => ({
+        banco: c.bank_name,
+        viva: c.consent_status !== 'revoked',
+        importa_conta: c.account_import_enabled !== false,
+        saldo: c.saldo_atual,
+        saldo_lido_em: c.saldo_em,
+        ultima_sincronizacao: c.last_synced_at,
+      })),
+    });
+  }
+
   // ── Últimos envios registrados no OneSignal (o que saiu, com qual som) ───
   if (req.query.push_ultimos === '1') {
     const appId = process.env.ONESIGNAL_APP_ID;
@@ -821,7 +898,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const id = String(req.query.plano).trim();
     const [{ data: casa }, { data: itens, error }] = await Promise.all([
       db.from('households').select('*').eq('id', id).maybeSingle(),
-      db.from('finance_items').select('*').eq('household_id', id),
+      db.from('finance_items').select('*, partial_expenses(*)').eq('household_id', id),
     ]);
     if (error) return res.status(500).json({ error: error.message });
     return res.status(200).json({ tirada_em: new Date().toISOString(), casa, linhas: itens ?? [] });

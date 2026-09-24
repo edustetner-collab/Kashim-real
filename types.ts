@@ -61,6 +61,12 @@ export interface FinanceItem {
   partialExpenses?: Record<string, PartialExpense[]>; // Key: "year-month"
   closingDay?: number; // Novo: Dia de fechamento da fatura
   dueDay?: number;     // Novo: Dia de vencimento da fatura
+  /**
+   * Linha OCULTA: continua guardada e visível em cinza, mas fica FORA de todas
+   * as somas. É a decisão do coach de deixar uma dívida para trás sem perder o
+   * histórico dela (Eduardo, 2026-09-23).
+   */
+  oculto?: boolean;
 }
 
 /**

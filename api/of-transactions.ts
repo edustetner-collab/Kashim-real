@@ -75,6 +75,8 @@ function rowToTx(r: Record<string, unknown>) {
     kashimCategory: r.kashim_category,
     kashimPartialId: r.kashim_partial_id,
     categorizedAt: r.categorized_at,
+    /** Resumo "o Kashim lançou por você" já conferido — some em TODO aparelho. */
+    resumoVisto: r.resumo_visto === true,
     createdAt: r.created_at,
   };
 }
@@ -285,16 +287,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { householdId, transactionId, action, itemId, category, partialId } = req.body as {
         householdId?: string;
         transactionId?: string;
-        action?: 'categorize' | 'ignore';
+        action?: 'categorize' | 'ignore' | 'resumo_visto';
         itemId?: string;
         category?: string;
         partialId?: string;
+        transactionIds?: string[];
       };
 
-      if (!householdId || !transactionId || !action) {
+      const corpoIds = (req.body as { transactionIds?: string[] }).transactionIds;
+      if (!householdId || !action || (!transactionId && !(corpoIds && corpoIds.length))) {
         return res.status(400).json({ error: 'householdId, transactionId e action obrigatórios' });
       }
       if (!(await isMember(sub, householdId))) return res.status(403).json({ error: 'Forbidden' });
+
+      /**
+       * "Está tudo certo": o resumo some para sempre, em qualquer aparelho.
+       *
+       * Antes isso ficava no localStorage: o Eduardo conferia no celular e o
+       * mesmo aviso reaparecia na web (2026-09-23). Notificação terminada não
+       * volta — e para isso o estado tem de viver no servidor.
+       */
+      if (action === 'resumo_visto') {
+        const ids = Array.isArray(corpoIds) && corpoIds.length > 0 ? corpoIds : [transactionId];
+        const { error } = await db
+          .from('bank_transactions')
+          .update({ resumo_visto: true })
+          .eq('household_id', householdId)
+          .in('transaction_id', ids);
+        if (error) throw error;
+        return res.status(200).json({ ok: true, marcadas: ids.length });
+      }
 
       if (action === 'ignore') {
         const { error } = await db

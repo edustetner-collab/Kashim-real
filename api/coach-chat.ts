@@ -152,8 +152,11 @@ async function buildFinancialContext(householdId: string, appSummary: AppSummary
 
   const { data: rows } = await db
     .from('finance_items')
-    .select('description, category, values')
+    .select('description, category, values, oculto')
     .eq('household_id', householdId)
+    // Linha oculta está fora das somas do app — o Stets não pode enxergar
+    // um número diferente do que o cliente vê na tela.
+    .or('oculto.is.null,oculto.eq.false')
     .order('sort_order', { ascending: true });
 
   if (!rows?.length) return '';
