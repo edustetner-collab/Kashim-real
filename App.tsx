@@ -3566,7 +3566,20 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
           screen={showExtrato && hasOpenFinanceAccess(user, clienteDeCoach) ? 'extrato' : activeTab}
           db={db}
           userId={user.id}
-          active={!needsTermsAcceptance && !showOnboarding && !showSubscriptionGate && !coachViewHouseholdId && !dbLoading && activeTab !== 'coach'}
+          /**
+           * O convite de conectar o banco também SEGURA o tour.
+           *
+           * No instante em que o wizard fecha, duas coisas disparavam juntas:
+           * o convite (z-190) e o tour do Plano (z-96). O cliente via o
+           * convite e, atrás dele, o tour já estava rodando com o holofote
+           * num elemento que ele não conseguia nem enxergar — e, ao fechar o
+           * convite, caía no meio de um tour que nunca viu começar.
+           *
+           * Com esta guarda a ordem fica a que o Eduardo desenhou: contas
+           * fixas → convite do banco → tour (do Extrato, se conectou; do
+           * Plano, se deixou para depois).
+           */
+          active={!needsTermsAcceptance && !showOnboarding && !showConviteBanco && !showSubscriptionGate && !coachViewHouseholdId && !dbLoading && activeTab !== 'coach'}
           onRequestScreen={setActiveTab}
           onAiPrompt={handleTourAiPrompt}
           // Ter acesso nao basta: os passos so mudam para quem REALMENTE
