@@ -757,7 +757,10 @@ function extractMerchant(raw: RawTx): string | null {
 
 interface Envelope {
   statement: { status?: string; type?: string; totalTransactions?: string };
-  /** O extrato já traz o saldo da conta — e o Kashim ignorava os dois campos. */
+  /**
+   * NÃO USAR. A documentação da Technospeed: "Mantido por compatibilidade.
+   * Sempre retornado com valor 0." O saldo vem de `buscarSaldoReal`.
+   */
   balance?: { inicial?: { date?: string; balance?: string }; final?: { date?: string; balance?: string } };
   transaction?: RawBlock;
   transactionDuplicated?: RawBlock;
@@ -944,6 +947,49 @@ interface Conn {
   bill_totals?: Record<string, unknown> | null;
   /** Marco do primeiro acesso: nada anterior entra na fila. Nulo = regra antiga. */
   categorize_from?: string | null;
+  saldo_atual?: number | null;
+  saldo_em?: string | null;
+}
+
+/**
+ * Saldo de verdade — e por que NÃO vem do extrato.
+ *
+ * O extrato traz um bloco `balance`, e a documentação da Technospeed diz com
+ * todas as letras: *"Mantido por compatibilidade. **Sempre retornado com valor
+ * "0"**"*. O Kashim lia justamente esse campo e gravava zero por cima: o
+ * Eduardo tinha R$1.269,13 no Bradesco e o app mostrava R$0,00, com a hora da
+ * sincronização ao lado dando ar de número fresco (2026-09-25).
+ *
+ * O saldo real mora em `/api/v1/balance/openfinance/realtime`. Do lado deles
+ * o valor tem **cache de 6 horas** (`nextUpdate` = consulta + 6h) e a origem
+ * atualiza a cada 4h — consultar antes disso devolve o mesmo número e só
+ * gasta chamada. Por isso a janela aqui é a mesma.
+ */
+const SALDO_WINDOW_MS = 6 * 60 * 60 * 1000;
+
+async function buscarSaldoReal(conn: Conn, forcar = false): Promise<{ ok: boolean; motivo?: string; saldo?: number; consultou?: boolean }> {
+  if (!conn.account_hash) return { ok: false, motivo: 'sem accountHash' };
+  const lidoEm = conn.saldo_em ? new Date(conn.saldo_em).getTime() : 0;
+  if (!forcar && Number.isFinite(lidoEm) && Date.now() - lidoEm < SALDO_WINDOW_MS) {
+    return { ok: true, motivo: 'dentro do cache de 6h', consultou: false };
+  }
+  try {
+    const r = await tsReq<{ balance?: number | string; updateDateTime?: string }>(
+      'GET',
+      `/api/v1/balance/openfinance/realtime?accountHash=${encodeURIComponent(conn.account_hash)}`,
+      conn.payer_cpf,
+    );
+    // O spec promete número; banco que manda string não pode derrubar a leitura.
+    const bruto = r?.balance;
+    const saldo = typeof bruto === 'number' ? bruto : Number(String(bruto ?? '').replace(',', '.'));
+    if (!Number.isFinite(saldo)) return { ok: false, motivo: `saldo ilegível: ${JSON.stringify(bruto)}` };
+    await db.from('bank_connections')
+      .update({ saldo_atual: saldo, saldo_em: r.updateDateTime ?? new Date().toISOString() })
+      .eq('id', conn.id);
+    return { ok: true, saldo, consultou: true };
+  } catch (e) {
+    return { ok: false, motivo: e instanceof Error ? e.message : 'falha', consultou: true };
+  }
 }
 
 /** Cartão guardado em  (ver migrations-v9.sql). */
@@ -1074,24 +1120,13 @@ async function syncOne(
   if (status === 'PROCESSING' || status === 'PENDING') return { status: 'processing' };
 
   /**
-   * Saldo da conta corrente, para a linha "No banco hoje".
+   * O saldo NÃO sai daqui. Ver `buscarSaldoReal`.
    *
-   * Falha aqui (coluna ainda não criada, número estranho) nunca pode derrubar a
-   * importação: saldo é informação a mais, transação é o essencial.
+   * Havia neste ponto uma leitura de `env.balance.final.balance`, que a própria
+   * documentação da Technospeed descreve como "sempre retornado com valor 0".
+   * Ela gravava zero por cima do saldo a cada sincronização — inclusive por
+   * cima de um valor bom que o endpoint de saldo tivesse acabado de trazer.
    */
-  if (!isCard) {
-    // "1.234,56" (pt-BR) e "1234.56" (ponto decimal) chegam dos dois jeitos.
-    // Tratar tudo como pt-BR multiplicaria o segundo caso por 100.
-    const cru = String(env.balance?.final?.balance ?? '').trim();
-    const saldo = Number(cru.includes(',') ? cru.replace(/\./g, '').replace(',', '.') : cru);
-    if (cru && Number.isFinite(saldo)) {
-      try {
-        await db.from('bank_connections')
-          .update({ saldo_atual: saldo, saldo_em: new Date().toISOString() })
-          .eq('id', conn.id);
-      } catch { /* sem a migração rodada, segue sem saldo */ }
-    }
-  }
 
   /**
    * O corte da fila: a data da conexão manda, quando existe.
@@ -1958,7 +1993,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // needs_resync primeiro (webhook sinalizou transação nova), depois as mais antigas
     const { data: conns, error } = await db
       .from('bank_connections')
-      .select('id, household_id, bank_name, account_hash, payer_cpf, account_type, card_last4, last_synced_at, last_protocol_id, last_protocol_at, needs_resync, card_import_enabled, card_protocol_id, card_protocol_at, account_import_enabled, cards, bill_totals, categorize_from')
+      .select('id, household_id, bank_name, account_hash, payer_cpf, account_type, card_last4, last_synced_at, last_protocol_id, last_protocol_at, needs_resync, card_import_enabled, card_protocol_id, card_protocol_at, account_import_enabled, cards, bill_totals, categorize_from, saldo_atual, saldo_em')
       .eq('consent_status', 'active')
       .order('needs_resync', { ascending: false })
       .order('last_synced_at', { ascending: true, nullsFirst: true })
@@ -2017,6 +2052,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Manutenção: reprocessa o protocolo em aberto descartando as pendentes.
     // Só por chamada explícita — o cron agendado nunca faz isto.
     const reimport = String(req.query.reimport ?? '') === '1';
+    /**
+     * `?saldo=1` ignora o cache de 6h e consulta o saldo agora.
+     *
+     * Necessário uma vez: o código antigo gravava zero a CADA sincronização,
+     * então `saldo_em` está sempre fresco e o guarda de 6h nunca deixaria a
+     * primeira leitura boa acontecer. Depois dessa passada, o cache manda.
+     */
+    const forcarSaldo = String(req.query.saldo ?? '') === '1';
 
     let done = 0, processing = 0, errors = 0, upserted = 0, skipped = 0;
     /** Uma linha por extrato tentado: qual, o que deu, e por quê. */
@@ -2061,6 +2104,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           upserted: r.upserted ?? 0,
           motivo: r.reason ?? null,
         });
+
+        /**
+         * Saldo é consulta própria, independente do extrato.
+         *
+         * De propósito fora do `syncOne`: mês sem movimento devolve "nenhuma
+         * transação no período" e sai antes do fim, e o saldo ficaria eterno
+         * sem atualizar justamente em quem menos gasta. O guarda de 6h dentro
+         * de `buscarSaldoReal` é quem segura a frequência.
+         */
+        if (wantsAccount) {
+          const s = await buscarSaldoReal(conn as Conn, forcarSaldo);
+          if (s.consultou) {
+            detalhes.push({
+              banco: (conn as Conn).bank_name ?? '?',
+              extrato: 'saldo',
+              status: s.ok ? 'done' : 'error',
+              saldo: s.saldo ?? null,
+              motivo: s.motivo ?? null,
+            });
+          }
+        }
 
         // Uma passada por CARTÃO ligado. Cada protocolo custa 1 dos 4 diários
         // da conta, e a conta corrente já gastou 1 — por isso o teto de 3.
