@@ -39,6 +39,10 @@ const STATUS_GAP_MS = 2_000;                   // folga entre consultas de statu
 const MAX_STATUS_CHECKS = 10;                  // teto para não comer o deadline
 // 4 protocolos/dia por conta: 1 vai para a conta corrente, sobram 3 para cartões.
 const MAX_CARDS_PER_ACCOUNT = 3;
+/** 12h UTC = 9h BRT: o lembrete da fila sai de manhã, não de madrugada. */
+const HORA_DO_LEMBRETE = 12;
+/** 20h, não 24h, para o lembrete não "andar" e acabar pulando um dia. */
+const LEMBRETE_WINDOW_MS = 20 * 60 * 60 * 1000;
 
 // ─── Aviso por e-mail ────────────────────────────────────────────────────────
 
@@ -983,9 +987,13 @@ async function buscarSaldoReal(conn: Conn, forcar = false): Promise<{ ok: boolea
     const bruto = r?.balance;
     const saldo = typeof bruto === 'number' ? bruto : Number(String(bruto ?? '').replace(',', '.'));
     if (!Number.isFinite(saldo)) return { ok: false, motivo: `saldo ilegível: ${JSON.stringify(bruto)}` };
-    await db.from('bank_connections')
+    // Conferir o erro da gravação não é zelo: sem isto o cron diz "done",
+    // devolve o número certo no relatório e não grava nada — exatamente o
+    // sintoma "você disse que leu e o app continua zerado".
+    const { error } = await db.from('bank_connections')
       .update({ saldo_atual: saldo, saldo_em: r.updateDateTime ?? new Date().toISOString() })
       .eq('id', conn.id);
+    if (error) return { ok: false, motivo: `gravação falhou: ${error.message}`, saldo, consultou: true };
     return { ok: true, saldo, consultou: true };
   } catch (e) {
     return { ok: false, motivo: e instanceof Error ? e.message : 'falha', consultou: true };
@@ -1990,11 +1998,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // virar 'active' agora para já entrar na sincronização logo abaixo.
     const promoted = await refreshPendingAuthorizations(deadline);
 
+    /**
+     * `?casa=<householdId>` atende UMA casa, na frente da fila.
+     *
+     * A rodada anda ~5 conexões por vez (o ritmo de 21s entre leituras come o
+     * prazo) e a ordem é "quem sincronizou há mais tempo primeiro" — então
+     * conta recém-sincronizada vai para o fim e pode levar várias rodadas
+     * para ser atendida. Diagnosticar um cliente específico ficava refém
+     * dessa fila. Só por chamada explícita; o cron agendado nunca usa.
+     */
+    const soCasa = String(req.query.casa ?? '').trim();
+
     // needs_resync primeiro (webhook sinalizou transação nova), depois as mais antigas
-    const { data: conns, error } = await db
+    let q = db
       .from('bank_connections')
       .select('id, household_id, bank_name, account_hash, payer_cpf, account_type, card_last4, last_synced_at, last_protocol_id, last_protocol_at, needs_resync, card_import_enabled, card_protocol_id, card_protocol_at, account_import_enabled, cards, bill_totals, categorize_from, saldo_atual, saldo_em')
-      .eq('consent_status', 'active')
+      .eq('consent_status', 'active');
+    if (soCasa) q = q.eq('household_id', soCasa);
+    const { data: conns, error } = await q
       .order('needs_resync', { ascending: false })
       .order('last_synced_at', { ascending: true, nullsFirst: true })
       .limit(40);
@@ -2118,6 +2139,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (s.consultou) {
             detalhes.push({
               banco: (conn as Conn).bank_name ?? '?',
+              casa: (conn as Conn).household_id,
               extrato: 'saldo',
               status: s.ok ? 'done' : 'error',
               saldo: s.saldo ?? null,
@@ -2255,12 +2277,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
      * dias depois encontrando fila sem nunca ter sido avisada (Mariane,
      * 2026-09-19). Aqui o gatilho é a FILA existir, não a chegada.
      *
-     * Roda só na passada das 9:45 BRT (12h UTC) — é o que garante "uma vez por
-     * dia" sem precisar guardar estado de quem já recebeu. Casa que acabou de
-     * receber o aviso de chegada nesta mesma rodada fica de fora.
+     * QUEM GARANTE "UMA VEZ POR DIA" É `households.lembrete_em`, NÃO O RELÓGIO.
+     *
+     * A versão anterior dizia, com todas as letras, que rodar na hora 12 UTC
+     * bastava "sem precisar guardar estado de quem já recebeu". Isso valia
+     * enquanto o cron rodava de hora em hora. Em 2026-09-24 ele passou a rodar
+     * de 5 em 5 minutos e a mesma hora virou 12 rodadas: o Eduardo recebeu 3
+     * avisos do MESMO gasto em 8 minutos (2026-09-25).
+     *
+     * A hora escolhe o horário bom (9h BRT); o carimbo é que impede repetir.
+     * Assim a próxima mudança de agenda do cron não volta a espalhar push.
      */
     let lembretes = 0;
-    if (new Date().getUTCHours() === 12) {
+    if (new Date().getUTCHours() === HORA_DO_LEMBRETE) {
       const { data: pendentes } = await db
         .from('bank_transactions')
         .select('household_id, connection_id, account_type, card_last4, suggestion_confidence')
@@ -2313,9 +2342,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         porCasa.set(hid, atual);
       }
 
+      /**
+       * Quem já foi avisado nas últimas 20h não é avisado de novo.
+       *
+       * 20h e não 24h para o lembrete não "andar" para a frente e acabar
+       * pulando um dia. Uma consulta só para todas as casas da rodada.
+       */
+      const casas = [...porCasa.keys()];
+      const avisadaEm = new Map<string, number>();
+      if (casas.length > 0) {
+        const { data: marcas, error: erroMarcas } = await db
+          .from('households')
+          .select('id, lembrete_em')
+          .in('id', casas);
+        if (erroMarcas) {
+          // Sem a migração rodada não há como saber quem já recebeu. Calar é
+          // melhor que repetir: o cliente perde um lembrete, não a paciência.
+          detalhes.push({ extrato: 'lembrete', status: 'error', motivo: erroMarcas.message });
+          porCasa.clear();
+        }
+        for (const m of marcas ?? []) {
+          const t = m.lembrete_em ? new Date(String(m.lembrete_em)).getTime() : 0;
+          if (Number.isFinite(t) && t > 0) avisadaEm.set(m.id as string, t);
+        }
+      }
+
       for (const [hid, { precisa, memoria }] of porCasa) {
         const total = precisa + memoria;
         if (total === 0) continue;
+        const ultimo = avisadaEm.get(hid) ?? 0;
+        if (Date.now() - ultimo < LEMBRETE_WINDOW_MS) continue;
         /**
          * O push conta a FILA INTEIRA, igual à bolinha, ao pop-up e ao Extrato.
          *
@@ -2330,6 +2386,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           : precisa === 0
             ? `${memoria === 1 ? '1 já está reconhecido: é só confirmar' : `Todos ${memoria} já estão reconhecidos: é só confirmar`} ✨ Leva segundos. 💪💰`
             : `${precisa === 1 ? '1 precisa' : `${precisa} precisam`} da sua categoria e ${memoria === 1 ? 'outro já está reconhecido, é só confirmar' : `outros ${memoria} já estão reconhecidos, é só confirmar`} ✨ Leva 1 minuto e seu mês fica em dia. 💪💰`;
+        /**
+         * Carimba ANTES de olhar o resultado do push.
+         *
+         * Push que falhou não vira motivo para tentar de novo daqui a 5
+         * minutos: o custo de errar para cima (encher o celular do cliente) é
+         * muito maior que o de errar para baixo (ele perde um lembrete e vê a
+         * fila ao abrir o app, que é onde ela vive de qualquer jeito).
+         */
+        await db.from('households').update({ lembrete_em: new Date().toISOString() }).eq('id', hid);
         if (await pushParaCasa(hid, titulo, corpo)) lembretes++;
       }
     }
