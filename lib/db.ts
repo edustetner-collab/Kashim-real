@@ -67,16 +67,54 @@ export async function loadFinanceItemsForCoach(
   return (data.items ?? []).map(rowToFinanceItem);
 }
 
+/**
+ * Grava pelo SERVIDOR quando quem edita é consultor ou assistente.
+ *
+ * Ler o cliente já passava por `/api/load-finance-items` porque o RLS bloqueia
+ * a assistente. Gravar ia direto ao Supabase com o token dela, e o RLS exige
+ * uma linha em `coach_access` que só existe nos clientes que ela mesma criou.
+ * Nos outros a gravação era recusada em silêncio (Eduardo, 2026-09-25 — a
+ * assistente preencheu o plano de dois clientes e perdeu tudo).
+ *
+ * `authToken` presente = estamos na visão do coach. Nulo = é o dono da conta
+ * mexendo no próprio plano, que grava direto como sempre.
+ */
+async function pelaRotaDoCoach(
+  authToken: string,
+  corpo: Record<string, unknown>,
+): Promise<{ id?: string }> {
+  const res = await fetch('/api/coach-save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+    body: JSON.stringify(corpo),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(`coach-save [${res.status}]: ${body.error ?? 'erro'}`);
+  }
+  return await res.json() as { id?: string };
+}
+
 export async function saveFinanceItem(
   db: SupabaseClient,
   householdId: string,
   item: FinanceItem,
-  sortOrder: number
+  sortOrder: number,
+  authToken?: string | null,
 ): Promise<string> {
   const payload = financeItemToRow(householdId, item, sortOrder);
 
   // Verifica se já existe no banco (por id local ou uuid)
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item.id);
+
+  if (authToken) {
+    const r = await pelaRotaDoCoach(authToken, {
+      acao: 'item',
+      householdId,
+      row: isUuid ? { id: item.id, ...payload } : payload,
+    });
+    return r.id ?? item.id;
+  }
 
   if (isUuid) {
     const { data, error } = await db
@@ -98,7 +136,8 @@ export async function saveFinanceItem(
   }
 }
 
-export async function deleteFinanceItem(db: SupabaseClient, itemId: string) {
+export async function deleteFinanceItem(db: SupabaseClient, itemId: string, authToken?: string | null) {
+  if (authToken) { await pelaRotaDoCoach(authToken, { acao: 'item_delete', id: itemId }); return; }
   await db.from('finance_items').delete().eq('id', itemId);
 }
 
@@ -109,9 +148,10 @@ export async function addPartialExpense(
   financeItemId: string,
   year: number,
   month: number,
-  expense: PartialExpense
+  expense: PartialExpense,
+  authToken?: string | null,
 ) {
-  const { error } = await db.from('partial_expenses').insert({
+  const linha = {
     id: expense.id,
     finance_item_id: financeItemId,
     year,
@@ -121,11 +161,17 @@ export async function addPartialExpense(
     value: expense.value,
     payment_source: expense.paymentSource ?? null,
     card_last4: expense.cardLast4 ?? null,
-  });
+  };
+  if (authToken) {
+    await pelaRotaDoCoach(authToken, { acao: 'partial_add', financeItemId, partial: linha });
+    return;
+  }
+  const { error } = await db.from('partial_expenses').insert(linha);
   if (error) throw error;
 }
 
-export async function deletePartialExpense(db: SupabaseClient, expenseId: string) {
+export async function deletePartialExpense(db: SupabaseClient, expenseId: string, authToken?: string | null) {
+  if (authToken) { await pelaRotaDoCoach(authToken, { acao: 'partial_delete', id: expenseId }); return; }
   await db.from('partial_expenses').delete().eq('id', expenseId);
 }
 

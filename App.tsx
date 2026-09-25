@@ -360,6 +360,23 @@ const App: React.FC = () => {
   /** Onde o Plano estava quando um toque na linha levou para Gastos — o "voltar" devolve para lá. */
   const [voltarAoPlanoY, setVoltarAoPlanoY] = useState<number | null>(null);
   const [ofMigrando, setOfMigrando] = useState(false);
+  /**
+   * Gravação do plano que falhou, para a tela AVISAR.
+   *
+   * O salvamento automático mandava a falha para `console.error` e seguia. A
+   * assistente do Eduardo preencheu o plano de dois clientes, saiu, voltou e
+   * não havia nada — sem uma linha na tela dizendo que deu errado
+   * (2026-09-25). Perder o trabalho é ruim; perder sem saber é inaceitável.
+   */
+  const [erroDeGravacao, setErroDeGravacao] = useState<string | null>(null);
+  /**
+   * Token do coach pronto na mão, para gravações que não podem esperar.
+   *
+   * Vários pontos gravam de dentro de um `setItems(...)` síncrono, onde não dá
+   * para `await`. Guardar o token é a única saída — e por isso ele é renovado
+   * sozinho, já que os do Clerk vencem em cerca de um minuto.
+   */
+  const tokenCoachRef = useRef<string | null>(null);
   /** Relevo do item selecionado na barra de baixo (o mesmo do botão central). */
   const ABA_ATIVA: React.CSSProperties = {
     background: 'linear-gradient(180deg,#c5f23a 0%,#a2d800 50%,#8cc400 100%)',
@@ -693,12 +710,12 @@ const App: React.FC = () => {
           // salvamento concorrente) numa linha só por conta, e apaga as demais.
           const { deduped, toDelete } = dedupeItems(dbItems);
           if (toDelete.length > 0) {
-            toDelete.forEach(id => deleteFinanceItem(db!, id).catch(() => {}));
+            toDelete.forEach(id => deleteFinanceItem(db!, id, tokenCoachRef.current).catch(() => {}));
           }
           const tombstones = getTombstones();
           const liveItems = deduped.filter(item => {
             if (tombstones.has(item.id)) {
-              deleteFinanceItem(db!, item.id).catch(() => {});
+              deleteFinanceItem(db!, item.id, tokenCoachRef.current).catch(() => {});
               return false;
             }
             return true;
@@ -993,7 +1010,7 @@ const App: React.FC = () => {
         // gravadas por bugs anteriores.
         if (dbItems.length > 0) {
           const { deduped, toDelete } = dedupeItems(dbItems);
-          toDelete.forEach(id => deleteFinanceItem(db!, id).catch(() => {}));
+          toDelete.forEach(id => deleteFinanceItem(db!, id, tokenCoachRef.current).catch(() => {}));
           const dedupedFixed = fillVariableValuesFromPartials(deduped, janelaDeMeses(clientStartMonth, clientStartYear));
           savedItemHashRef.current = seedItemHashes(dedupedFixed);
           setItems(dedupedFixed);
@@ -1067,6 +1084,38 @@ const App: React.FC = () => {
   // Salva item no Supabase sempre que items mudar (debounced)
   const saveTimeoutRef = useRef<any>(null);
   const savingRef = useRef(false);
+  /**
+   * Token quando quem edita é consultor/assistente; null quando é o dono.
+   *
+   * Presente, a gravação vai por `/api/coach-save` (service key). Ausente, vai
+   * direto ao Supabase como sempre — o dono da conta passa no RLS e não
+   * precisa de intermediário. Buscar na hora da gravação, e não guardar, evita
+   * token vencido: os do Clerk duram pouco.
+   */
+  const tokenDoCoach = useCallback(async (): Promise<string | null> => {
+    if (!coachViewHouseholdId) return null;
+    try {
+      return await getToken({ template: 'supabase' });
+    } catch {
+      return null;
+    }
+  }, [coachViewHouseholdId, getToken]);
+
+  // Mantém `tokenCoachRef` fresco enquanto o coach está dentro de um cliente.
+  useEffect(() => {
+    if (!coachViewHouseholdId) { tokenCoachRef.current = null; return; }
+    let vivo = true;
+    const renovar = async () => {
+      try {
+        const t = await getToken({ template: 'supabase' });
+        if (vivo) tokenCoachRef.current = t;
+      } catch { /* a próxima renovação tenta de novo */ }
+    };
+    void renovar();
+    const id = setInterval(renovar, 30_000);
+    return () => { vivo = false; clearInterval(id); };
+  }, [coachViewHouseholdId, getToken]);
+
   useEffect(() => {
     if (!db || !householdId || dbLoading || !dbItemsLoadedRef.current) return;
     if (simulando) return; // rascunho não vai para o banco
@@ -1079,6 +1128,8 @@ const App: React.FC = () => {
       if (savingRef.current) { saveTimeoutRef.current = setTimeout(run, 600); return; }
       savingRef.current = true;
       (async () => {
+        // Um token por ciclo: na visão do coach a gravação vai pelo servidor.
+        const tk = await tokenDoCoach();
         try {
           for (let i = 0; i < items.length; i++) {
             // Aborta se o usuário trocou de perfil no meio do ciclo — sem isto,
@@ -1094,13 +1145,27 @@ const App: React.FC = () => {
             const hash = itemPersistHash(item, i);
             if (savedItemHashRef.current[item.id] === hash) continue;
             try {
-              const savedId = await saveFinanceItem(db!, householdId, item, i);
+              const savedId = await saveFinanceItem(db!, householdId, item, i, tk);
               if (savedId !== item.id) {
                 itemIdMapRef.current[item.id] = savedId;
               }
               savedItemHashRef.current[item.id] = hash;
+              setErroDeGravacao(null);
             } catch (e) {
               console.error('Erro ao salvar item', item.id, e);
+              /**
+               * A TELA precisa dizer. Antes isto morria no console: a pessoa
+               * seguia preenchendo por uma hora e só descobria ao voltar, com
+               * tudo perdido (Eduardo, 2026-09-25).
+               */
+              setErroDeGravacao(
+                `Não consegui salvar "${item.description || 'uma linha'}". `
+                + 'NÃO feche esta tela — tire um print e avise o Eduardo. '
+                + `Detalhe: ${e instanceof Error ? e.message : 'erro desconhecido'}`,
+              );
+              // Para o ciclo: insistir nas outras linhas só empilha o mesmo
+              // erro e esconde qual foi a primeira a falhar.
+              break;
             }
           }
         } finally {
@@ -1109,7 +1174,7 @@ const App: React.FC = () => {
       })();
     };
     saveTimeoutRef.current = setTimeout(run, 1500);
-  }, [items, db, householdId, simulando]);
+  }, [items, db, householdId, simulando, tokenDoCoach]);
 
   // startMonth/startYear are saved explicitly in handleReproject and handleSetStartMonth only.
   // Auto-saving here caused a race condition: householdId becoming non-null triggered this effect
@@ -1233,7 +1298,7 @@ const App: React.FC = () => {
           for (let i = 0; i < items.length; i++) {
             const item = items[i];
             if (pendingDeletesRef.current.has(item.id)) continue;
-            const savedId = await saveFinanceItem(db, householdId, { ...item, id: itemIdMapRef.current[item.id] ?? item.id }, i);
+            const savedId = await saveFinanceItem(db, householdId, { ...item, id: itemIdMapRef.current[item.id] ?? item.id }, i, tokenCoachRef.current);
             if (savedId !== item.id) itemIdMapRef.current[item.id] = savedId;
             savedItemHashRef.current[item.id] = itemPersistHash(item, i);
           }
@@ -1341,7 +1406,7 @@ const App: React.FC = () => {
         for (let i = 0; i < novosItens.length; i++) {
           const item = novosItens[i];
           if (pendingDeletesRef.current.has(item.id)) continue;
-          const savedId = await saveFinanceItem(db, householdId, { ...item, id: itemIdMapRef.current[item.id] ?? item.id }, i);
+          const savedId = await saveFinanceItem(db, householdId, { ...item, id: itemIdMapRef.current[item.id] ?? item.id }, i, tokenCoachRef.current);
           if (savedId !== item.id) itemIdMapRef.current[item.id] = savedId;
           savedItemHashRef.current[item.id] = itemPersistHash(item, i);
         }
@@ -1473,7 +1538,7 @@ const App: React.FC = () => {
     if (db && householdId) {
       for (const item of allUpdated) {
         const ordem = Math.max(0, allUpdated.indexOf(item));
-        await saveFinanceItem(db, householdId, item, ordem).catch(console.error);
+        await saveFinanceItem(db, householdId, item, ordem, tokenCoachRef.current).catch(console.error);
       }
     }
 
@@ -1868,7 +1933,7 @@ const App: React.FC = () => {
   // logo após o DELETE (ressurreição de excluídos, bug real 2026-07-16).
   const deleteItemWithRetry = (dbId: string, attempt: number) => {
     if (!db) { if (attempt < 10) setTimeout(() => deleteItemWithRetry(dbId, attempt + 1), 1000 * attempt); return; }
-    deleteFinanceItem(db, dbId).catch(() => {
+    deleteFinanceItem(db, dbId, tokenCoachRef.current).catch(() => {
       if (attempt < 5) setTimeout(() => deleteItemWithRetry(dbId, attempt + 1), 1500 * attempt);
     });
   };
@@ -2146,7 +2211,7 @@ const App: React.FC = () => {
       if (item.id !== itemId) return item;
       const atualizado = { ...item, oculto };
       if (db && householdId && !simulandoRef.current) {
-        saveFinanceItem(db, householdId, atualizado, ordem).catch(() => window.alert('Não consegui salvar. Tente de novo.'));
+        saveFinanceItem(db, householdId, atualizado, ordem, tokenCoachRef.current).catch(() => window.alert('Não consegui salvar. Tente de novo.'));
       }
       return atualizado;
     }));
@@ -2203,7 +2268,7 @@ const App: React.FC = () => {
     if (db && !simulandoRef.current) {
       const saveWithRetry = (attempt: number) => {
         const dbId = itemIdMapRef.current[itemId] ?? itemId;
-        addPartialExpense(db!, dbId, targetYear, targetMonth, expense).catch(() => {
+        addPartialExpense(db!, dbId, targetYear, targetMonth, expense, tokenCoachRef.current).catch(() => {
           if (attempt < 5) {
             setTimeout(() => saveWithRetry(attempt + 1), 1500 * attempt);
           }
@@ -2513,7 +2578,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
     const daquele = (d: string) => d === `${bankName} · Fatura` || d.startsWith(`${bankName} ••`);
     setItems(prev => prev.filter(i => {
       if (i.category !== CategoryType.CREDIT_CARD || !daquele(i.description)) return true;
-      if (db) deleteFinanceItem(db, i.id).catch(console.error);
+      if (db) deleteFinanceItem(db, i.id, tokenCoachRef.current).catch(console.error);
       return false;
     }));
     // A contagem era buscada UMA vez, no primeiro carregamento. Sem isto o
@@ -2568,7 +2633,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
     }));
 
     if (db && !simulandoRef.current) {
-      deletePartialExpense(db, expenseId).catch(console.error);
+      deletePartialExpense(db, expenseId, tokenCoachRef.current).catch(console.error);
     }
   };
 
@@ -3892,6 +3957,15 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
             </div>
           );
         })()
+      )}
+
+      {/* Gravação falhou: a faixa fica presa no topo até dar certo de novo.
+          Sem ela, a pessoa segue preenchendo e só descobre a perda ao voltar. */}
+      {erroDeGravacao && (
+        <div className="sticky top-0 z-[60] bg-[#ff3b30] px-4 py-3 text-white shadow-lg">
+          <p className="text-sm font-black">⚠️ O QUE VOCÊ ESTÁ DIGITANDO NÃO ESTÁ SENDO SALVO</p>
+          <p className="mt-0.5 text-xs leading-snug opacity-95">{erroDeGravacao}</p>
+        </div>
       )}
 
       <main key={activeTab} className={`k-reveal ${activeTab === 'plan' ? 'max-w-[1600px]' : 'w-full px-2'} mx-auto px-2 lg:px-8 mt-2 lg:mt-8`} style={(activeTab === 'desempenho' || activeTab === 'metas') ? { maxWidth: '100%' } : {}}>
