@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
-import { limparNomeEstabelecimento } from '../lib/openfinance/nomeEstabelecimento';
 
 /**
  * Sincronização automática do Extrato Open Finance.
@@ -275,8 +274,18 @@ async function notifyTargetFor(householdId: string): Promise<{ email: string; fi
       const email = primary?.email_address;
       if (!email) continue;
 
-      const allowed = OF_BETA_USER_IDS.includes(uid) || OF_BETA_EMAILS.includes(email.toLowerCase());
-      if (!allowed) continue;
+      // Mesma regra do app: lista nominal OU conta própria (sem coach).
+      // Aqui vale só para decidir QUEM RECEBE AVISO — a sincronização em si
+      // acontece para toda conexão ativa, que só existe se alguém conectou.
+      const naLista = OF_BETA_USER_IDS.includes(uid) || OF_BETA_EMAILS.includes(email.toLowerCase());
+      if (!naLista) {
+        const { data: temCoach } = await db
+          .from('coach_access')
+          .select('household_id')
+          .eq('household_id', householdId)
+          .limit(1);
+        if ((temCoach ?? []).length > 0) continue;
+      }
 
       return { email, firstName: u.first_name ?? '', uid };
     } catch { /* tenta o próximo membro */ }
@@ -352,10 +361,31 @@ async function tsViaProxy<T>(method: string, path: string, payerCpf: string, bod
   return envelope.body as T;
 }
 
+/**
+ * Marca da última LEITURA de extrato nesta execução, para o ritmo de 3/min.
+ *
+ * Antes a pausa de 21s era paga no laço, ANTES de saber se haveria leitura:
+ * cartão que ia dar `skipped` gastava 21 segundos do prazo por nada, e a
+ * rodada atendia ~5 conexões (revisão de capacidade, 2026-09-24). Agora quem
+ * espera é a própria chamada, e só quando ela vai mesmo ler o extrato.
+ */
+let ultimaLeitura = 0;
+
+async function respeitarRitmoDeLeitura(path: string): Promise<void> {
+  if (!path.includes('/statement/openfinance/')) return;
+  const espera = READ_GAP_MS - (Date.now() - ultimaLeitura);
+  if (espera > 0) await new Promise((r) => setTimeout(r, espera));
+  ultimaLeitura = Date.now();
+}
+
 async function tsReq<T>(method: string, path: string, payerCpf: string, body?: unknown): Promise<T> {
+  await respeitarRitmoDeLeitura(path);
   if (PROXY_URL) return tsViaProxy<T>(method, path, payerCpf, body);
 
   const res = await fetch(`${TS_BASE_URL}${path}`, {
+    // Sem isto, uma resposta que nunca chega consome o prazo da rodada e
+    // derruba todas as conexões da fila atrás dela (2026-09-24).
+    signal: AbortSignal.timeout(20_000),
     method,
     headers: {
       'Content-Type': 'application/json',
@@ -629,6 +659,48 @@ function memoryKey(source: string | null): string {
 }
 
 /** Deixa "EDP SAO PAULO ... S.A." legível. Espelha lib/openfinance/parser.ts. */
+/**
+ * CÓPIA PROPOSITAL de lib/openfinance/nomeEstabelecimento.ts.
+ *
+ * A Vercel NÃO empacota import local em `api/` — o mesmo motivo de
+ * `verifyAuthToken` estar duplicado em toda rota. O import que eu pus aqui em
+ * 23/09 derrubou o cron: ele parou de sincronizar naquele instante e ficou 2
+ * dias sem buscar nada, sem erro visível (2026-09-25).
+ */
+/**
+ * Tira o lixo da maquininha do nome que o banco manda.
+ *
+ * "DLKNET *AC PARQUE INDU" é o nome do INTERMEDIÁRIO (a maquininha) grudado no
+ * nome do lugar; "APLIC.INVEST FACIL - DOCTO: 326055" traz um número de
+ * documento que não diz nada ao cliente (Eduardo, 2026-09-23).
+ *
+ * O que dá para limpar é o ruído. O NOME do lugar, quando o banco não manda,
+ * ninguém consegue adivinhar — quem resolve é a pergunta "qual é o nome deste
+ * estabelecimento?", que alimenta o dicionário compartilhado.
+ */
+
+/** Intermediários que aparecem colados no nome, quase sempre antes de "*". */
+const MAQUININHAS = /^(dlknet|pag|pags|pagseguro|pagsegur|mp|mercadopago|mercpago|cielo|rede|stone|sumup|getnet|ton|picpay|paypal|ebanx|pagarme|iugu|infinitepay|zoop|safrapay|vero|granito|adyen|ec)\s*\*+\s*/i;
+
+function limparNomeEstabelecimento(texto: string | null | undefined): string {
+  let t = (texto ?? '').trim();
+  if (!t) return '';
+
+  // "DLKNET *AC PARQUE INDU" → "AC PARQUE INDU"
+  const semMaquininha = t.replace(MAQUININHAS, '');
+  if (semMaquininha.trim().length >= 4) t = semMaquininha.trim();
+  // Qualquer outro "ALGO*NOME" com nome aproveitável.
+  const porAsterisco = t.match(/^[A-Za-z0-9]{2,12}\s*\*+\s*(.{4,})$/);
+  if (porAsterisco?.[1]) t = porAsterisco[1].trim();
+
+  // Números de controle do banco, que não significam nada para o cliente.
+  t = t.replace(/\s*[-–]?\s*DOCTO:?\s*\d+\s*$/i, '');
+  t = t.replace(/\s*[-–]\s*\d{2}\/\d{2}\s*$/, '');
+  t = t.replace(/\s{2,}/g, ' ').replace(/[\s\-–.]+$/, '').trim();
+
+  return t;
+}
+
 function tidyMerchant(s: string): string {
   const clean = limparNomeEstabelecimento(s).replace(/\s+/g, ' ');
   if (clean !== clean.toUpperCase()) return clean;
@@ -1896,9 +1968,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Geramos o protocolo às :45 do minuto ANTES de cada janela (cron: "45 * * * *")
     // para que ele já esteja na fila quando eles consultarem.
     // 3:45 BRT = 6:45 UTC → hora UTC 6; 9:45 BRT = 12:45 UTC → 12; etc.
-    const GENERATE_HOURS_UTC = [6, 12, 18, 0];
-    const allowGenerate = GENERATE_HOURS_UTC.includes(new Date().getUTCHours())
-      || String(req.query.force ?? '') === 'generate';
+    /**
+     * MUDOU EM 2026-09-24: gerar em QUALQUER rodada.
+     *
+     * Prender a geração a 4 horas fixas fazia sentido quando o cron rodava de
+     * hora em hora e cada rodada cabia poucas contas: com 400 conexões, a
+     * maioria nunca alcançava a janela. Quem protege a cota de 4 protocolos
+     * diários por conta é a janela de 6h já conferida em `syncOne`
+     * (PROTOCOL_WINDOW_MS) — ela continua valendo, conta a conta.
+     */
+    const allowGenerate = true;
     // Manutenção: reprocessa o protocolo em aberto descartando as pendentes.
     // Só por chamada explícita — o cron agendado nunca faz isto.
     const reimport = String(req.query.reimport ?? '') === '1';
@@ -1956,7 +2035,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         for (const card of enabledCards) {
           if (Date.now() > deadline) break;
-          await new Promise((r2) => setTimeout(r2, READ_GAP_MS));
           try {
             const rc = await syncOne(c, allowGenerate, reimport, 'CREDIT_CARD', card);
             detalhes.push({
@@ -2003,8 +2081,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch {
         errors++;
       }
-      // Respeita 3 leituras/min: uma conexão a cada ~21s
-      await new Promise((r) => setTimeout(r, READ_GAP_MS));
+      // O ritmo de 3 leituras/min agora vive dentro de `tsReq` — ver
+      // `respeitarRitmoDeLeitura`. Aqui não se espera por nada.
     }
 
     // Aviso de transações novas. Não precisa de controle de repetição: o upsert

@@ -183,7 +183,10 @@ const OnboardingManager: React.FC<OnboardingManagerProps> = ({
               Reveja o passo a passo de qualquer tela quando quiser.
             </p>
             <div className="flex flex-col gap-2">
-              {ALL_TOURS.map(tour => {
+              {/* O tour de Open Finance não pode aparecer para quem não tem
+                  acesso: era a única superfície de OF que escapava do portão e
+                  ainda jogava o cliente numa aba inexistente (2026-09-24). */}
+              {ALL_TOURS.filter(tour => temOpenFinance || tour.screen !== 'extrato').map(tour => {
                 const done = progress?.toursCompleted.includes(tour.id) ?? false;
                 const seen = progress ? hasSeenTour(progress, tour.id) : false;
                 return (

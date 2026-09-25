@@ -40,6 +40,10 @@ function verifyAuthToken(authHeader?: string): { sub: string } | null {
     if (expected.length !== provided.length || !timingSafeEqual(expected, provided)) return null;
     const claims = JSON.parse(Buffer.from(p, 'base64url').toString('utf8'));
     if (!claims.sub) return null;
+    // Só token do CLERK. O mesmo segredo assina os tokens do GoTrue do
+    // Supabase: sem esta linha, um cadastro direto no Supabase entraria como
+    // usuário do app (revisão de segurança, 2026-09-24).
+    if (!String(claims.sub).startsWith('user_')) return null;
     if (typeof claims.exp === 'number' && claims.exp < Math.floor(Date.now() / 1000)) return null;
     return claims;
   } catch {

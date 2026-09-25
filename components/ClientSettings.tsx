@@ -24,6 +24,8 @@ interface ClientSettingsProps {
   onNotifPrefsChange?: () => void;
   /** Abre a tela de suporte (fica no App, junto dos outros overlays). */
   onAbrirSuporte?: () => void;
+  /** Casa com coach: decide se o Open Finance aparece (ver lib/ofAccess). */
+  clienteDeCoach?: boolean | null;
 }
 
 type PasswordView = 'idle' | 'set' | 'change';
@@ -38,7 +40,7 @@ const DEFAULT_PREFS: NotificationPrefs = {
 
 const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
 
-const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClose, summary, currentMonthIdx, currentYear, subscriptionStatus, onNotifPrefsChange, onAbrirSuporte }) => {
+const ClientSettings: React.FC<ClientSettingsProps> = ({ db, clienteDeCoach, householdId, onClose, summary, currentMonthIdx, currentYear, subscriptionStatus, onNotifPrefsChange, onAbrirSuporte }) => {
   const { user } = useUser();
   const { signOut } = useClerk();
   const { signIn, setActive } = useSignIn();
@@ -542,7 +544,7 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
             </div>
 
             {/* Open Finance — quem vê é decidido em lib/ofAccess.ts, um lugar só. */}
-            {hasOpenFinanceAccess(user) && (
+            {hasOpenFinanceAccess(user, clienteDeCoach) && (
             <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 mb-4">
               <h3 className="text-white font-black uppercase italic tracking-tight mb-1 flex items-center gap-2">
                 <i className="fas fa-university text-green-400"></i>Bancos conectados
@@ -914,7 +916,7 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
 
             {/* E-mail é outro canal: dá para querer o push e não querer a caixa
                 de entrada cheia (Eduardo, 2026-09-23). */}
-            {hasOpenFinanceAccess(user) && (
+            {hasOpenFinanceAccess(user, clienteDeCoach) && (
               <div className="mt-5 bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
@@ -1246,7 +1248,7 @@ const ClientSettings: React.FC<ClientSettingsProps> = ({ db, householdId, onClos
       </div>
     </div>
 
-    {showConectarBanco && hasOpenFinanceAccess(user) && (
+    {showConectarBanco && hasOpenFinanceAccess(user, clienteDeCoach) && (
       <ConectarBanco
         householdId={householdId}
         onClose={() => setShowConectarBanco(false)}

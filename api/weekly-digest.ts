@@ -17,6 +17,10 @@ function verifyAuthToken(authHeader?: string): { sub: string; [k: string]: unkno
     if (expected.length !== provided.length || !timingSafeEqual(expected, provided)) return null;
     const claims = JSON.parse(Buffer.from(p, 'base64url').toString('utf8'));
     if (!claims.sub) return null;
+    // Só token do CLERK. O mesmo segredo assina os tokens do GoTrue do
+    // Supabase: sem esta linha, um cadastro direto no Supabase entraria como
+    // usuário do app (revisão de segurança, 2026-09-24).
+    if (!String(claims.sub).startsWith('user_')) return null;
     if (typeof claims.exp === 'number' && claims.exp < Math.floor(Date.now() / 1000)) return null;
     return claims;
   } catch {
@@ -26,17 +30,42 @@ function verifyAuthToken(authHeader?: string): { sub: string; [k: string]: unkno
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+/** E-mail principal do usuário autenticado, direto no Clerk. */
+async function emailDoUsuario(sub: string): Promise<string | null> {
+  const key = process.env.CLERK_SECRET_KEY ?? '';
+  if (!key) return null;
+  try {
+    const r = await fetch(`https://api.clerk.com/v1/users/${sub}`, { headers: { Authorization: `Bearer ${key}` } });
+    if (!r.ok) return null;
+    const u = await r.json() as { primary_email_address_id?: string; email_addresses?: Array<{ id: string; email_address: string }> };
+    const principal = u.email_addresses?.find((e) => e.id === u.primary_email_address_id) ?? u.email_addresses?.[0];
+    return principal?.email_address ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).end();
 
   // Exige usuário autenticado — sem isso, qualquer um dispararia e-mails
   // com a marca Kashim para endereços arbitrários (phishing/spam).
-  if (!verifyAuthToken(req.headers.authorization as string | undefined)) {
+  const claims = verifyAuthToken(req.headers.authorization as string | undefined);
+  if (!claims) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const { email, name, balance, totalIncome, totalCost, accumulated, monthName } = req.body;
-  if (!email) return res.status(400).json({ error: 'Missing email' });
+  const { name, balance, totalIncome, totalCost, accumulated, monthName } = req.body;
+
+  /**
+   * O destinatário vem do CLERK, nunca do corpo da requisição.
+   *
+   * Aceitando `email` do cliente, qualquer pessoa logada mandava e-mail com a
+   * marca Kashim para qualquer endereço — phishing com o nosso domínio
+   * (revisão de segurança, 2026-09-24).
+   */
+  const email = await emailDoUsuario(claims.sub);
+  if (!email) return res.status(400).json({ error: 'Não encontrei o e-mail da sua conta' });
 
   const isPositive = balance >= 0;
   const balanceFormatted = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Math.abs(balance));

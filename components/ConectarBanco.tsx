@@ -719,6 +719,16 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
             </div>
           </div>
 
+          {/* Teto de bancos: dito ANTES de a pessoa digitar tudo, não depois de
+              o servidor recusar (Eduardo, 2026-09-24). */}
+          <div className="mb-4 flex items-start gap-2.5 rounded-2xl border border-zinc-800 bg-zinc-900/70 px-4 py-3">
+            <i className="fas fa-circle-info text-[#a2d800] text-xs mt-0.5" />
+            <p className="text-[12px] leading-snug text-zinc-400">
+              Você pode conectar <strong className="text-white">até 3 bancos</strong> nesta conta.
+              Conta e cartão do mesmo banco vêm juntos, numa autorização só.
+            </p>
+          </div>
+
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 space-y-4">
 
             <div>

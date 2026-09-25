@@ -20,6 +20,10 @@ function verifyAuthToken(authHeader?: string): { sub: string; [k: string]: unkno
     if (expected.length !== provided.length || !timingSafeEqual(expected, provided)) return null;
     const claims = JSON.parse(Buffer.from(p, 'base64url').toString('utf8'));
     if (!claims.sub) return null;
+    // Só token do CLERK. O mesmo segredo assina os tokens do GoTrue do
+    // Supabase: sem esta linha, um cadastro direto no Supabase entraria como
+    // usuário do app (revisão de segurança, 2026-09-24).
+    if (!String(claims.sub).startsWith('user_')) return null;
     if (typeof claims.exp === 'number' && claims.exp < Math.floor(Date.now() / 1000)) return null;
     return claims;
   } catch {
@@ -325,6 +329,8 @@ const BANK_NAMES: Record<string, string> = {
 // ─── Portão de acesso ────────────────────────────────────────────────────────
 
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? '';
+/** Bancos conectados por casa. Ver o comentário no POST: é custo, não capricho. */
+const MAX_BANCOS_POR_CASA = 3;
 const OF_BETA_USER_IDS = (process.env.OF_BETA_USER_IDS ?? '')
   .split(',').map((s) => s.trim()).filter(Boolean);
 const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com', 'remmachado.86@gmail.com', 'mouragiany@gmail.com', 'edununesbenedito@gmail.com',
@@ -342,6 +348,30 @@ const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com', 'remmachado.86@gmail.com', 'm
  * chamar esta rota, então o portão precisa existir dos dois lados.
  * Duplicado de propósito: o Vercel não empacota import local em `api/`.
  */
+/**
+ * Conta própria (sem vínculo de coach) entra no Open Finance; cliente de
+ * consultoria espera a liberação manual (Eduardo, 2026-09-24). Erro de leitura
+ * NEGA — na dúvida, não mostrar OF a quem não deve.
+ */
+async function contaSemCoach(sub: string): Promise<boolean> {
+  try {
+    const { data: vinculos } = await db
+      .from('household_members')
+      .select('household_id')
+      .eq('clerk_user_id', sub);
+    const casas = (vinculos ?? []).map((v) => v.household_id as string);
+    if (casas.length === 0) return false;
+    const { data: coach } = await db
+      .from('coach_access')
+      .select('household_id')
+      .in('household_id', casas)
+      .limit(1);
+    return (coach ?? []).length === 0;
+  } catch {
+    return false;
+  }
+}
+
 async function hasOpenFinanceAccess(sub: string): Promise<boolean> {
   if (OF_BETA_USER_IDS.includes(sub)) return true;
   if (!CLERK_SECRET_KEY) return false;
@@ -368,7 +398,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!claims) return res.status(401).json({ error: 'Unauthorized' });
   const sub = claims.sub;
 
-  if (!(await hasOpenFinanceAccess(sub))) {
+  if (!(await hasOpenFinanceAccess(sub)) && !(await contaSemCoach(sub))) {
     return res.status(403).json({ error: 'Open Finance ainda não está disponível para esta conta.' });
   }
 
@@ -475,6 +505,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       if (accountType === 'credit_card' && !cardLast4) {
         return res.status(400).json({ error: 'cardLast4 obrigatório para cartão de crédito' });
+      }
+
+      /**
+       * TETO DE BANCOS POR CASA.
+       *
+       * Cada conta ativa custa por mês na Technospeed (plano Bronze/Prata) —
+       * e o custo é por conta, não por uso. Com assinatura de R$ 29,90, mais de
+       * 3 bancos come a margem inteira (Eduardo, 2026-09-24). Conta revogada
+       * não ocupa vaga; no modo casal as vagas são da CASA, não por pessoa.
+       * O admin passa direto, para conseguir testar e atender.
+       */
+      if (!ADMIN_IDS.includes(sub)) {
+        const { data: vivas } = await db
+          .from('bank_connections')
+          .select('id')
+          .eq('household_id', householdId)
+          .neq('consent_status', 'revoked');
+        if ((vivas ?? []).length >= MAX_BANCOS_POR_CASA) {
+          return res.status(409).json({
+            error: `Você já tem ${MAX_BANCOS_POR_CASA} bancos conectados. Remova um em Configurações → Gerenciar bancos para conectar outro.`,
+          });
+        }
       }
       if (!/^\d{11}$/.test(cpf)) {
         return res.status(400).json({ error: 'CPF inválido — informe 11 dígitos sem pontos ou traços' });

@@ -1485,6 +1485,10 @@ export default function ExtratoBancario({
                 </div>
               </div>
             )}
+            {/* Teto de bancos: custo por conta ativa (ver api/of-connect). */}
+            <p className="mb-2 px-1 text-[11px] font-bold text-[#8e8e93]">
+              {banks.length} de 3 bancos conectados
+            </p>
             {banks.map((b) => {
               const ready = b.consentStatus === 'active';
               const pendentesNoBanco = transactions.filter((t) => t.connectionId === b.id).length;

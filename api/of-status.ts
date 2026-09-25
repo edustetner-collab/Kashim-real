@@ -33,6 +33,10 @@ function verifyAuthToken(authHeader?: string): { sub: string; [k: string]: unkno
     if (expected.length !== provided.length || !timingSafeEqual(expected, provided)) return null;
     const claims = JSON.parse(Buffer.from(p, 'base64url').toString('utf8'));
     if (!claims.sub) return null;
+    // Só token do CLERK. O mesmo segredo assina os tokens do GoTrue do
+    // Supabase: sem esta linha, um cadastro direto no Supabase entraria como
+    // usuário do app (revisão de segurança, 2026-09-24).
+    if (!String(claims.sub).startsWith('user_')) return null;
     if (typeof claims.exp === 'number' && claims.exp < Math.floor(Date.now() / 1000)) return null;
     return claims;
   } catch {
@@ -71,6 +75,30 @@ const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com', 'remmachado.86@gmail.com', 'm
   'elisamarodriguees@hotmail.com',
   'lucas.coppede.damiao@gmail.com', 'coppede.bruna@gmail.com',
   'zaidandesouza@gmail.com'];
+
+/**
+ * Conta própria (sem vínculo de coach) entra no Open Finance; cliente de
+ * consultoria espera a liberação manual (Eduardo, 2026-09-24). Erro de leitura
+ * NEGA — na dúvida, não mostrar OF a quem não deve.
+ */
+async function contaSemCoach(sub: string): Promise<boolean> {
+  try {
+    const { data: vinculos } = await db
+      .from('household_members')
+      .select('household_id')
+      .eq('clerk_user_id', sub);
+    const casas = (vinculos ?? []).map((v) => v.household_id as string);
+    if (casas.length === 0) return false;
+    const { data: coach } = await db
+      .from('coach_access')
+      .select('household_id')
+      .in('household_id', casas)
+      .limit(1);
+    return (coach ?? []).length === 0;
+  } catch {
+    return false;
+  }
+}
 
 async function hasOpenFinanceAccess(sub: string): Promise<boolean> {
   if (OF_BETA_USER_IDS.includes(sub)) return true;
@@ -196,7 +224,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!claims) return res.status(401).json({ error: 'Unauthorized' });
   const sub = claims.sub;
 
-  if (!(await hasOpenFinanceAccess(sub))) {
+  if (!(await hasOpenFinanceAccess(sub)) && !(await contaSemCoach(sub))) {
     return res.status(403).json({ error: 'Open Finance ainda não está disponível para esta conta.' });
   }
 

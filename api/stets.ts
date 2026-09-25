@@ -17,6 +17,10 @@ function verifyAuthToken(authHeader?: string): { sub: string; [k: string]: unkno
     if (expected.length !== provided.length || !timingSafeEqual(expected, provided)) return null;
     const claims = JSON.parse(Buffer.from(p, 'base64url').toString('utf8'));
     if (!claims.sub) return null;
+    // Só token do CLERK. O mesmo segredo assina os tokens do GoTrue do
+    // Supabase: sem esta linha, um cadastro direto no Supabase entraria como
+    // usuário do app (revisão de segurança, 2026-09-24).
+    if (!String(claims.sub).startsWith('user_')) return null;
     if (typeof claims.exp === 'number' && claims.exp < Math.floor(Date.now() / 1000)) return null;
     return claims;
   } catch {
@@ -49,6 +53,27 @@ function verifyClerkToken(authHeader: string): boolean {
   return verifyAuthToken(authHeader) !== null;
 }
 
+/** Limite simples por usuário, usando a mesma função do banco do coach-chat. */
+async function dentroDoLimite(authHeader: string): Promise<boolean> {
+  const claims = verifyAuthToken(authHeader);
+  if (!claims) return false;
+  const url = process.env.VITE_SUPABASE_URL ?? '';
+  const key = process.env.SUPABASE_SERVICE_KEY ?? '';
+  if (!url || !key) return true;
+  try {
+    const r = await fetch(`${url}/rest/v1/rpc/check_rate_limit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: key, Authorization: `Bearer ${key}` },
+      body: JSON.stringify({ p_key: `stets:${claims.sub}`, p_limit: 60, p_window_seconds: 3600 }),
+    });
+    if (!r.ok) return true;
+    const permitido = await r.json();
+    return permitido !== false;
+  } catch {
+    return true;
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', 'https://kashim.com.br');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -62,6 +87,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    /**
+     * Teto por usuário: a chamada é paga pela Anthropic e o prompt vem do
+     * cliente. Sem limite, uma conta grátis vira conta de consumo nossa
+     * (revisão de segurança, 2026-09-24). Falha de leitura NÃO bloqueia.
+     */
+    if (!(await dentroDoLimite(req.headers.authorization ?? ''))) {
+      return res.status(429).json({ error: 'Muitas perguntas seguidas. Tente de novo em alguns minutos.' });
+    }
+
     const { userMessage, imageData, imageMimeType, systemPrompt, availableItems } = req.body as {
       userMessage?: string;
       imageData?: string;

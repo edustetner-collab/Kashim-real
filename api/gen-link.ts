@@ -17,6 +17,10 @@ function verifyAuthToken(authHeader?: string): { sub: string; [k: string]: unkno
     if (expected.length !== provided.length || !timingSafeEqual(expected, provided)) return null;
     const claims = JSON.parse(Buffer.from(p, 'base64url').toString('utf8'));
     if (!claims.sub) return null;
+    // Só token do CLERK. O mesmo segredo assina os tokens do GoTrue do
+    // Supabase: sem esta linha, um cadastro direto no Supabase entraria como
+    // usuário do app (revisão de segurança, 2026-09-24).
+    if (!String(claims.sub).startsWith('user_')) return null;
     if (typeof claims.exp === 'number' && claims.exp < Math.floor(Date.now() / 1000)) return null;
     return claims;
   } catch {
@@ -83,6 +87,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { householdId } = req.body;
     if (!householdId) return res.status(400).json({ error: 'householdId required' });
+
+    /**
+     * Conta privada não gera link de acesso.
+     *
+     * Este link ENTRA na conta do cliente. As outras rotas de staff já
+     * respeitam `is_private` (load-finance-items, update-start-month); esta
+     * não respeitava, e era a mais poderosa das três (revisão de segurança,
+     * 2026-09-24).
+     */
+    const { data: casa } = await db
+      .from('households')
+      .select('is_private')
+      .eq('id', householdId)
+      .maybeSingle();
+    if (casa?.is_private) return res.status(403).json({ error: 'Conta privada' });
 
     const { data: member } = await db
       .from('household_members')

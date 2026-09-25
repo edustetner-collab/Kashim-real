@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node scripts/checar-api.mjs && vite build",
+    "checar:api": "node scripts/checar-api.mjs",
     "preview": "vite preview",
     "build:mobile": "vite build && npx cap sync ios",
     "cap:sync": "npx cap sync",

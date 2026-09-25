@@ -38,12 +38,32 @@ interface ClerkLikeUser {
   emailAddresses?: Array<{ emailAddress?: string | null }>;
 }
 
-export function hasOpenFinanceAccess(user: ClerkLikeUser | null | undefined): boolean {
+/**
+ * Quem vê Open Finance.
+ *
+ * REGRA DE LANÇAMENTO (Eduardo, 2026-09-24): quem cria a conta sozinho — o
+ * público que vem do Instagram — entra direto. Cliente de consultoria (casa com
+ * vínculo de coach, criada pelo Eduardo ou pela assistente) continua FORA até
+ * ele mandar abrir: são planos montados a mão, que seriam reprojetados pela
+ * migração para o Open Finance.
+ *
+ * `clienteDeCoach` vem do app depois de `check-coach-access` responder:
+ *   true  = casa com coach → só entra se estiver na lista nominal
+ *   false = conta própria → entra
+ *   null/undefined = ainda não sei → NÃO mostra (nunca vazar por default)
+ */
+export function hasOpenFinanceAccess(
+  user: ClerkLikeUser | null | undefined,
+  clienteDeCoach?: boolean | null,
+): boolean {
   if (!user) return false;
   if (user.id && BETA_USER_IDS.includes(user.id)) return true;
 
-  return (user.emailAddresses ?? []).some((e) => {
+  const naLista = (user.emailAddresses ?? []).some((e) => {
     const email = e?.emailAddress?.toLowerCase();
     return !!email && OF_BETA_EMAILS.includes(email);
   });
+  if (naLista) return true;
+
+  return clienteDeCoach === false;
 }

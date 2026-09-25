@@ -15,7 +15,11 @@ function verifyBasicAuth(authHeader: string | undefined): boolean {
   const [user, pass] = decoded.split(':');
   const expectedUser = process.env.PAGARME_WEBHOOK_USER ?? '';
   const expectedPass = process.env.PAGARME_WEBHOOK_PASS ?? '';
-  if (!expectedUser || !expectedPass) return true; // not configured yet — allow
+  // FALHA FECHADA. Antes era `return true`: sem as variáveis no ambiente, o
+  // webhook ficava aberto na internet e um POST forjado com o householdId
+  // (que o próprio cliente conhece) dava assinatura anual de graça, ou
+  // cancelava a de quem pagou (revisão de segurança, 2026-09-24).
+  if (!expectedUser || !expectedPass) return false;
   return user === expectedUser && pass === expectedPass;
 }
 
