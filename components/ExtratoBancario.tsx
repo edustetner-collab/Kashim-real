@@ -368,6 +368,22 @@ function categoriaSugerida(tx: BankTransaction): CategoryType {
     ?? (tx.transactionType === 'income' ? CategoryType.INCOME : CategoryType.VARIABLE_EXPENSE);
 }
 
+/**
+ * Aplicação e resgate NÃO são gasto nem renda — é o dinheiro mudando de lugar.
+ *
+ * A importação já marca estes como `savings` e de propósito NÃO sugere
+ * categoria. O palpite de reserva que eu criei em 2026-09-25 passou por cima
+ * disso e começou a oferecer "Contas Variáveis" para uma aplicação e "Renda"
+ * para um resgate — o mesmo erro de inflar os dois lados do plano que já tinha
+ * sido corrigido em 23/09. O cliente Hugo viu os dois e não reconheceu nenhum.
+ *
+ * Continua sendo UM layout: o card tem a mesma forma e os mesmos dois botões.
+ * O que muda é que aqui a sugestão honesta é "isto não é um gasto".
+ */
+function ehMudancaDeLugar(tx: BankTransaction): boolean {
+  return tx.transactionType === 'savings';
+}
+
 /** Cor do nome da categoria na frase — mais escura que a da etiqueta, para ler bem no fundo claro. */
 const COR_DA_FRASE: Record<string, string> = {
   [CategoryType.INCOME]: '#1f8a3b',
@@ -399,7 +415,10 @@ const TxRow: React.FC<TxRowProps> = ({ tx, linhaSugerida, onSelect, onDiscard, o
    * classificar: entrada vira Renda, saída vira Conta Variável — que é onde
    * mora o imprevisto. Errar aqui custa um toque em "Mudar categoria"; mudar
    * o layout custa a pessoa não reconhecer a própria tela.
+   *
+   * EXCEÇÃO: aplicação e resgate. Ver `ehMudancaDeLugar`.
    */
+  const mudancaDeLugar = ehMudancaDeLugar(tx);
   const categoria = categoriaSugerida(tx);
   /** O cliente já ensinou este lugar: o card diz isso e pede só a confirmação. */
   const daMemoria = tx.suggestionConfidence === 'memory';
@@ -435,10 +454,17 @@ const TxRow: React.FC<TxRowProps> = ({ tx, linhaSugerida, onSelect, onDiscard, o
             <i className="fas fa-wand-magic-sparkles text-[10px]" /> Você já categorizou aqui antes
           </p>
         )}
-        <p className="text-[13px] leading-snug text-[#3a3a3c]">
-          Sugerimos <span className="font-extrabold" style={{ color: COR_DA_FRASE[categoria] ?? '#1d1d1f' }}>{categoria}</span>
-          {linhaSugerida && <>, na linha <span className="font-extrabold text-[#1d1d1f]">{linhaSugerida}</span></>}. Está certo?
-        </p>
+        {mudancaDeLugar ? (
+          <p className="text-[13px] leading-snug text-[#3a3a3c]">
+            Isto parece <span className="font-extrabold text-[#0060c9]">aplicação ou resgate</span> — o seu
+            dinheiro mudando de lugar, não um gasto. Tirar da conta?
+          </p>
+        ) : (
+          <p className="text-[13px] leading-snug text-[#3a3a3c]">
+            Sugerimos <span className="font-extrabold" style={{ color: COR_DA_FRASE[categoria] ?? '#1d1d1f' }}>{categoria}</span>
+            {linhaSugerida && <>, na linha <span className="font-extrabold text-[#1d1d1f]">{linhaSugerida}</span></>}. Está certo?
+          </p>
+        )}
         {/* Sem linha conhecida em conta fixa, confirmar NÃO chuta: o passo
             seguinte pergunta qual conta é (Eduardo, 2026-09-23). */}
         {!linhaSugerida && categoria === CategoryType.FIXED_EXPENSE && (
@@ -448,24 +474,34 @@ const TxRow: React.FC<TxRowProps> = ({ tx, linhaSugerida, onSelect, onDiscard, o
         )}
         {/* Palpite de reserva avisa que é chute, para ninguém confirmar no
             automático achando que o banco mandou a categoria. */}
-        {semPalpite && (
+        {semPalpite && !mudancaDeLugar && (
           <p className="mt-1 text-[11px] leading-snug text-[#8e8e93]">
             O banco não disse do que se trata — confira antes de confirmar.
           </p>
         )}
         <div className="mt-2.5 flex gap-2">
-          <button
-            onClick={() => onConfirm(tx)}
-            className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl text-[13px] font-extrabold text-[#182200] active:scale-95"
-            style={{ background: 'linear-gradient(90deg,#c5f23a,#8cc400)' }}
-          >
-            <i className="fas fa-check text-xs" /> Sim, confirmar
-          </button>
+          {mudancaDeLugar ? (
+            <button
+              onClick={() => onDiscard(tx)}
+              className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl text-[13px] font-extrabold text-[#182200] active:scale-95"
+              style={{ background: 'linear-gradient(90deg,#c5f23a,#8cc400)' }}
+            >
+              <i className="fas fa-check text-xs" /> Não é gasto
+            </button>
+          ) : (
+            <button
+              onClick={() => onConfirm(tx)}
+              className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl text-[13px] font-extrabold text-[#182200] active:scale-95"
+              style={{ background: 'linear-gradient(90deg,#c5f23a,#8cc400)' }}
+            >
+              <i className="fas fa-check text-xs" /> Sim, confirmar
+            </button>
+          )}
           <button
             onClick={() => onSelect(tx)}
             className="h-11 flex-1 rounded-xl border-[1.5px] border-[#d1d1d6] bg-white text-[13px] font-extrabold text-[#1d1d1f] active:scale-95"
           >
-            Mudar categoria
+            {mudancaDeLugar ? 'É um gasto' : 'Mudar categoria'}
           </button>
         </div>
       </div>

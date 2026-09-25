@@ -829,6 +829,76 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ total_casas: (casas ?? []).length, suspeitos });
   }
 
+  /**
+   * ── CRUZAMENTO ENTRE CONTAS ──────────────────────────────────────────────
+   *
+   * A pergunta mais grave que existe aqui: o dado de um cliente pode aparecer
+   * na conta de outro? Em 2026-09-25 o Hugo avisou que tinha recebido dois
+   * lançamentos que dizia não serem dele, e não havia ferramenta nenhuma para
+   * responder isso com certeza — só opinião.
+   *
+   * Três provas, nesta ordem:
+   *  1. `conta_repetida` — o MESMO `account_hash` em casas diferentes. É a
+   *     única forma de dois clientes lerem o mesmo extrato do banco.
+   *  2. `cpf_repetido` — o mesmo `payer_cpf` em casas diferentes. Legítimo em
+   *     casal (mesma casa) e suspeito fora disso.
+   *  3. `?valor=` — todas as transações daquele valor em TODAS as casas, para
+   *     ver se a mesma aparece em duas.
+   *
+   * Nenhum resultado aqui devolve dado de cliente além do necessário: id da
+   * casa, banco e descrição. Rota já é só-admin.
+   */
+  if (req.query.cruzamento === '1') {
+    const { data: conexoes } = await db
+      .from('bank_connections')
+      .select('id, household_id, bank_name, account_hash, payer_cpf, consent_status');
+
+    const porHash = new Map<string, Set<string>>();
+    const porCpf = new Map<string, Set<string>>();
+    for (const c of conexoes ?? []) {
+      const hash = String(c.account_hash ?? '');
+      const cpf = String(c.payer_cpf ?? '');
+      if (hash) (porHash.get(hash) ?? porHash.set(hash, new Set()).get(hash)!).add(c.household_id as string);
+      if (cpf) (porCpf.get(cpf) ?? porCpf.set(cpf, new Set()).get(cpf)!).add(c.household_id as string);
+    }
+    const conta_repetida = [...porHash.entries()]
+      .filter(([, casas]) => casas.size > 1)
+      .map(([hash, casas]) => ({
+        account_hash: hash.slice(0, 6) + '…',
+        casas: [...casas],
+        bancos: (conexoes ?? []).filter(c => c.account_hash === hash).map(c => c.bank_name),
+      }));
+    const cpf_repetido = [...porCpf.entries()]
+      .filter(([, casas]) => casas.size > 1)
+      .map(([cpf, casas]) => ({ cpf: cpf.slice(0, 3) + '…' + cpf.slice(-2), casas: [...casas] }));
+
+    // Opcional: onde mora, em todo o banco, uma transação de tal valor.
+    let porValor: unknown[] = [];
+    if (req.query.valor) {
+      const v = Number(String(req.query.valor).replace(',', '.'));
+      const { data: txs } = await db
+        .from('bank_transactions')
+        .select('household_id, connection_id, transaction_id, amount, transaction_date, description, of_code, account_type, status')
+        .gte('amount', v - 0.005).lte('amount', v + 0.005)
+        .order('transaction_date', { ascending: false }).limit(50);
+      porValor = (txs ?? []).map(t => ({
+        ...t,
+        banco: (conexoes ?? []).find(c => c.id === t.connection_id)?.bank_name ?? '?',
+      }));
+    }
+
+    return res.status(200).json({
+      tirada_em: new Date().toISOString(),
+      total_conexoes: (conexoes ?? []).length,
+      veredito: conta_repetida.length === 0 && cpf_repetido.length === 0
+        ? 'NENHUMA conta ou CPF aparece em duas casas'
+        : 'ATENÇÃO: há repetição — ver abaixo',
+      conta_repetida,
+      cpf_repetido,
+      transacoes_com_esse_valor: porValor,
+    });
+  }
+
   // ── Saldo que o banco informou na última leitura ─────────────────────────
   if (req.query.saldos === '1') {
     const e = String(req.query.email ?? '').toLowerCase().trim();
