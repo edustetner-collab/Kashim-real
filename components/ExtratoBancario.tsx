@@ -356,6 +356,18 @@ interface TxRowProps {
   onConfirm: (tx: BankTransaction) => void;
 }
 
+/**
+ * A categoria que o card mostra — nunca nula.
+ *
+ * Um lugar só, porque três pontos precisam concordar: o que o card escreve, o
+ * que o "Sim, confirmar" grava e o que a gravação usa. Se divergirem, o botão
+ * promete uma coisa e faz outra — ou, como acontecia, não faz nada.
+ */
+function categoriaSugerida(tx: BankTransaction): CategoryType {
+  return (tx.suggestedCategory as CategoryType | null)
+    ?? (tx.transactionType === 'income' ? CategoryType.INCOME : CategoryType.VARIABLE_EXPENSE);
+}
+
 /** Cor do nome da categoria na frase — mais escura que a da etiqueta, para ler bem no fundo claro. */
 const COR_DA_FRASE: Record<string, string> = {
   [CategoryType.INCOME]: '#1f8a3b',
@@ -375,7 +387,23 @@ const COR_DA_FRASE: Record<string, string> = {
  */
 const TxRow: React.FC<TxRowProps> = ({ tx, linhaSugerida, onSelect, onDiscard, onConfirm }) => {
   const isIncome = tx.transactionType === 'income';
-  const categoria = tx.suggestedCategory ?? null;
+  /**
+   * SEMPRE há uma sugestão, e por isso sempre há um só layout.
+   *
+   * Sem palpite o card virava outro card: pergunta diferente e um botão preto
+   * "Escolher categoria". Na mesma tela, o Itaú aparecia verde e o Bradesco
+   * preto (Eduardo, 2026-09-25: "layout tem que ser sempre o mesmo. Você
+   * sugere uma categoria e se tiver errada, a pessoa que mude").
+   *
+   * O palpite de reserva é o destino honesto de um gasto que não sabemos
+   * classificar: entrada vira Renda, saída vira Conta Variável — que é onde
+   * mora o imprevisto. Errar aqui custa um toque em "Mudar categoria"; mudar
+   * o layout custa a pessoa não reconhecer a própria tela.
+   */
+  const categoria = categoriaSugerida(tx);
+  /** O cliente já ensinou este lugar: o card diz isso e pede só a confirmação. */
+  const daMemoria = tx.suggestionConfidence === 'memory';
+  const semPalpite = !tx.suggestedCategory;
   const meio = tx.accountType === 'credit_card'
     ? (tx.cardLast4 ? `Cartão ••${tx.cardLast4}` : 'Cartão')
     : (tx.paymentMethod ? tx.paymentMethod.charAt(0).toUpperCase() + tx.paymentMethod.slice(1).toLowerCase() : 'Conta');
@@ -398,47 +426,48 @@ const TxRow: React.FC<TxRowProps> = ({ tx, linhaSugerida, onSelect, onDiscard, o
         </span>
       </div>
 
-      <div className="mx-2.5 mb-1 rounded-xl bg-[#f7f7f8] p-3">
-        {categoria ? (
-          <>
-            <p className="text-[13px] leading-snug text-[#3a3a3c]">
-              Sugerimos <span className="font-extrabold" style={{ color: COR_DA_FRASE[categoria] ?? '#1d1d1f' }}>{categoria}</span>
-              {linhaSugerida && <>, na linha <span className="font-extrabold text-[#1d1d1f]">{linhaSugerida}</span></>}. Está certo?
-            </p>
-            {/* Sem linha conhecida em conta fixa, confirmar NÃO chuta: o passo
-                seguinte pergunta qual conta é (Eduardo, 2026-09-23). */}
-            {!linhaSugerida && categoria === CategoryType.FIXED_EXPENSE && (
-              <p className="mt-1 text-[11px] leading-snug text-[#8e8e93]">
-                Você escolhe qual conta fixa no passo seguinte.
-              </p>
-            )}
-            <div className="mt-2.5 flex gap-2">
-              <button
-                onClick={() => onConfirm(tx)}
-                className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl text-[13px] font-extrabold text-[#182200] active:scale-95"
-                style={{ background: 'linear-gradient(90deg,#c5f23a,#8cc400)' }}
-              >
-                <i className="fas fa-check text-xs" /> Sim, confirmar
-              </button>
-              <button
-                onClick={() => onSelect(tx)}
-                className="h-11 flex-1 rounded-xl border-[1.5px] border-[#d1d1d6] bg-white text-[13px] font-extrabold text-[#1d1d1f] active:scale-95"
-              >
-                Mudar categoria
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="text-[13px] leading-snug text-[#3a3a3c]">Onde este gasto entra no seu plano?</p>
-            <button
-              onClick={() => onSelect(tx)}
-              className="mt-2.5 h-11 w-full rounded-xl bg-[#1d1d1f] text-[13px] font-extrabold text-white active:scale-95"
-            >
-              Escolher categoria
-            </button>
-          </>
+      {/* O que o cliente já ensinou fica visivelmente diferente — é o que
+          distingue "confirme isto" de "decida isto" sem mexer na contagem da
+          fila, que conta as duas coisas (Eduardo, 2026-09-25). */}
+      <div className={`mx-2.5 mb-1 rounded-xl p-3 ${daMemoria ? 'border border-[rgba(122,184,0,0.4)] bg-[#f2fadf]' : 'bg-[#f7f7f8]'}`}>
+        {daMemoria && (
+          <p className="mb-1 flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wide text-[#5f9400]">
+            <i className="fas fa-wand-magic-sparkles text-[10px]" /> Você já categorizou aqui antes
+          </p>
         )}
+        <p className="text-[13px] leading-snug text-[#3a3a3c]">
+          Sugerimos <span className="font-extrabold" style={{ color: COR_DA_FRASE[categoria] ?? '#1d1d1f' }}>{categoria}</span>
+          {linhaSugerida && <>, na linha <span className="font-extrabold text-[#1d1d1f]">{linhaSugerida}</span></>}. Está certo?
+        </p>
+        {/* Sem linha conhecida em conta fixa, confirmar NÃO chuta: o passo
+            seguinte pergunta qual conta é (Eduardo, 2026-09-23). */}
+        {!linhaSugerida && categoria === CategoryType.FIXED_EXPENSE && (
+          <p className="mt-1 text-[11px] leading-snug text-[#8e8e93]">
+            Você escolhe qual conta fixa no passo seguinte.
+          </p>
+        )}
+        {/* Palpite de reserva avisa que é chute, para ninguém confirmar no
+            automático achando que o banco mandou a categoria. */}
+        {semPalpite && (
+          <p className="mt-1 text-[11px] leading-snug text-[#8e8e93]">
+            O banco não disse do que se trata — confira antes de confirmar.
+          </p>
+        )}
+        <div className="mt-2.5 flex gap-2">
+          <button
+            onClick={() => onConfirm(tx)}
+            className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl text-[13px] font-extrabold text-[#182200] active:scale-95"
+            style={{ background: 'linear-gradient(90deg,#c5f23a,#8cc400)' }}
+          >
+            <i className="fas fa-check text-xs" /> Sim, confirmar
+          </button>
+          <button
+            onClick={() => onSelect(tx)}
+            className="h-11 flex-1 rounded-xl border-[1.5px] border-[#d1d1d6] bg-white text-[13px] font-extrabold text-[#1d1d1f] active:scale-95"
+          >
+            Mudar categoria
+          </button>
+        </div>
       </div>
 
       <button
@@ -713,8 +742,10 @@ export default function ExtratoBancario({
   }
 
   async function confirmarRapido(tx: BankTransaction) {
-    const categoria = tx.suggestedCategory as CategoryType | null;
-    if (!categoria) return;
+    // Mesma conta do card: sem palpite do banco, cai no destino de reserva.
+    // Antes isto era `if (!categoria) return;` e o botão simplesmente não fazia
+    // nada nos gastos sem sugestão.
+    const categoria = categoriaSugerida(tx);
 
     /**
      * Conta fixa sem linha conhecida pergunta ONDE encaixar.
@@ -763,8 +794,7 @@ export default function ExtratoBancario({
   }
 
   async function gravarConfirmado(tx: BankTransaction, nome: string) {
-    const categoria = tx.suggestedCategory as CategoryType | null;
-    if (!categoria) return;
+    const categoria = categoriaSugerida(tx);
 
     /**
      * Item de destino, sem inventar linha nova a cada estabelecimento.
@@ -940,17 +970,6 @@ export default function ExtratoBancario({
     return () => clearTimeout(id);
   }, [onRegistrarPush]);
 
-  /**
-   * Avisa o app a cada gasto que sai da fila.
-   *
-   * O badge so era recontado ao FECHAR o Extrato: o cliente categorizava os
-   * tres, voltava para a tela inicial e continuava lendo "3" (Eduardo,
-   * 2026-09-22). Agora o numero cai junto com a lista.
-   */
-  useEffect(() => {
-    onFilaMudou?.(transactions.length);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transactions.length]);
 
   /**
    * O lançamento automático pela memória MUDOU DE LUGAR: acontece na abertura
@@ -1214,6 +1233,24 @@ export default function ExtratoBancario({
     acc[k] = (acc[k] ?? 0) + 1;
     return acc;
   }, {});
+
+  /**
+   * Avisa o app a cada gasto que sai da fila.
+   *
+   * O badge so era recontado ao FECHAR o Extrato: o cliente categorizava os
+   * tres, voltava para a tela inicial e continuava lendo "3" (Eduardo,
+   * 2026-09-22). Agora o numero cai junto com a lista.
+   *
+   * `transactions.length` é o número certo SEM ressalva: quem esconde conta e
+   * cartão desligados é o servidor (`apareceNaTela`, em of-transactions.ts), e
+   * é a mesma lista que o `recontarPendentes` do App pede. Filtrar de novo
+   * aqui esconderia cartão adicional que a conexão não cadastrou — foi o que
+   * já sumiu com 20 das 23 transações do Michael.
+   */
+  useEffect(() => {
+    onFilaMudou?.(transactions.length);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactions.length]);
 
   // A lista de bancos é a porta de entrada do Extrato — inclusive com zero ou
   // um banco, porque é onde mora o botão de conectar. Antes isso vivia em

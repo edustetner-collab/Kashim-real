@@ -359,8 +359,6 @@ const App: React.FC = () => {
   const [ofMigracaoAberta, setOfMigracaoAberta] = useState(false);
   /** Onde o Plano estava quando um toque na linha levou para Gastos — o "voltar" devolve para lá. */
   const [voltarAoPlanoY, setVoltarAoPlanoY] = useState<number | null>(null);
-  /** Evita lançar duas vezes se a recontagem rodar em paralelo. */
-  const lancandoAutoRef = useRef(false);
   const [ofMigrando, setOfMigrando] = useState(false);
   /** Relevo do item selecionado na barra de baixo (o mesmo do botão central). */
   const ABA_ATIVA: React.CSSProperties = {
@@ -1784,7 +1782,8 @@ const App: React.FC = () => {
         const precisamDeVoce = lista.filter((t) => t.suggestionConfidence !== 'memory').length;
         setPendentesAutomaticas(lista.length - precisamDeVoce);
         if (lista.length > 0) {
-          setCategorizeCount(precisamDeVoce);
+          // Mesma contagem do `recontarPendentes` e do Extrato: a fila inteira.
+          setCategorizeCount(lista.length);
           setShowCategorizePopup(true);
         }
         /**
@@ -2429,65 +2428,38 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
       const r = await fetch(`/api/of-transactions?${params}`, { headers: { Authorization: `Bearer ${token}` } });
       if (!r.ok) return;
       const json = await r.json() as { transactions?: Array<Record<string, unknown>> };
-      let lista = json.transactions ?? [];
+      const lista = json.transactions ?? [];
 
       /**
-       * O que o cliente já ensinou entra sozinho AQUI, na abertura do app.
+       * NADA entra no plano sem a pessoa confirmar.
        *
-       * Antes isso só acontecia quando o Extrato abria: o push dizia "já lancei
-       * 1 por você", o cliente abria o app e o resumo não vinha — ele passava
-       * por Extrato e Gastos e só depois o aviso aparecia (Eduardo, 2026-09-23).
-       * Só memória lança sozinho; palpite continua esperando a pessoa.
+       * Até 2026-09-25 o que o cliente já tinha ensinado era lançado sozinho
+       * aqui, na abertura do app. Dois estragos: o R$1.200 do Pix apareceu na
+       * Renda sem ninguém pedir, e — como o PATCH que tirava a transação da
+       * fila era disparado sem esperar resposta — bastava ele falhar para a
+       * mesma transação ser lançada de novo na abertura seguinte, duplicando a
+       * linha no plano (Eduardo, 2026-09-25: "ele só deve entrar a partir do
+       * momento que a pessoa confirmou").
+       *
+       * O reconhecido agora espera UM TOQUE no Extrato, no botão "Sim,
+       * confirmar" que já existe. Continua sendo um toque só — a diferença é
+       * que o toque é de quem tem o direito de dar.
+       *
+       * Consequência aceita: quem nunca abre o app não tem mais nada lançado
+       * automaticamente. É o preço de o plano nunca mostrar o que não foi
+       * conferido.
        */
-      const acharItem = (idDoBanco: string) => itemsAgoraRef.current.find(
-        (i) => i.id === idDoBanco || itemIdMapRef.current[i.id] === idDoBanco,
-      );
-      const daMemoria = lista.filter((t) => t.suggestionConfidence === 'memory'
-        && t.suggestedItemId && acharItem(String(t.suggestedItemId)));
-      const lancadasAgora: Array<{ id: string; transactionId: string; descricao: string; valor: number; categoria: string; linha?: string }> = [];
-      if (daMemoria.length > 0 && !lancandoAutoRef.current) {
-        lancandoAutoRef.current = true;
-        try {
-          for (const t of daMemoria) {
-            const item = acharItem(String(t.suggestedItemId))!;
-            const dateStr = String(t.billDueDate ?? t.transactionDate ?? '');
-            const [y, rawM] = dateStr.split('-').map(Number);
-            if (!y || !rawM) continue;
-            const partialId = crypto.randomUUID();
-            handleAddPartial(item.id, {
-              id: partialId,
-              date: String(t.transactionDate ?? ''),
-              description: String(t.merchant || t.description || ''),
-              value: Number(t.amount ?? 0),
-              paymentSource: t.accountType === 'credit_card' ? 'credit' : 'debit',
-              cardLast4: (t.cardLast4 as string) ?? undefined,
-            }, y, rawM - 1);
-            fetch('/api/of-transactions', {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-              body: JSON.stringify({
-                householdId, transactionId: t.transactionId, action: 'categorize',
-                itemId: t.suggestedItemId, category: t.suggestedCategory, partialId,
-              }),
-            }).catch(() => { /* a próxima recontagem tenta de novo */ });
-            lancadasAgora.push({
-              id: String(t.id ?? t.transactionId ?? ''),
-              transactionId: String(t.transactionId ?? ''),
-              descricao: String(t.description ?? ''),
-              valor: Number(t.amount ?? 0),
-              categoria: String(t.suggestedCategory ?? ''),
-              linha: item.description,
-            });
-          }
-        } finally {
-          lancandoAutoRef.current = false;
-        }
-        const idsLancados = new Set(daMemoria.map((t) => t.transactionId));
-        lista = lista.filter((t) => !idsLancados.has(t.transactionId));
-      }
-
       const precisamDeVoce = lista.filter((t) => t.suggestionConfidence !== 'memory').length;
-      setCategorizeCount(precisamDeVoce);
+      /**
+       * UM número, UM significado, em toda superfície.
+       *
+       * A bolinha recebia `precisamDeVoce` por um caminho e o total da fila
+       * pelo outro (`onFilaMudou`), então ela dizia 8 no Plano e 9 no Extrato
+       * conforme a última tela aberta. Todas as pendentes esperam a pessoa —
+       * as de memória esperam só um toque. Quem separa as duas é a COR do
+       * card no Extrato, não a contagem.
+       */
+      setCategorizeCount(lista.length);
       setPendentesAutomaticas(lista.length - precisamDeVoce);
       setOfPendentes(lista.map((t) => ({
         connectionId: (t.connectionId as string) ?? null,
@@ -2530,10 +2502,10 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
           linha: linha?.description,
         };
       });
-      // O PATCH pode não ter chegado ainda: o que acabou de entrar sozinho
-      // aparece no resumo na hora, sem esperar a próxima leitura.
-      const vistos = new Set(doServidor.map((t) => t.id));
-      setAutoCategorizadas([...lancadasAgora.filter((t) => !vistos.has(t.id)), ...doServidor]);
+      // Sobra do tempo em que o app lançava sozinho: o que já entrou assim
+      // continua aparecendo para conferência por 3 dias e depois some. Nada
+      // novo cai mais aqui — hoje o reconhecido espera o toque no Extrato.
+      setAutoCategorizadas(doServidor);
     } catch { /* aviso é acessório */ }
   }, [user, householdId, getToken]);
 

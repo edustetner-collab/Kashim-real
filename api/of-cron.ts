@@ -682,11 +682,32 @@ function memoryKey(source: string | null): string {
 /** Intermediários que aparecem colados no nome, quase sempre antes de "*". */
 const MAQUININHAS = /^(dlknet|pag|pags|pagseguro|pagsegur|mp|mercadopago|mercpago|cielo|rede|stone|sumup|getnet|ton|picpay|paypal|ebanx|pagarme|iugu|infinitepay|zoop|safrapay|vero|granito|adyen|ec)\s*\*+\s*/i;
 
+/** Como a maquininha se chama para uma pessoa. Ver o original na lib. */
+const NOME_DA_MAQUININHA: Record<string, string> = {
+  mp: 'Mercado Pago', mercadopago: 'Mercado Pago', mercpago: 'Mercado Pago',
+  pag: 'PagSeguro', pags: 'PagSeguro', pagseguro: 'PagSeguro', pagsegur: 'PagSeguro',
+  picpay: 'PicPay', paypal: 'PayPal', cielo: 'Cielo', rede: 'Rede', stone: 'Stone',
+  sumup: 'SumUp', getnet: 'GetNet', ton: 'Ton', infinitepay: 'InfinitePay',
+  pagarme: 'Pagar.me', ebanx: 'EBANX', iugu: 'Iugu', zoop: 'Zoop',
+  safrapay: 'SafraPay', adyen: 'Adyen',
+};
+
+/** É código de sistema, não nome de lugar? */
+function pareceCodigo(texto: string): boolean {
+  const semEspaco = texto.replace(/\s/g, '');
+  if (semEspaco.length < 3) return true;
+  const digitos = (semEspaco.match(/\d/g) ?? []).length;
+  if (digitos / semEspaco.length > 0.4) return true;
+  return !/[a-zà-ú]{3}/i.test(texto);
+}
+
 function limparNomeEstabelecimento(texto: string | null | undefined): string {
   let t = (texto ?? '').trim();
   if (!t) return '';
 
   // "DLKNET *AC PARQUE INDU" → "AC PARQUE INDU"
+  const casou = t.match(MAQUININHAS);
+  const maquininha = casou ? NOME_DA_MAQUININHA[casou[1].toLowerCase()] ?? null : null;
   const semMaquininha = t.replace(MAQUININHAS, '');
   if (semMaquininha.trim().length >= 4) t = semMaquininha.trim();
   // Qualquer outro "ALGO*NOME" com nome aproveitável.
@@ -694,9 +715,12 @@ function limparNomeEstabelecimento(texto: string | null | undefined): string {
   if (porAsterisco?.[1]) t = porAsterisco[1].trim();
 
   // Números de controle do banco, que não significam nada para o cliente.
-  t = t.replace(/\s*[-–]?\s*DOCTO:?\s*\d+\s*$/i, '');
-  t = t.replace(/\s*[-–]\s*\d{2}\/\d{2}\s*$/, '');
-  t = t.replace(/\s{2,}/g, ' ').replace(/[\s\-–.]+$/, '').trim();
+  t = t.replace(/\s*[-–]?\s*DOCTO:?\s*\d*\s*$/i, '');
+  t = t.replace(/\s*[-–]?\s*\d{2}\/\d{2}\s*$/, '');
+  t = t.replace(/\s{2,}/g, ' ').replace(/[\s\-–.:]+$/, '').trim();
+
+  // Sobrou código de maquininha: o nome dela é mais honesto que o código.
+  if (maquininha && pareceCodigo(t)) return maquininha;
 
   return t;
 }
@@ -1252,10 +1276,25 @@ async function syncOne(
   }
 
   // ── Memória por estabelecimento ────────────────────────────────────────────
-  // O que o cliente já categorizou uma vez decide sozinho na próxima. Até aqui
-  // `merchant_memories` era gravada e NUNCA lida: ele reclassificava o mesmo
-  // mercado todo mês. A memória vence o palpite genérico — é escolha dele,
-  // não heurística nossa.
+  // A memória vence o palpite genérico — é escolha do cliente, não heurística
+  // nossa.
+  /**
+   * O apelido vem ANTES da memória, e a ordem é o bug inteiro.
+   *
+   * O app grava `merchant_memories` com a chave do nome JÁ APELIDADO — é o que
+   * ele mostra na tela ("Edp Sao Paulo"). Enquanto isto rodava depois, a busca
+   * pedia a chave do nome CRU ("pix qr code dinamico des edp sp 21 09 docto") e
+   * o `memory.get()` logo abaixo procurava pelo apelidado: escrevia com um nome
+   * e procurava com outro, então a memória quase nunca acertava e o cliente
+   * recategorizava o mesmo lugar todo mês (Eduardo, 2026-09-25 — "isso aqui já
+   * está lançado, não tinha que me perguntar de novo").
+   *
+   * Apelidar primeiro faz as três pontas — o que o app grava, o que a busca
+   * pede e o que o `get` procura — usarem exatamente a mesma chave.
+   */
+  await apelidarEstabelecimentos(txs);
+
+  // O que o cliente já categorizou uma vez decide sozinho na próxima.
   const keys = [...new Set(txs.map((t) => memoryKey(t.merchant ?? t.description)).filter(Boolean))];
   const memory = new Map<string, { category: string; itemId: string | null }>();
   if (keys.length > 0) {
@@ -1268,9 +1307,6 @@ async function syncOne(
       memory.set(m.merchant_key, { category: m.kashim_category, itemId: m.kashim_item_id ?? null });
     }
   }
-
-  // Nome do estabelecimento antes de gravar: a fila ja nasce legivel.
-  await apelidarEstabelecimentos(txs);
 
   const rows = txs.map((t) => {
     // Marketplace nunca herda a decisao anterior: mesmo nome, compra diferente.
@@ -2214,15 +2250,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       for (const [hid, { precisa, memoria }] of porCasa) {
-        if (precisa + memoria === 0) continue;
-        const titulo = precisa > 0
-          ? `Kashim 💚 ${precisa} gasto${precisa === 1 ? '' : 's'} esperando você`
-          : 'Kashim 💚 Tem gasto pronto para entrar';
-        const corpo = precisa > 0
-          ? (memoria > 0
-              ? `${precisa === 1 ? '1 gasto precisa' : `${precisa} gastos precisam`} da sua categoria, e ${memoria === 1 ? 'outro já reconhecemos' : `outros ${memoria} já reconhecemos`} ✨ Leva 1 minuto e seu mês fica em dia. 💪💰`
-              : `${precisa === 1 ? '1 gasto do seu banco está' : `${precisa} gastos do seu banco estão`} esperando sua categoria. Leva 1 minuto pra manter tudo sob controle. 💪💰`)
-          : `${memoria === 1 ? '1 gasto já reconhecido entra' : `${memoria} gastos já reconhecidos entram`} no seu plano assim que você abrir o app ✨`;
+        const total = precisa + memoria;
+        if (total === 0) continue;
+        /**
+         * O push conta a FILA INTEIRA, igual à bolinha, ao pop-up e ao Extrato.
+         *
+         * Antes o título anunciava só `precisa` e o corpo somava `memoria` por
+         * fora: o aviso dizia 8 e a tela mostrava 9 (Eduardo, 2026-09-25). O
+         * que as de memória têm de diferente é o esforço — um toque em vez de
+         * uma escolha —, e isso o corpo explica sem mexer no número.
+         */
+        const titulo = `Kashim 💚 ${total} gasto${total === 1 ? '' : 's'} esperando você`;
+        const corpo = memoria === 0
+          ? `${precisa === 1 ? '1 gasto do seu banco está' : `${precisa} gastos do seu banco estão`} esperando sua categoria. Leva 1 minuto pra manter tudo sob controle. 💪💰`
+          : precisa === 0
+            ? `${memoria === 1 ? '1 já está reconhecido: é só confirmar' : `Todos ${memoria} já estão reconhecidos: é só confirmar`} ✨ Leva segundos. 💪💰`
+            : `${precisa === 1 ? '1 precisa' : `${precisa} precisam`} da sua categoria e ${memoria === 1 ? 'outro já está reconhecido, é só confirmar' : `outros ${memoria} já estão reconhecidos, é só confirmar`} ✨ Leva 1 minuto e seu mês fica em dia. 💪💰`;
         if (await pushParaCasa(hid, titulo, corpo)) lembretes++;
       }
     }

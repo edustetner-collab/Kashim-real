@@ -10,7 +10,7 @@ import React, { useEffect, useRef, useState } from 'react';
 
 interface CategorizePopupProps {
   count: number;
-  /** Quantas o Kashim já reconheceu e vai lançar sozinho ao abrir o Extrato. */
+  /** Quantas, DENTRO de `count`, já vêm com categoria e pedem só um toque. */
   automaticas?: number;
   onCategorize: () => void;
   onDismiss: () => void;
@@ -93,14 +93,16 @@ const CategorizePopup: React.FC<CategorizePopupProps> = ({ count, automaticas = 
           Categorize essas despesas para se manter <b className="text-zinc-200 font-bold">organizado</b> e
           saber se está atingindo seus limites de gastos. É bem rápido.
         </p>
-        {/* Sem esta linha, o número do pop-up não batia com a fila: os gastos
-            que o Kashim reconhece sozinho entravam na conta e sumiam ao abrir
-            o Extrato, sem explicação (Mariane, 2026-09-19). */}
+        {/* O número grande conta a fila INTEIRA, e esta linha explica que uma
+            parte dela sai com um toque. Antes o texto prometia "lança por você
+            ao abrir": o gasto entrava no plano sem ninguém confirmar e a fila
+            do Extrato continuava mostrando 9 contra os 8 daqui (Eduardo,
+            2026-09-25). Hoje nada entra sozinho — o que muda é o esforço. */}
         {automaticas > 0 && (
           <p className="text-center text-[#a8e716] text-[13px] font-bold leading-snug mb-5 mx-auto max-w-[32ch]">
             ✨ {automaticas === 1
-              ? 'Outro gasto o Kashim já reconheceu e lança por você ao abrir'
-              : `Outros ${automaticas} gastos o Kashim já reconheceu e lança por você ao abrir`}
+              ? 'Um deles o Kashim já reconheceu: é só confirmar'
+              : `${automaticas} deles o Kashim já reconheceu: é só confirmar`}
           </p>
         )}
         {automaticas === 0 && <div className="mb-2" />}

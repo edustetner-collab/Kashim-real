@@ -336,7 +336,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!itemId || !category) {
           return res.status(400).json({ error: 'itemId e category obrigatórios para categorize' });
         }
-        const { error } = await db
+        /**
+         * `.eq('status','pending')` é o trinco contra lançamento em dobro.
+         *
+         * O servidor é quem decide: só sai da fila quem AINDA está na fila. Se
+         * duas telas (ou duas aberturas do app) mandarem a mesma transação, a
+         * segunda volta com `aplicada: false` e o app não repete o lançamento
+         * no plano. Sem isto, o R$1.200 do Pix entrou duas vezes na Renda
+         * (Eduardo, 2026-09-25) — o mesmo tipo de duplicidade que já tinha
+         * custado rodadas com a linha de R$204.
+         */
+        const { data: alteradas, error } = await db
           .from('bank_transactions')
           .update({
             status: 'categorized',
@@ -346,9 +356,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             categorized_at: new Date().toISOString(),
           })
           .eq('household_id', householdId)
-          .eq('transaction_id', transactionId);
+          .eq('transaction_id', transactionId)
+          .eq('status', 'pending')
+          .select('transaction_id');
         if (error) throw error;
-        return res.status(200).json({ ok: true });
+        return res.status(200).json({ ok: true, aplicada: (alteradas ?? []).length > 0 });
       }
 
       return res.status(400).json({ error: 'action inválida' });
