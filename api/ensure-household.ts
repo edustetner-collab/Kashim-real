@@ -32,6 +32,110 @@ function verifyAuthToken(authHeader?: string): { sub: string } | null {
 }
 
 /**
+ * "Parabéns, entrou gente nova" — o aviso de cadastro, no celular do Eduardo.
+ *
+ * Este é o único ponto do sistema por onde passa um cadastro espontâneo, e
+ * passa UMA vez só: quem já é membro sai na linha de cima, e a corrida de duas
+ * abas cai no ramo do `memberError`. Por isso o aviso mora aqui e não vira
+ * duplicado.
+ *
+ * Regra de ouro: **nada disto pode atrapalhar o cadastro**. Tudo com prazo
+ * curto e dentro de try/catch — se o push ou o e-mail falhar, a pessoa entra
+ * no app do mesmo jeito e o Eduardo perde um aviso, que é o lado barato de
+ * errar (Eduardo, 2026-09-25).
+ */
+const CASA_DO_DONO = process.env.ALERTA_HOUSEHOLD_ID ?? '40c52935-268e-44fa-9dc5-cc16be9046f5';
+const DONO_EMAIL = 'eduardo_cda@hotmail.com';
+
+/** Nome e e-mail de quem acabou de entrar, para o aviso dizer QUEM. */
+async function quemEntrou(sub: string): Promise<{ nome: string; email: string | null }> {
+  const key = process.env.CLERK_SECRET_KEY ?? '';
+  if (!key) return { nome: 'Alguém', email: null };
+  try {
+    const r = await fetch(`https://api.clerk.com/v1/users/${sub}`, {
+      headers: { Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!r.ok) return { nome: 'Alguém', email: null };
+    const u = await r.json() as {
+      first_name?: string | null; last_name?: string | null;
+      primary_email_address_id?: string;
+      email_addresses?: Array<{ id: string; email_address: string }>;
+    };
+    const principal = u.email_addresses?.find((e) => e.id === u.primary_email_address_id)
+      ?? u.email_addresses?.[0];
+    const nome = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
+    return { nome: nome || principal?.email_address?.split('@')[0] || 'Alguém', email: principal?.email_address ?? null };
+  } catch {
+    return { nome: 'Alguém', email: null };
+  }
+}
+
+async function avisarCadastroNovo(sub: string): Promise<void> {
+  const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  try {
+    const [{ nome, email }, { count }] = await Promise.all([
+      quemEntrou(sub),
+      db.from('household_members').select('clerk_user_id', { count: 'exact', head: true }),
+    ]);
+    const total = count ?? 0;
+    const titulo = 'Kashim 🎉 Cadastro novo';
+    // O número total é o que responde "está entrando gente todo dia?" sem
+    // precisar abrir painel nenhum.
+    const corpo = `${nome} acabou de criar a conta. Já são ${total} pessoas no Kashim.`;
+
+    const appId = process.env.ONESIGNAL_APP_ID;
+    const apiKey = process.env.ONESIGNAL_REST_API_KEY;
+    if (appId && apiKey) {
+      const { data: devices } = await db
+        .from('push_devices')
+        .select('onesignal_id')
+        .eq('household_id', CASA_DO_DONO);
+      const ids = (devices ?? [])
+        .map((d) => d.onesignal_id as string)
+        .filter((x) => x && !x.startsWith('apns:'));
+      if (ids.length > 0) {
+        await fetch('https://api.onesignal.com/notifications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Key ${apiKey}` },
+          body: JSON.stringify({
+            app_id: appId,
+            include_subscription_ids: ids,
+            headings: { en: titulo, pt: titulo },
+            contents: { en: corpo, pt: corpo },
+            ios_sound: 'kashim.wav',
+          }),
+          signal: AbortSignal.timeout(3000),
+        });
+      }
+    }
+
+    const resendKey = process.env.RESEND_API_KEY;
+    if (resendKey) {
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${resendKey}` },
+        body: JSON.stringify({
+          from: 'Kashim <noreply@kashim.com.br>',
+          to: DONO_EMAIL,
+          subject: `🎉 Cadastro novo: ${nome}`,
+          html: `<div style="font-family:system-ui;max-width:520px;padding:24px">
+            <h1 style="font-size:20px;margin:0 0 12px">Entrou gente nova no Kashim</h1>
+            <p style="font-size:15px;line-height:1.6;color:#3a3a3c">
+              <strong>${nome}</strong>${email ? ` (${email})` : ''} acabou de criar a conta.
+            </p>
+            <p style="font-size:15px;line-height:1.6;color:#3a3a3c">
+              Total de pessoas no Kashim: <strong>${total}</strong>.
+            </p>
+          </div>`,
+        }),
+        signal: AbortSignal.timeout(3000),
+      });
+    }
+  } catch { /* aviso é acessório: cadastro nunca pode falhar por causa dele */ }
+}
+
+/**
  * Cria (ou retorna) o household do usuário logado usando a service key, que
  * ignora o RLS. Necessário porque o cliente não tem permissão de INSERT em
  * households — mover isto pro servidor destrava o cadastro de usuário novo.
@@ -85,6 +189,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     return res.status(500).json({ error: `household_members.insert: ${memberError.message}` });
   }
+
+  // Cadastro concluído: só aqui, e só uma vez por pessoa.
+  await avisarCadastroNovo(clerkUserId);
 
   return res.status(200).json({ householdId: household.id });
 }
