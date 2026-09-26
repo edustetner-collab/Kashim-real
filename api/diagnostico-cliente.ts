@@ -975,7 +975,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       db.from('finance_items').select('*, partial_expenses(*)').eq('household_id', id),
     ]);
     if (error) return res.status(500).json({ error: error.message });
-    return res.status(200).json({ tirada_em: new Date().toISOString(), casa, linhas: itens ?? [] });
+
+    /**
+     * DE QUEM é esta casa.
+     *
+     * `prospect_name` só existe em cliente criado pelo coach; cadastro
+     * espontâneo nasce sem nome nenhum, e aí a casa vira um id solto que
+     * ninguém sabe identificar — foi o que aconteceu com a casa de 3 bancos
+     * achada na faxina (Eduardo, 2026-09-26). O nome de verdade mora no
+     * Clerk, do outro lado do `clerk_user_id`.
+     */
+    const { data: vinculos } = await db
+      .from('household_members').select('clerk_user_id, role').eq('household_id', id);
+    const membros = await Promise.all((vinculos ?? []).map(async (v) => {
+      const sub = v.clerk_user_id as string;
+      if (!CLERK_SECRET_KEY) return { clerk_user_id: sub, papel: v.role };
+      try {
+        const r = await fetch(`https://api.clerk.com/v1/users/${sub}`, {
+          headers: { Authorization: `Bearer ${CLERK_SECRET_KEY}` },
+        });
+        if (!r.ok) return { clerk_user_id: sub, papel: v.role, erro: `clerk ${r.status}` };
+        const u = await r.json() as {
+          first_name?: string | null; last_name?: string | null; created_at?: number;
+          primary_email_address_id?: string;
+          email_addresses?: Array<{ id: string; email_address: string }>;
+        };
+        const principal = u.email_addresses?.find((e) => e.id === u.primary_email_address_id)
+          ?? u.email_addresses?.[0];
+        return {
+          clerk_user_id: sub,
+          papel: v.role,
+          nome: [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || null,
+          email: principal?.email_address ?? null,
+          cadastrado_em: u.created_at ? new Date(u.created_at).toISOString() : null,
+        };
+      } catch {
+        return { clerk_user_id: sub, papel: v.role, erro: 'clerk indisponível' };
+      }
+    }));
+
+    return res.status(200).json({ tirada_em: new Date().toISOString(), casa, membros, linhas: itens ?? [] });
   }
 
   // ── Um cliente, pelo e-mail ───────────────────────────────────────────────
