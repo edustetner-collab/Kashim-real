@@ -1993,6 +1993,66 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    /**
+     * `?faxina=1` — quem está custando dinheiro, e por quê. SÓ LEITURA.
+     *
+     * Cada conexão viva é uma conta ativa na Technospeed, cobrada por mês,
+     * esteja a pessoa usando o app ou não. Esta listagem junta o custo (a
+     * conexão) com o motivo dele existir (a casa ainda tem direito de uso?),
+     * que é a informação que faltava para decidir.
+     *
+     * De propósito NÃO decide nada: devolve os sinais crus. A regra de corte
+     * mexe em dinheiro e em banco de cliente — ela só entra depois de a gente
+     * olhar o dado real uma vez (Eduardo, 2026-09-26).
+     */
+    if (String(req.query.faxina ?? '') === '1') {
+      const { data: conexoes } = await db
+        .from('bank_connections')
+        .select('id, household_id, bank_name, consent_status, last_synced_at, created_at')
+        .neq('consent_status', 'revoked');
+      const casas = [...new Set((conexoes ?? []).map((c) => c.household_id as string))];
+      const { data: dados } = casas.length
+        ? await db.from('households')
+          .select('id, prospect_name, prospect_email, created_at, first_access_at, last_active_at, access_until, subscription_status')
+          .in('id', casas)
+        : { data: [] as Array<Record<string, unknown>> };
+      const { data: coaches } = casas.length
+        ? await db.from('coach_access').select('household_id').in('household_id', casas)
+        : { data: [] as Array<{ household_id: string }> };
+      const temCoach = new Set((coaches ?? []).map((c) => c.household_id as string));
+      const porCasa = new Map<string, Record<string, unknown>>(
+        (dados ?? []).map((h) => [h.id as string, h as Record<string, unknown>] as const),
+      );
+      const dias = (v: unknown) => {
+        const t = v ? new Date(String(v)).getTime() : 0;
+        return t > 0 ? Math.floor((Date.now() - t) / 86_400_000) : null;
+      };
+      const linhas = (conexoes ?? []).map((c) => {
+        const h = porCasa.get(c.household_id as string) ?? {};
+        return {
+          conexao: c.id,
+          banco: c.bank_name,
+          status: c.consent_status,
+          casa: c.household_id,
+          quem: (h as { prospect_name?: string }).prospect_name
+            ?? (h as { prospect_email?: string }).prospect_email ?? '(sem nome)',
+          dias_sem_abrir_o_app: dias((h as { last_active_at?: string }).last_active_at),
+          dias_desde_1o_acesso: dias((h as { first_access_at?: string }).first_access_at),
+          dias_desde_o_cadastro: dias((h as { created_at?: string }).created_at),
+          dias_sem_sincronizar: dias(c.last_synced_at),
+          assinatura: (h as { subscription_status?: string }).subscription_status ?? null,
+          acesso_ate: (h as { access_until?: string }).access_until ?? null,
+          cliente_de_coach: temCoach.has(c.household_id as string),
+        };
+      }).sort((a, b) => (b.dias_sem_abrir_o_app ?? 9999) - (a.dias_sem_abrir_o_app ?? 9999));
+      return res.status(200).json({
+        tirada_em: new Date().toISOString(),
+        contas_ativas_pagando: linhas.length,
+        observacao: 'Nada foi revogado. Esta rota só lê.',
+        conexoes: linhas,
+      });
+    }
+
     const deadline = Date.now() + 240_000; // margem dentro do maxDuration de 300s
 
     // Primeiro as autorizações pendentes: uma conexão recém-aprovada precisa
