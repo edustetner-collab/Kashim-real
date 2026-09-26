@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "449213140931",
+    "project_id": "kashim-ebed3",
+    "storage_bucket": "kashim-ebed3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:449213140931:android:807addb4f7b75f159eb776",
+        "android_client_info": {
+          "package_name": "com.kashim.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAi08GLiSc5w3vGe9nmpjP05NKkK3cOUYo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
