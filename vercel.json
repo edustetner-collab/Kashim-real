@@ -12,6 +12,20 @@
     "api/of-connect.ts": { "maxDuration": 30 },
     "api/of-cron.ts": { "maxDuration": 300 }
   },
+  "redirects": [
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "www.kashim.com.br" }],
+      "destination": "https://kashim.com.br/",
+      "permanent": true
+    },
+    {
+      "source": "/:caminho*",
+      "has": [{ "type": "host", "value": "www.kashim.com.br" }],
+      "destination": "https://kashim.com.br/:caminho*",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     { "source": "/e/:code", "destination": "/api/short-redirect?code=:code" },
     { "source": "/vendas", "destination": "/vendas.html" },
