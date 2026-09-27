@@ -160,7 +160,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Cria o household
   const { data: household, error: hhError } = await db
     .from('households')
-    .insert({ start_month: new Date().getMonth(), start_year: new Date().getFullYear() })
+    /**
+     * `status: 'active'` explícito: cadastro espontâneo nasce ativo.
+     *
+     * Sem isto a coluna caía no padrão 'draft', o MESMO que o `create-client`
+     * grava no cliente de coach — e o dado deixava de dizer quem era quem.
+     * Quem lê isto espera que 'draft' signifique "criado pelo coach"; agora
+     * significa (2026-09-27).
+     */
+    .insert({
+      start_month: new Date().getMonth(),
+      start_year: new Date().getFullYear(),
+      status: 'active',
+    })
     .select('id')
     .single();
   if (hhError || !household) {

@@ -67,7 +67,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const ids = recentes.map((c) => c.id as string);
 
     // ── Degraus 3, 4 e 5, só para a coorte ──────────────────────────────────
-    const [{ data: linhas }, { data: conexoes }, { data: transacoes }] = await Promise.all([
+    const [{ data: linhas }, { data: conexoes }, { data: transacoes }, { data: coachRows }] = await Promise.all([
       ids.length
         ? db.from('finance_items').select('household_id, values').in('household_id', ids)
         : Promise.resolve({ data: [] as Array<{ household_id: string; values: number[] }> }),
@@ -77,7 +77,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ids.length
         ? db.from('bank_transactions').select('household_id, status').in('household_id', ids)
         : Promise.resolve({ data: [] as Array<{ household_id: string; status: string }> }),
+      ids.length
+        ? db.from('coach_access').select('household_id').in('household_id', ids)
+        : Promise.resolve({ data: [] as Array<{ household_id: string }> }),
     ]);
+
+    /**
+     * A pessoa VÊ a conexão bancária?
+     *
+     * Repete, de propósito, a mesma regra do `check-coach-access.ts`, que é
+     * quem o app pergunta. Cliente de coach não vê Open Finance; cadastro
+     * espontâneo vê. Se este campo discordar da realidade, é aqui que se
+     * descobre — e foi assim que apareceu o motivo de 0 de 7 não conectarem.
+     */
+    const temCoachRow = new Set((coachRows ?? []).map((c) => c.household_id as string));
+    const veOpenFinance = (c: (typeof recentes)[number]) => {
+      // Mesma regra do check-coach-access — `status` NAO entra: os dois
+      // caminhos de criacao produzem 'draft'. Ver o comentario de la.
+      const ehDoCoach = temCoachRow.has(c.id as string)
+        || !!c.prospect_name || !!c.prospect_email;
+      return !ehDoCoach;
+    };
 
     const comPlano = new Set<string>();
     for (const l of linhas ?? []) {
@@ -162,6 +182,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         quem: c.prospect_name ?? c.prospect_email ?? '(cadastro espontâneo)',
         cadastrou_em: c.created_at,
         parou_em: ondeParou(c),
+        status_da_casa: c.status ?? null,
+        ve_open_finance: veOpenFinance(c),
         fila_esperando: filaPorCasa.get(c.id as string) ?? 0,
         assinatura: c.subscription_status ?? null,
       })),

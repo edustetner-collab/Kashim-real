@@ -126,10 +126,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .maybeSingle();
 
     householdStatus = hh?.status ?? null;
-    // 'draft' ou presença de prospect_name/email = criado pelo coach
-    if (hh && (hh.status === 'draft' || hh.prospect_name || hh.prospect_email)) {
+    /**
+     * `status === 'draft'` NÃO distingue nada — e essa suposição escondeu o
+     * Open Finance de todo mundo que se cadastrou no dia do lançamento.
+     *
+     * O comentário antigo aqui dizia "espontâneos têm status='active' (set
+     * pelo ensure-household)". Isso nunca foi verdade: o `ensure-household`
+     * não grava `status` nenhum, e o padrão da coluna é 'draft'. Ou seja, os
+     * DOIS caminhos produzem 'draft', e a regra classificava todo cadastro
+     * espontâneo como cliente de coach — que é justamente quem não pode ver
+     * Open Finance. Em 27/09 foram 7 pessoas em 7 (medido no `/api/pulso`).
+     *
+     * O que distingue de verdade: `create-client.ts` grava SEMPRE
+     * `prospect_name` e `prospect_email` no mesmo insert, e sempre cria a
+     * linha em `coach_access` (aborta se nenhuma entrar). O `ensure-household`
+     * não grava nenhum dos dois. Esses campos são o sinal confiável.
+     *
+     * A direção do erro importa: na dúvida, tratar como cliente de coach —
+     * mostrar Open Finance a quem não pode é a falha que não se desfaz.
+     */
+    if (hh && (hh.prospect_name || hh.prospect_email)) {
       isCoachClient = true;
-      reason = 'household_draft_or_prospect';
+      reason = 'household_prospect';
     }
   }
 
