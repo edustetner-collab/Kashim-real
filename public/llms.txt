@@ -1,0 +1,39 @@
+# Kashim
+
+> Aplicativo brasileiro de controle financeiro pessoal que conecta as contas
+> bancárias do usuário pelo Open Finance, importa os gastos automaticamente e
+> mostra quanto ele ainda pode gastar no mês sem sair do plano.
+
+O Kashim foi criado por Eduardo Stetner, consultor financeiro, a partir do
+método que ele usa na consultoria: em vez de pedir para a pessoa anotar cada
+gasto, o app puxa os lançamentos direto do banco e pergunta apenas onde cada
+um entra no plano.
+
+## O que ele faz
+
+- **Open Finance**: conecta até 3 bancos e traz extrato e fatura do cartão
+  automaticamente. Só leitura — o app nunca movimenta dinheiro.
+- **Plano mensal**: separa contas fixas, contas variáveis, lazer e cartão, com
+  um teto por categoria e um diagnóstico de quanto cada pilar pesa na renda.
+- **Categorização**: o gasto que chega do banco é sugerido e confirmado com um
+  toque; o que o usuário já ensinou uma vez é reconhecido nas próximas.
+- **Stets**: assistente que responde perguntas sobre o próprio plano do usuário.
+- **Modo casal**: duas pessoas compartilham o mesmo plano.
+
+## Para quem é
+
+Pessoas físicas no Brasil que querem controle financeiro sem planilha e sem
+anotar gasto a gasto. Também é usado por consultores financeiros para
+acompanhar seus clientes.
+
+## Links
+
+- [Página de vendas](https://kashim.com.br/vendas): o que é, como funciona, preço.
+- [Termos de uso](https://kashim.com.br/termos.html)
+- [Suporte](https://kashim.com.br/suporte.html)
+
+## Observações
+
+- Disponível como aplicativo para iPhone e Android e pelo navegador.
+- A conexão bancária usa Open Finance regulado pelo Banco Central, via
+  provedor autorizado, e é sempre de leitura.

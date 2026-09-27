@@ -1,0 +1,9 @@
+# O app fica atrás de login e não tem o que indexar. O que interessa ao
+# buscador é a página de vendas e as páginas públicas de apoio.
+User-agent: *
+Allow: /vendas
+Allow: /termos.html
+Allow: /suporte.html
+Disallow: /api/
+
+Sitemap: https://kashim.com.br/sitemap.xml
