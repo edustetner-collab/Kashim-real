@@ -176,10 +176,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
       // Cada linha é uma pessoa de verdade que travou num degrau. É a lista
       // em que dá para AGIR — mandar mensagem, ligar, ajustar a tela.
-      quem_entrou_nos_7_dias: naJanela.map((c) => ({
+      // 30 dias, não 7: o Eduardo libera Open Finance pelo E-MAIL, um a um, e
+      // precisa achar o e-mail de um cliente que ele criou semanas atrás.
+      quem_entrou_nos_30_dias: recentes.map((c) => ({
         casa: c.id,
         origem: doCoach(c) ? 'coach' : 'espontâneo',
         quem: c.prospect_name ?? c.prospect_email ?? '(cadastro espontâneo)',
+        email: c.prospect_email ?? null,
         cadastrou_em: c.created_at,
         parou_em: ondeParou(c),
         status_da_casa: c.status ?? null,

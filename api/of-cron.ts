@@ -60,7 +60,13 @@ const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com', 'remmachado.86@gmail.com', 'm
   'lucas.coppede.damiao@gmail.com', 'coppede.bruna@gmail.com',
   'zaidandesouza@gmail.com',
   'maia.miriam@gmail.com',
-  'thaisrochafraga02@gmail.com'];
+  'thaisrochafraga02@gmail.com',
+  'wfariasneto@hotmail.com',
+  'pimpellicano@gmail.com',
+  'araujo@uefs.br',
+  'ivanfferreira12@hotmail.com',
+  'jessica.n.carvalho1709@gmail.com',
+  'priscila.anjos.groto@gmail.com'];
 
 /**
  * Destinatário do aviso — já filtrado pelo portão do Open Finance.
