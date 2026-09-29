@@ -159,6 +159,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     reason = 'failsafe_query_error';
   }
 
+  /**
+   * Esta casa já nasceu com Open Finance?
+   *
+   * Cliente criado pelo coach a partir de 2026-09-28 entra no fluxo direto, e
+   * os que estavam no filtro "Novos" foram junto na migração. A base antiga
+   * continua `false` e é liberada uma a uma pela lista de e-mails.
+   *
+   * Erro aqui (coluna ainda não criada) vira `false` de propósito: esconder
+   * atrasa, mostrar a quem não pode não se desfaz.
+   */
+  let openFinance = false;
+  try {
+    const { data: hhOf } = await supabase
+      .from('households').select('open_finance').eq('id', householdId).maybeSingle();
+    openFinance = hhOf?.open_finance === true;
+  } catch { /* segue false */ }
+
   // isAdminVerified: o servidor confirma — não depende do VITE_ do frontend.
   // debug: visível na aba Network do navegador para diagnóstico em produção.
   return res.status(200).json({
@@ -166,6 +183,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     expired,
     coachingEndsAt,
     isCoachClient,
+    openFinance,
     isAdminVerified: isAdmin,
     debug: {
       reason,

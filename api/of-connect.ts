@@ -382,6 +382,30 @@ async function contaSemCoach(sub: string): Promise<boolean> {
   }
 }
 
+/**
+ * A casa desta pessoa já nasceu com Open Finance?
+ *
+ * `households.open_finance` é gravado pelo `create-client.ts` desde
+ * 2026-09-28, e a migração ligou quem estava no filtro "Novos". A base antiga
+ * fica `false` e entra uma a uma pela lista de e-mails.
+ *
+ * Erro (coluna ainda não criada) devolve `false`: esconder atrasa, mostrar a
+ * quem não pode não se desfaz.
+ */
+async function casaLiberadaNoOF(sub: string): Promise<boolean> {
+  try {
+    const { data: vinculos } = await db
+      .from('household_members').select('household_id').eq('clerk_user_id', sub);
+    const casas = (vinculos ?? []).map((v) => v.household_id as string);
+    if (casas.length === 0) return false;
+    const { data } = await db
+      .from('households').select('id').in('id', casas).eq('open_finance', true).limit(1);
+    return (data ?? []).length > 0;
+  } catch {
+    return false;
+  }
+}
+
 async function hasOpenFinanceAccess(sub: string): Promise<boolean> {
   if (OF_BETA_USER_IDS.includes(sub)) return true;
   if (!CLERK_SECRET_KEY) return false;
@@ -408,7 +432,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!claims) return res.status(401).json({ error: 'Unauthorized' });
   const sub = claims.sub;
 
-  if (!(await hasOpenFinanceAccess(sub)) && !(await contaSemCoach(sub))) {
+  if (!(await hasOpenFinanceAccess(sub)) && !(await contaSemCoach(sub)) && !(await casaLiberadaNoOF(sub))) {
     return res.status(403).json({ error: 'Open Finance ainda não está disponível para esta conta.' });
   }
 

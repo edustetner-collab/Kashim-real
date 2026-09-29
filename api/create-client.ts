@@ -71,6 +71,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .from('households')
       .insert({
         status: 'draft',
+        // Cliente novo já nasce no fluxo de Open Finance (Eduardo, 2026-09-28).
+        // A base que já existia NÃO muda: continua sendo liberada uma a uma
+        // pela lista de e-mails, conforme ele tem a reunião com cada pessoa.
+        open_finance: true,
         prospect_name: name.trim(),
         prospect_email: email.trim().toLowerCase(),
         start_month: startMonth ?? new Date().getMonth(),

@@ -239,6 +239,8 @@ const App: React.FC = () => {
    * `null` = ainda não sei, e nesse estado NADA de OF aparece.
    */
   const [clienteDeCoach, setClienteDeCoach] = useState<boolean | null>(null);
+  /** `households.open_finance`: a casa já nasceu no fluxo (ver lib/ofAccess.ts). */
+  const [ofLiberadoNaCasa, setOfLiberadoNaCasa] = useState<boolean | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   // null = ainda verificando ou indeterminado (falha de rede) → não bloqueia
   const [termsAccepted, setTermsAccepted] = useState<boolean | null>(null);
@@ -499,7 +501,7 @@ const App: React.FC = () => {
    */
   // Se o household já tem banco conectado, todos os membros (inclusive o cônjuge
   // no Modo Casal) enxergam o plano em modo OF. Quem pode CONECTAR um banco novo
-  // ainda é controlado por `hasOpenFinanceAccess(user, clienteDeCoach)` no prop `hasOpenFinance`.
+  // ainda é controlado por `hasOpenFinanceAccess(user, clienteDeCoach, ofLiberadoNaCasa)` no prop `hasOpenFinance`.
   const planoEmModoOF = temBancoConectado;
 
   // Trocou de plano (coach abrindo cliente): o que era do plano anterior não
@@ -614,6 +616,7 @@ const App: React.FC = () => {
           expired: boolean;
           coachingEndsAt?: string | null;
           isCoachClient?: boolean;
+          openFinance?: boolean;
           isAdminVerified?: boolean;
         } | null;
         let hasCoach = coachAccessRes?.hasCoach ?? false;
@@ -683,6 +686,7 @@ const App: React.FC = () => {
         });
         setAccessInfo(access);
         setClienteDeCoach(!!isCoachClient);
+        setOfLiberadoNaCasa(coachAccessRes?.openFinance === true);
         // Diagnóstico de acesso — abrir o console (F12) e mandar print se o gate
         // aparecer indevidamente. Mostra exatamente o que o servidor respondeu.
         console.log('[kashim:acesso]', {
@@ -825,7 +829,7 @@ const App: React.FC = () => {
    */
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get('testepush') !== '1') return;
-    if (!householdId || !user || !hasOpenFinanceAccess(user, clienteDeCoach)) return;
+    if (!householdId || !user || !hasOpenFinanceAccess(user, clienteDeCoach, ofLiberadoNaCasa)) return;
     diagnosticoPush().then(async (txt) => {
       let extra = '';
       try {
@@ -892,7 +896,7 @@ const App: React.FC = () => {
   useEffect(() => {
     // Push é do Open Finance: cliente comum não pode ter o aparelho registrado
     // no OneSignal por abrir o app.
-    if (!householdId || coachViewHouseholdId || !user || !hasOpenFinanceAccess(user, clienteDeCoach)) return;
+    if (!householdId || coachViewHouseholdId || !user || !hasOpenFinanceAccess(user, clienteDeCoach, ofLiberadoNaCasa)) return;
     initPush(registrarAparelho);
   }, [householdId, coachViewHouseholdId, user, registrarAparelho]);
 
@@ -912,7 +916,7 @@ const App: React.FC = () => {
    */
   useEffect(() => {
     if (!showCategorizePopup || !householdId || coachViewHouseholdId) return;
-    if (!user || !hasOpenFinanceAccess(user, clienteDeCoach)) return;
+    if (!user || !hasOpenFinanceAccess(user, clienteDeCoach, ofLiberadoNaCasa)) return;
     pedirPermissaoPush(registrarAparelho).catch(() => {});
   }, [showCategorizePopup, householdId, coachViewHouseholdId, user, registrarAparelho]);
 
@@ -1547,7 +1551,7 @@ const App: React.FC = () => {
 
     // Duas saidas, nunca troca pura: quem tem Open Finance recebe o convite de
     // conectar; quem nao tem termina exatamente como sempre terminou.
-    if (hasOpenFinanceAccess(user, clienteDeCoach)) setShowConviteBanco(true);
+    if (hasOpenFinanceAccess(user, clienteDeCoach, ofLiberadoNaCasa)) setShowConviteBanco(true);
   };
 
   const handleGoalsChange = (next: Goal[]) => {
@@ -1587,7 +1591,7 @@ const App: React.FC = () => {
   const linhasUsadas = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!hasOpenFinanceAccess(user, clienteDeCoach) || !householdId || items.length === 0 || months.length === 0) return;
+    if (!hasOpenFinanceAccess(user, clienteDeCoach, ofLiberadoNaCasa) || !householdId || items.length === 0 || months.length === 0) return;
     /**
      * Nada antes de os itens REAIS chegarem do banco.
      *
@@ -1819,7 +1823,7 @@ const App: React.FC = () => {
   // reaproveitando o MESMO endpoint do Extrato (status=pending) — assim o pop-up
   // pega carona no que a migração fizer com as transações, sem lógica paralela.
   useEffect(() => {
-    if (!hasOpenFinanceAccess(user, clienteDeCoach) || !householdId) return;
+    if (!hasOpenFinanceAccess(user, clienteDeCoach, ofLiberadoNaCasa) || !householdId) return;
     if (categorizeCheckedRef.current) return;
     if (coachViewHouseholdId || needsTermsAcceptance) return; // não interrompe coach nem aceite de termos
     categorizeCheckedRef.current = true;
@@ -2485,7 +2489,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
    */
   /** Reconta o que falta categorizar. */
   const recontarPendentes = useCallback(async () => {
-    if (!hasOpenFinanceAccess(user, clienteDeCoach) || !householdId) return;
+    if (!hasOpenFinanceAccess(user, clienteDeCoach, ofLiberadoNaCasa) || !householdId) return;
     try {
       const token = await getToken({ template: 'supabase' });
       if (!token) return;
@@ -3563,7 +3567,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
           // via a própria tela. O portão continua sendo o mesmo — `showExtrato`
           // só abre com hasOpenFinanceAccess, então quem não tem acesso jamais
           // chega em 'extrato'.
-          screen={showExtrato && hasOpenFinanceAccess(user, clienteDeCoach) ? 'extrato' : activeTab}
+          screen={showExtrato && hasOpenFinanceAccess(user, clienteDeCoach, ofLiberadoNaCasa) ? 'extrato' : activeTab}
           db={db}
           userId={user.id}
           /**
@@ -3629,7 +3633,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
              * só no ClientSettings, ele ficava num lugar que o admin nunca vê
              * (Eduardo, 2026-09-10).
              */}
-            {hasOpenFinanceAccess(user, clienteDeCoach) && (
+            {hasOpenFinanceAccess(user, clienteDeCoach, ofLiberadoNaCasa) && (
               <button
                 onClick={async () => {
                   const { diagnosticoPush } = await import('./lib/push');
@@ -3859,7 +3863,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
             <button onClick={() => setActiveTab('metas')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'metas' ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#6e6e73] hover:text-[#1d1d1f]'}`}>Metas</button>
             <button onClick={() => setActiveTab('dividas')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'dividas' ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#6e6e73] hover:text-[#1d1d1f]'}`}>Dívidas</button>
             <button onClick={() => setActiveTab('desempenho')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'desempenho' ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#6e6e73] hover:text-[#1d1d1f]'}`}>Desempenho</button>
-            {hasOpenFinanceAccess(user, clienteDeCoach) && (
+            {hasOpenFinanceAccess(user, clienteDeCoach, ofLiberadoNaCasa) && (
               <button onClick={async () => { const t = await getToken({ template: 'supabase' }); if (t) { setOfAuthToken(t); setShowExtrato(true); } }} className="px-6 py-2 rounded-lg text-xs font-black uppercase transition-all text-[#6e6e73] hover:text-[#1d1d1f] flex items-center gap-1.5"><i className="fas fa-university text-sm" />Extrato</button>
             )}
             {/* Stets é para todo mundo — não passa pelo portão de Open Finance.
@@ -4577,12 +4581,12 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
                   onAddLeisureItem={block.type === CategoryType.PERSONAL_LEISURE ? handleAddLeisureItem : undefined}
                   isAdmin={isAdmin}
                   onToggleOculto={handleToggleOculto}
-                  onOpenExtrato={block.type === CategoryType.CREDIT_CARD && hasOpenFinanceAccess(user, clienteDeCoach) ? handleOpenExtrato : undefined}
+                  onOpenExtrato={block.type === CategoryType.CREDIT_CARD && hasOpenFinanceAccess(user, clienteDeCoach, ofLiberadoNaCasa) ? handleOpenExtrato : undefined}
                   onPerguntarStets={(p) => { setStetsPerguntaInicial(p); setActiveTab('coach'); }}
                   // Só o cliente de Open Finance troca o seletor manual de forma de
                   // pagamento pelo detalhamento por fonte. No plano normal o seletor
                   // é a única maneira de informar débito x cartão.
-                  hasOpenFinance={hasOpenFinanceAccess(user, clienteDeCoach)}
+                  hasOpenFinance={hasOpenFinanceAccess(user, clienteDeCoach, ofLiberadoNaCasa)}
                   modoOpenFinance={planoEmModoOF}
                 />
                 </React.Fragment>
@@ -4835,7 +4839,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
             badge do botão central sai para cima. O respiro aqui é o que deixa
             ele aparecer inteiro (Eduardo, 2026-09-10). */}
         <div className="overflow-x-auto scrollbar-none">
-          <div className={`flex min-w-max ${hasOpenFinanceAccess(user, clienteDeCoach) ? 'pt-2.5' : ''}`}>
+          <div className={`flex min-w-max ${hasOpenFinanceAccess(user, clienteDeCoach, ofLiberadoNaCasa) ? 'pt-2.5' : ''}`}>
             <button
               onClick={() => irParaAba('plan')}
               className={`min-w-[72px] flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 transition-colors active:scale-95 relative ${destaqueBarra === 'plan' ? 'text-[#182200]' : 'text-[#aeaeb2]'}`}
@@ -4878,7 +4882,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
              * no toque longo e dentro do próprio Extrato.
              */}
             {(() => {
-              const pendentes = hasOpenFinanceAccess(user, clienteDeCoach) ? categorizeCount : 0;
+              const pendentes = hasOpenFinanceAccess(user, clienteDeCoach, ofLiberadoNaCasa) ? categorizeCount : 0;
               // Acende so com a folha de lancar aberta — o Extrato tem aba propria.
               const abertoNoCentro = destaqueBarra === 'centro';
               const abrirLancamento = () => {
@@ -4896,11 +4900,11 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
                 <button
                   data-tour="tab-launch"
                   onClick={() => { if (pendentes > 0) { abrirExtrato(); } else { abrirLancamento(); } }}
-                  onContextMenu={hasOpenFinanceAccess(user, clienteDeCoach) ? (e) => { e.preventDefault(); abrirLancamento(); } : undefined}
+                  onContextMenu={hasOpenFinanceAccess(user, clienteDeCoach, ofLiberadoNaCasa) ? (e) => { e.preventDefault(); abrirLancamento(); } : undefined}
                   aria-label={pendentes > 0 ? `Categorizar ${pendentes} transações` : 'Lançar gasto'}
                   // Tamanho novo só para quem tem Open Finance (o badge precisa do
                   // espaço); o plano normal segue com o botão de sempre.
-                  className={`${hasOpenFinanceAccess(user, clienteDeCoach) ? 'min-w-[86px]' : 'min-w-[72px]'} flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 rounded-xl active:scale-95 transition-all relative ${abertoNoCentro ? 'text-[#182200]' : 'text-[#aeaeb2]'}`}
+                  className={`${hasOpenFinanceAccess(user, clienteDeCoach, ofLiberadoNaCasa) ? 'min-w-[86px]' : 'min-w-[72px]'} flex flex-col items-center justify-center pt-1.5 pb-0.5 gap-0.5 rounded-xl active:scale-95 transition-all relative ${abertoNoCentro ? 'text-[#182200]' : 'text-[#aeaeb2]'}`}
                 >
                   {pendentes > 0 ? (
                     <>
@@ -4926,7 +4930,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
               );
             })()}
 
-            {hasOpenFinanceAccess(user, clienteDeCoach) && (
+            {hasOpenFinanceAccess(user, clienteDeCoach, ofLiberadoNaCasa) && (
             <button
               onClick={async () => {
                 // Já no Extrato: tocar de novo sobe a lista para o topo.
@@ -5036,7 +5040,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
 
       {/* Convite de conexão — fecha o wizard e emenda na conexão bancária.
           Só existe para quem passou pelo portão; os demais nem veem. */}
-      {showConviteBanco && hasOpenFinanceAccess(user, clienteDeCoach) && (
+      {showConviteBanco && hasOpenFinanceAccess(user, clienteDeCoach, ofLiberadoNaCasa) && (
         <ConviteConectarBanco
           nome={user?.firstName || undefined}
           onConectar={() => { setShowConviteBanco(false); handleOpenExtrato(); }}
@@ -5045,7 +5049,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
       )}
 
       {/* Open Finance — Extrato Bancário overlay */}
-      {showExtrato && ofAuthToken && householdId && hasOpenFinanceAccess(user, clienteDeCoach) && (
+      {showExtrato && ofAuthToken && householdId && hasOpenFinanceAccess(user, clienteDeCoach, ofLiberadoNaCasa) && (
         <ExtratoBancario
           householdId={householdId}
           authToken={ofAuthToken}
@@ -5082,7 +5086,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
 
       {/* Pop-up de categorização — gated por hasOpenFinanceAccess no efeito que
           liga showCategorizePopup. "Categorizar agora" abre o Extrato. */}
-      {showCategorizePopup && categorizeCount > 0 && hasOpenFinanceAccess(user, clienteDeCoach) && (
+      {showCategorizePopup && categorizeCount > 0 && hasOpenFinanceAccess(user, clienteDeCoach, ofLiberadoNaCasa) && (
         <CategorizePopup
           count={categorizeCount}
           automaticas={pendentesAutomaticas}
@@ -5091,7 +5095,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
         />
       )}
 
-      {showSuporte && <Suporte onClose={() => setShowSuporte(false)} telaAtual={activeTab} temOpenFinance={hasOpenFinanceAccess(user, clienteDeCoach)} />}
+      {showSuporte && <Suporte onClose={() => setShowSuporte(false)} telaAtual={activeTab} temOpenFinance={hasOpenFinanceAccess(user, clienteDeCoach, ofLiberadoNaCasa)} />}
       {showSuporteAdmin && (
         <SuporteAdmin onClose={() => setShowSuporteAdmin(false)} onMudou={carregarChamadosAbertos} />
       )}

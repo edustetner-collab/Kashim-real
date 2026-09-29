@@ -65,6 +65,15 @@ interface ClerkLikeUser {
 export function hasOpenFinanceAccess(
   user: ClerkLikeUser | null | undefined,
   clienteDeCoach?: boolean | null,
+  /**
+   * `households.open_finance` — a casa já nasceu no fluxo.
+   *
+   * Cliente criado pelo coach a partir de 2026-09-28, e os que estavam no
+   * filtro "Novos" na virada. A base antiga fica de fora e vai entrando uma a
+   * uma pela lista de e-mails, conforme o Eduardo tem a reunião com cada um
+   * (decisão dele: abrir só para os novos, não para a base inteira).
+   */
+  liberadoNaCasa?: boolean | null,
 ): boolean {
   if (!user) return false;
   if (user.id && BETA_USER_IDS.includes(user.id)) return true;
@@ -74,6 +83,8 @@ export function hasOpenFinanceAccess(
     return !!email && OF_BETA_EMAILS.includes(email);
   });
   if (naLista) return true;
+
+  if (liberadoNaCasa === true) return true;
 
   return clienteDeCoach === false;
 }
