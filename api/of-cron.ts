@@ -2064,7 +2064,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
        */
       const { data: revogadas } = await db
         .from('bank_connections')
-        .select('id, household_id, bank_name, account_hash, payer_cpf, created_at')
+        .select('id, household_id, bank_name, account_hash, payer_cpf, created_at, last_synced_at, openfinance_link')
         .eq('consent_status', 'revoked');
 
       return res.status(200).json({
@@ -2075,11 +2075,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         revogadas_ainda_cadastradas: {
           quantas: (revogadas ?? []).length,
           aviso: 'Revogar nao para a cobranca; so a delecao para. Estas provavelmente ainda estao na fatura.',
+          /**
+           * `chegou_a_conectar` separa dois mundos que a fatura trata
+           * diferente: conta que JA sincronizou esteve mesmo ligada ao Open
+           * Finance; conta que nunca sincronizou pode ter sido so uma
+           * tentativa que morreu na autorizacao. So a primeira e candidata
+           * certa a estar sendo cobrada (Eduardo levantou isto em 29/09).
+           */
           lista: (revogadas ?? []).map((r) => ({
             conexao: r.id,
             banco: r.bank_name,
             casa: r.household_id,
             criada_em: r.created_at,
+            ultimo_sync: r.last_synced_at ?? null,
+            chegou_a_conectar: !!r.last_synced_at,
           })),
         },
       });
