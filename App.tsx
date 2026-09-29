@@ -331,7 +331,12 @@ const App: React.FC = () => {
   /** Pergunta que abre o chat já digitada, vinda de um atalho contextual. */
   const [stetsPerguntaInicial, setStetsPerguntaInicial] = useState('');
   /** O que o Kashim lançou sozinho por reconhecer o comerciante. */
-  const [autoCategorizadas, setAutoCategorizadas] = useState<Array<{ id: string; transactionId: string; descricao: string; valor: number; categoria: string; linha?: string }>>([]);
+  /** O que veio da memória e AGUARDA a confirmação dele, no resumo do topo. */
+  const [autoCategorizadas, setAutoCategorizadas] = useState<Array<{
+    id: string; transactionId: string; descricao: string; valor: number;
+    categoria: string; linha?: string; itemId?: string; data?: string;
+    merchant?: string; accountType?: string; cardLast4?: string; billDueDate?: string;
+  }>>([]);
   /**
    * Pendentes que o app vai lançar SOZINHO quando o Extrato abrir (memória do
    * estabelecimento). Ficam fora da contagem que a pessoa vê: ela via "2
@@ -362,6 +367,8 @@ const App: React.FC = () => {
   /** Onde o Plano estava quando um toque na linha levou para Gastos — o "voltar" devolve para lá. */
   const [voltarAoPlanoY, setVoltarAoPlanoY] = useState<number | null>(null);
   const [ofMigrando, setOfMigrando] = useState(false);
+  /** Extrato aberto pelo "mudar categoria" do resumo: mostra tambem a memoria. */
+  const [extratoComMemoria, setExtratoComMemoria] = useState(false);
   /**
    * Gravação do plano que falhou, para a tela AVISAR.
    *
@@ -403,21 +410,57 @@ const App: React.FC = () => {
       setAutoConferidas(new Set(salvo ? JSON.parse(salvo) as string[] : []));
     } catch { setAutoConferidas(new Set()); }
   }, [chaveAutoConferidas]);
+  /**
+   * Confirmar no resumo LANÇA no plano. É aqui que o gasto entra.
+   *
+   * Antes isto só marcava "já vi", porque o app lançava sozinho na abertura.
+   * Desde 2026-09-25 nada entra sem a pessoa confirmar, e desde 2026-09-30 o
+   * resumo é o lugar onde a memória espera. Então este botão passou a ser o
+   * momento em que o dinheiro entra na conta do plano.
+   *
+   * O SERVIDOR decide primeiro: o `categorize` só tira da fila quem ainda
+   * está nela e devolve `aplicada`. Só então a linha entra no plano. Inverter
+   * essa ordem é o que duplicou o Pix de R$ 1.200 em setembro.
+   */
   const marcarConferidas = (ids: string[]) => {
-    /**
-     * Grava no SERVIDOR: o localStorage abaixo é só o eco imediato na tela.
-     * Guardado só no aparelho, o mesmo aviso reaparecia na web depois de
-     * conferido no celular (Eduardo, 2026-09-23).
-     */
-    const transacoes = autoCategorizadas
-      .filter((t) => ids.includes(t.id) && t.transactionId)
-      .map((t) => t.transactionId);
-    if (transacoes.length > 0 && householdId) {
-      getToken({ template: 'supabase' }).then((token) => fetch('/api/of-transactions', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token ?? ''}` },
-        body: JSON.stringify({ householdId, action: 'resumo_visto', transactionIds: transacoes }),
-      })).catch(() => { /* o eco local já tirou da tela */ });
+    const alvos = autoCategorizadas.filter((t) => ids.includes(t.id) && t.transactionId);
+    if (alvos.length > 0 && householdId) {
+      void (async () => {
+        const token = await getToken({ template: 'supabase' });
+        for (const t of alvos) {
+          const item = t.itemId
+            ? itemsAgoraRef.current.find((i) => i.id === t.itemId || itemIdMapRef.current[i.id] === t.itemId)
+            : undefined;
+          // Sem linha conhecida não dá para lançar: fica na fila e o cliente
+          // resolve no Extrato, que é onde há onde escolher.
+          if (!item || !t.categoria) continue;
+          const quando = String(t.billDueDate || t.data || '');
+          const [ano, mes] = quando.split('-').map(Number);
+          if (!ano || !mes) continue;
+          const partialId = crypto.randomUUID();
+          try {
+            const r = await fetch('/api/of-transactions', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token ?? ''}` },
+              body: JSON.stringify({
+                householdId, transactionId: t.transactionId, action: 'categorize',
+                itemId: t.itemId, category: t.categoria, partialId,
+              }),
+            });
+            const resp = await r.json().catch(() => ({})) as { aplicada?: boolean };
+            if (!r.ok || resp.aplicada === false) continue; // já saiu da fila: não lança de novo
+            handleAddPartial(item.id, {
+              id: partialId,
+              date: String(t.data ?? ''),
+              description: String(t.merchant || t.descricao || ''),
+              value: Number(t.valor ?? 0),
+              paymentSource: t.accountType === 'credit_card' ? 'credit' : 'debit',
+              cardLast4: t.cardLast4,
+            }, ano, mes - 1);
+          } catch { /* a próxima recontagem traz de volta; nada foi lançado */ }
+        }
+        void recontarPendentes();
+      })();
     }
     setAutoConferidas(prev => {
       const proximo = new Set(prev);
@@ -2540,34 +2583,34 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
       if (lista.length === 0) setShowCategorizePopup(false);
 
       /**
-       * O que o Kashim lançou sozinho nos últimos dias.
+       * O RESUMO é a casa do que veio da MEMÓRIA — e só dele.
        *
-       * Sem mostrar isto, a fila encolhe sem explicação: o cliente viu 3
-       * pendentes, voltou depois e tinha 1, sem ter mexido em nada (Eduardo,
-       * 2026-09-14). Pior que a confusão é não poder conferir — lançamento
-       * automático erra, e errar escondido é o que quebra a confiança no saldo.
+       * Regra do Eduardo, repetida mais de uma vez: gasto que ele já
+       * categorizou antes vai para o resumo, para ele só CONFIRMAR; gasto novo
+       * vai para o Extrato, para ele CATEGORIZAR. Uma coisa não pode aparecer
+       * em dois lugares.
+       *
+       * Até 2026-09-30 esta lista saía das transações JÁ `categorized`, o que
+       * invertia tudo: a memória esperava no Extrato e, depois de confirmada
+       * lá, ressuscitava aqui pedindo confirmação de novo. Agora sai das
+       * PENDENTES de memória — é o que de fato aguarda a palavra dele.
        */
-      const pc = new URLSearchParams({ householdId, status: 'categorized', limit: '200' });
-      const rc = await fetch(`/api/of-transactions?${pc}`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!rc.ok) return;
-      const jc = await rc.json() as { transactions?: Array<Record<string, unknown>> };
-      const limite = Date.now() - 3 * 24 * 60 * 60 * 1000;
-      const auto = (jc.transactions ?? []).filter((t) => {
-        if (t.suggestionConfidence !== 'memory') return false;
-        // Conferido no servidor = conferido em TODO aparelho (Eduardo, 2026-09-23).
-        if (t.resumoVisto === true) return false;
-        const quando = t.categorizedAt ? new Date(String(t.categorizedAt)).getTime() : 0;
-        return quando >= limite;
-      });
+      const auto = lista.filter((t) => t.suggestionConfidence === 'memory');
       const doServidor = auto.map((t) => {
-        const idDaLinha = String(t.kashimItemId ?? '');
+        const idDaLinha = String(t.suggestedItemId ?? '');
         const linha = itemsAgoraRef.current.find(i => i.id === idDaLinha || itemIdMapRef.current[i.id] === idDaLinha);
         return {
           id: String(t.id ?? t.transactionId ?? `${t.description}|${t.amount}`),
           transactionId: String(t.transactionId ?? ''),
           descricao: String(t.description ?? ''),
           valor: Number(t.amount ?? 0),
-          categoria: String(t.kashimCategory ?? t.suggestedCategory ?? ''),
+          categoria: String(t.suggestedCategory ?? ''),
+          itemId: idDaLinha,
+          data: String(t.transactionDate ?? ''),
+          merchant: String(t.merchant ?? t.description ?? ''),
+          accountType: String(t.accountType ?? ''),
+          cardLast4: (t.cardLast4 as string) ?? undefined,
+          billDueDate: (t.billDueDate as string) ?? undefined,
           linha: linha?.description,
         };
       });
@@ -4000,9 +4043,17 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
            * mesmos gastos de novo, achando que o app ignorou (2026-09-20).
            */
           const daLeva = naoConferidas;
+          /**
+           * Abre o Extrato MOSTRANDO a memoria.
+           *
+           * Por padrao o Extrato esconde o que veio da memoria (o lugar dela e
+           * este resumo). Mas quem toca em "mudar categoria" precisa achar a
+           * transacao la para trocar — senao o botao levaria a uma lista onde
+           * ela nao existe.
+           */
           const abrirExtrato = async () => {
             const tk = await getToken({ template: 'supabase' });
-            if (tk) { setOfAuthToken(tk); setShowExtrato(true); }
+            if (tk) { setOfAuthToken(tk); setExtratoComMemoria(true); setShowExtrato(true); }
           };
           return (
           <div className="mb-3 bg-[#f0fad0] border border-[rgba(122,184,0,0.35)] rounded-2xl p-4">
@@ -4012,10 +4063,10 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-[#1d1d1f] font-black text-sm">
-                  O Kashim lançou {naoConferidas.length} gasto{naoConferidas.length === 1 ? '' : 's'} por você
+                  {naoConferidas.length} gasto{naoConferidas.length === 1 ? '' : 's'} que você já categorizou antes
                 </p>
                 <p className="text-[#6e6e73] text-xs mt-0.5 mb-2">
-                  {naoConferidas.length === 1 ? 'É um lugar' : 'São lugares'} que você já categorizou antes. Confira um por um.
+                  {naoConferidas.length === 1 ? 'Confirme e ele entra' : 'Confirme e eles entram'} no seu plano, na mesma categoria de antes.
                 </p>
                 {/* Uma decisão por gasto: concordar com um e discordar do outro
                     era impossível com os botões só no rodapé (Eduardo, 2026-09-20). */}
@@ -4058,13 +4109,13 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
                     onClick={abrirExtrato}
                     className="px-3 py-1.5 rounded-lg bg-[#7ab800] text-white text-[11px] font-black uppercase tracking-wide active:scale-95 transition-transform"
                   >
-                    Revisar no Extrato
+                    Mudar categoria
                   </button>
                   <button
                     onClick={() => marcarConferidas(naoConferidas.map(t => t.id))}
                     className="px-3 py-1.5 rounded-lg text-[#6e6e73] text-[11px] font-black uppercase tracking-wide"
                   >
-                    Está tudo certo
+                    Confirmar todos
                   </button>
                 </div>
               </div>
@@ -5072,6 +5123,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
           onAddPartial={handleAddPartial}
           onBancoRemovido={handleBancoRemovido}
           onFilaMudou={(pendentes) => setCategorizeCount(pendentes)}
+          incluirMemoria={extratoComMemoria}
           /* Recontar ao sair: a categorização acontece dentro do Extrato, e sem
              isto o badge e o pop-up seguiam anunciando o que o cliente acabou
              de resolver. Ele categorizava, fechava, e o número continuava lá
@@ -5079,6 +5131,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS):
           onClose={() => {
             setShowExtrato(false);
             setOfInitialCardLast4(undefined);
+            setExtratoComMemoria(false);
             recontarPendentes();
           }}
         />

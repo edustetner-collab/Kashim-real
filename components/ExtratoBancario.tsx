@@ -70,6 +70,8 @@ interface Props {
   onBancoRemovido?: (bankName: string) => void;
   /** Quantos ainda esperam o cliente — o badge acompanha sem esperar o fechamento. */
   onFilaMudou?: (pendentes: number) => void;
+  /** Mostra tambem o que veio da memoria — usado ao vir do resumo. */
+  incluirMemoria?: boolean;
   /** Guarda o aparelho para push, quando o cliente aceita ao conectar o banco. */
   onRegistrarPush?: (tokenApns: string, platform: string) => void;
   /** Lançar um gasto do zero — dinheiro vivo, cartão de terceiro, banco de fora. */
@@ -533,6 +535,7 @@ export default function ExtratoBancario({
   onCreateItem,
   onBancoRemovido,
   onFilaMudou,
+  incluirMemoria = false,
   onRegistrarPush,
   onLancarManual,
   onClose,
@@ -977,13 +980,28 @@ export default function ExtratoBancario({
         headers: await cabecalho(false),
       });
       const json = await r.json();
-      setTransactions(json.transactions ?? []);
+      /**
+       * O que veio da MEMÓRIA não aparece aqui. Ponto.
+       *
+       * Regra do Eduardo, repetida: gasto que ele já categorizou uma vez vai
+       * para o RESUMO, para ele só confirmar; gasto novo vai para o EXTRATO,
+       * para ele categorizar. **Uma coisa não pode aparecer em dois lugares.**
+       *
+       * O DIEGO LANCHES apareceu no Extrato mesmo tendo sido categorizado
+       * antes, ele confirmou aqui, e depois a mesma transação surgiu no resumo
+       * (2026-09-30). Tirar a memória desta lista é o que separa os dois
+       * mundos na origem.
+       */
+      const todas = (json.transactions ?? []) as BankTransaction[];
+      // `incluirMemoria` e a porta de saida: quando a pessoa toca em "mudar"
+      // no resumo, ela PRECISA achar a transacao aqui para trocar a categoria.
+      setTransactions(incluirMemoria ? todas : todas.filter((t) => t.suggestionConfidence !== 'memory'));
     } catch {
       // Silently degrade — user sees empty list
     } finally {
       setLoading(false);
     }
-  }, [householdId, cabecalho]);
+  }, [householdId, cabecalho, incluirMemoria]);
 
   useEffect(() => { loadTransactions(); }, [loadTransactions]);
 

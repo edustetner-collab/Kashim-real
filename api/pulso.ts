@@ -47,6 +47,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (CRON_SECRET && auth !== CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
+    /**
+     * `?tx=<householdId>` — as últimas transações com TUDO que decide ONDE
+     * elas aparecem: status, confiança da sugestão e `resumo_visto`.
+     *
+     * "Aparece em dois lugares" não se diagnostica pela tela: o Extrato mostra
+     * as `pending`, o resumo mostra as `categorized` de memória ainda não
+     * vistas. Ver os três campos juntos é o único jeito de saber por que a
+     * mesma transação apareceu duas vezes (2026-09-30).
+     */
+    const casaTx = String(req.query.tx ?? '').trim();
+    if (casaTx) {
+      const { data: txs, error: erroTx } = await db
+        .from('bank_transactions')
+        .select('description, merchant, amount, transaction_date, status, suggestion_confidence, suggested_category, resumo_visto, categorized_at')
+        .eq('household_id', casaTx)
+        .order('transaction_date', { ascending: false })
+        .limit(20);
+      if (erroTx) return res.status(500).json({ error: erroTx.message });
+      return res.status(200).json({
+        casa: casaTx,
+        transacoes: (txs ?? []).map((t) => ({
+          data: t.transaction_date,
+          quem: t.merchant ?? t.description,
+          valor: t.amount,
+          status: t.status,
+          confianca: t.suggestion_confidence,
+          resumo_visto: t.resumo_visto,
+          categorizada_em: t.categorized_at,
+          onde_aparece: t.status === 'pending'
+            ? 'EXTRATO'
+            : (t.status === 'categorized' && t.suggestion_confidence === 'memory' && t.resumo_visto !== true)
+              ? 'RESUMO'
+              : '—',
+        })),
+      });
+    }
+
     const hoje = inicioDoDiaBR();
     const ontem = inicioDoDiaBR(1);
     const seteDias = new Date(Date.now() - 7 * 86_400_000);

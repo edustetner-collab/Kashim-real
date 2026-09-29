@@ -354,6 +354,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             kashim_category: category,
             kashim_partial_id: partialId ?? null,
             categorized_at: new Date().toISOString(),
+            /**
+             * CONFIRMOU UMA VEZ, ACABOU — em qualquer tela.
+             *
+             * O resumo do topo mostra o que veio da memória e ainda não foi
+             * conferido. Quem confirmava no Extrato deixava `resumo_visto`
+             * falso, e a mesma transação reaparecia lá em cima pedindo
+             * confirmação de novo: o DIEGO LANCHES do Eduardo, confirmado no
+             * Extrato e ressuscitado no resumo ao reabrir o app (2026-09-30).
+             *
+             * Categorizar É conferir. Não existe um segundo "tem certeza?".
+             */
+            resumo_visto: true,
           })
           .eq('household_id', householdId)
           .eq('transaction_id', transactionId)
