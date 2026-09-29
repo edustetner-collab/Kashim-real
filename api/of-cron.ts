@@ -2054,11 +2054,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           cliente_de_coach: temCoach.has(c.household_id as string),
         };
       }).sort((a, b) => (b.dias_sem_abrir_o_app ?? 9999) - (a.dias_sem_abrir_o_app ?? 9999));
+      /**
+       * As REVOGADAS ainda custam dinheiro.
+       *
+       * A Technospeed confirmou em 2026-09-29 que revogar nao tira a conta da
+       * fatura — so a delecao tira. Como o Kashim so revogava, toda conexao
+       * que um cliente removeu desde o comeco continua cadastrada e contando
+       * como conta ativa. Esta lista e o tamanho desse rombo.
+       */
+      const { data: revogadas } = await db
+        .from('bank_connections')
+        .select('id, household_id, bank_name, account_hash, payer_cpf, created_at')
+        .eq('consent_status', 'revoked');
+
       return res.status(200).json({
         tirada_em: new Date().toISOString(),
         contas_ativas_pagando: linhas.length,
-        observacao: 'Nada foi revogado. Esta rota só lê.',
+        observacao: 'Nada foi revogado nem apagado. Esta rota só lê.',
         conexoes: linhas,
+        revogadas_ainda_cadastradas: {
+          quantas: (revogadas ?? []).length,
+          aviso: 'Revogar nao para a cobranca; so a delecao para. Estas provavelmente ainda estao na fatura.',
+          lista: (revogadas ?? []).map((r) => ({
+            conexao: r.id,
+            banco: r.bank_name,
+            casa: r.household_id,
+            criada_em: r.created_at,
+          })),
+        },
       });
     }
 

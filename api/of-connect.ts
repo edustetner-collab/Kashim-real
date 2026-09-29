@@ -302,6 +302,24 @@ async function createAccount(
   return { accountHash, openFinanceLink: link, openfinanceId, openfinanceStatus };
 }
 
+/**
+ * DELETAR a conta é o que para a cobrança. Revogar NÃO basta.
+ *
+ * Resposta da Technospeed em 2026-09-29, à pergunta de como parar de pagar por
+ * uma conta: *"É necessário a deleção da conta pelo endpoint deleteAccount"*.
+ * O `revoke` tira o consentimento no banco, mas a conta continua CADASTRADA
+ * lá e continua contando como conta ativa na fatura mensal.
+ *
+ * Ou seja: toda conexão que o cliente removeu desde o começo do Open Finance
+ * continuou sendo cobrada. É dinheiro saindo por uma porta que a gente
+ * achava que tinha fechado.
+ *
+ * O corpo aceita uma lista; mandamos uma por vez porque é uma remoção por vez.
+ */
+async function apagarContaNaTechnospeed(payerCpf: string, accountHash: string): Promise<void> {
+  await tsReq('DELETE', '/api/v1/account', payerCpf, { accountHash: [accountHash] });
+}
+
 async function revokeOpenFinance(payerCpf: string, accountHash: string): Promise<void> {
   await tsReq('PUT', `/api/v1/account/${accountHash}/openfinance/revoke`, payerCpf, {
     revokeAndDisable: false,
@@ -820,6 +838,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (conn.payer_cpf && conn.account_hash) {
         // Falha na revogação remota não impede marcar como revogado aqui
         await revokeOpenFinance(conn.payer_cpf, conn.account_hash).catch(() => {});
+        // E DEPOIS apaga o cadastro: é a deleção, não a revogação, que tira a
+        // conta da fatura da Technospeed. Ver `apagarContaNaTechnospeed`.
+        await apagarContaNaTechnospeed(conn.payer_cpf, conn.account_hash).catch(() => {});
       }
 
       if (apagarHistorico) {
