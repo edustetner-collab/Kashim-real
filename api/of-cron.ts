@@ -39,6 +39,39 @@ const STATUS_GAP_MS = 2_000;                   // folga entre consultas de statu
 const MAX_STATUS_CHECKS = 10;                  // teto para não comer o deadline
 // 4 protocolos/dia por conta: 1 vai para a conta corrente, sobram 3 para cartões.
 const MAX_CARDS_PER_ACCOUNT = 3;
+
+/**
+ * As horas em que a Technospeed atualiza a base (04h, 10h, 16h e 22h BRT),
+ * confirmadas por eles em 2026-09-30.
+ *
+ * Por que isto importa: gerar protocolo "a cada 6h desde o último" deixa a
+ * FASE ao acaso. Quem cai às 09h59 pega sempre o ciclo das 04h — dado de seis
+ * horas atrás — e continua seis horas atrás para sempre, todo dia, sem nada
+ * estar quebrado. Quem cai às 10h01 pega o das 10h, fresquinho.
+ *
+ * Gerando só na janela logo APÓS um ciclo, todo mundo converge para a fase
+ * boa e lá fica: as gerações passam a ficar 6h apart, que é o espaçamento dos
+ * próprios ciclos.
+ */
+const CICLOS_BRT = [4, 10, 16, 22];
+const FUSO_BRT = -3;
+/** Quanto tempo depois do ciclo ainda vale gerar. Larga o bastante para o cron alcançar todas as conexões. */
+const JANELA_APOS_CICLO_MS = 3 * 60 * 60 * 1000;
+
+/** Instante (em UTC) do último ciclo que já passou. */
+function ultimoCiclo(agora: number): number {
+  const br = new Date(agora + FUSO_BRT * 3_600_000);
+  const hora = br.getUTCHours();
+  const c = [...CICLOS_BRT].reverse().find((x) => x <= hora);
+  const base = new Date(br);
+  if (c === undefined) {
+    base.setUTCDate(base.getUTCDate() - 1);
+    base.setUTCHours(22, 0, 0, 0);
+  } else {
+    base.setUTCHours(c, 0, 0, 0);
+  }
+  return base.getTime() - FUSO_BRT * 3_600_000;
+}
 /** 12h UTC = 9h BRT: o lembrete da fila sai de manhã, não de madrugada. */
 const HORA_DO_LEMBRETE = 12;
 /** 20h, não 24h, para o lembrete não "andar" e acabar pulando um dia. */
@@ -1037,7 +1070,24 @@ async function syncOne(
   const prevAt = isCard ? (card?.protocolAt ?? conn.card_protocol_at) : conn.last_protocol_at;
 
   const age = prevAt ? Date.now() - new Date(prevAt).getTime() : Infinity;
-  const reaproveitar = !!prevId && age < PROTOCOL_WINDOW_MS;
+  /**
+   * Gera só na janela logo depois de um ciclo da Technospeed. Ver `CICLOS_BRT`.
+   *
+   * As duas condições juntas, e nenhuma sozinha:
+   *  - `age >= PROTOCOL_WINDOW_MS` respeita o limite de 1 protocolo por 6h por
+   *    conta. Sem ela, realinhar a fase poderia gerar dois protocolos com
+   *    menos de 6h de intervalo e bater no limite deles.
+   *  - a janela pós-ciclo é o que CORRIGE a fase: em vez de gerar assim que
+   *    completa 6h (o que congela a fase ruim para sempre), espera o próximo
+   *    ciclo. Custa uma espera, uma vez — e depois a conta fica alinhada.
+   *
+   * Sem protocolo nenhum (`!prevId`), gera na hora: primeira conexão não
+   * espera ciclo.
+   */
+  const agoraMs = Date.now();
+  const desdeOCiclo = agoraMs - ultimoCiclo(agoraMs);
+  const naJanelaBoa = desdeOCiclo < JANELA_APOS_CICLO_MS;
+  const reaproveitar = !!prevId && !(age >= PROTOCOL_WINDOW_MS && naJanelaBoa);
 
   let protocolId: string;
   if (reaproveitar) {
