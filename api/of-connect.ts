@@ -349,7 +349,8 @@ const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com', 'remmachado.86@gmail.com', 'm
   'araujo@uefs.br',
   'ivanfferreira12@hotmail.com',
   'jessica.n.carvalho1709@gmail.com',
-  'priscila.anjos.groto@gmail.com'];
+  'priscila.anjos.groto@gmail.com',
+  'kelsouzark@gmail.com'];
 
 /**
  * Espelha `lib/ofAccess.ts` no servidor. Esconder o botão não impede ninguém de
