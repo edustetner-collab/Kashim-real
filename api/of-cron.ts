@@ -1089,6 +1089,8 @@ async function syncOne(
   const naJanelaBoa = desdeOCiclo < JANELA_APOS_CICLO_MS;
   const reaproveitar = !!prevId && !(age >= PROTOCOL_WINDOW_MS && naJanelaBoa);
 
+  /** Por que NÃO geramos protocolo novo nesta rodada. Vai para o relatório. */
+  let motivoDaGeracao: string | null = null;
   let protocolId: string;
   if (reaproveitar) {
     protocolId = prevId!;
@@ -1127,6 +1129,18 @@ async function syncOne(
       const id = r?.uniqueId ?? r?.uniqueid;
       if (typeof id === 'string' && id) gerado = id;
     } catch (e) {
+      /**
+       * A rede de segurança NÃO pode ser silenciosa.
+       *
+       * Aqui a geração falha, o cron reaproveita o protocolo antigo e devolve
+       * `done` — a conta parece sincronizada enquanto o protocolo envelhece
+       * dias. Foi exatamente o que escondeu, em 2026-09-30, a geração dos
+       * cartões do Eduardo não acontecendo mesmo com a janela liberada.
+       * Guardar o motivo é o que permite ver isso no relatório.
+       */
+      motivoDaGeracao = e instanceof TSError
+        ? `geração recusada (${e.status}): ${JSON.stringify(e.body).slice(0, 200)}`
+        : `geração falhou: ${e instanceof Error ? e.message : 'erro'}`;
       if (!prevId) throw e; // sem rede de segurança: o erro é o resultado
     }
 
@@ -1155,8 +1169,10 @@ async function syncOne(
     }
   }
 
+  let reasonExtra: string | null = null;
   const env = await tsReq<Envelope>('GET', `/api/v1/statement/openfinance/${protocolId}`, conn.payer_cpf);
   const status = (env.statement?.status ?? '').toUpperCase();
+  if (motivoDaGeracao) reasonExtra = motivoDaGeracao;
 
   if (status === 'ERROR' || status === 'FAILED') {
     // Protocolo morto nao pode ficar guardado: dentro da janela de 6h ele seria
@@ -1180,7 +1196,7 @@ async function syncOne(
       await db.from('bank_connections')
         .update({ last_synced_at: new Date().toISOString(), needs_resync: false })
         .eq('id', conn.id);
-      return { status: 'done', upserted: 0, reason: 'sem movimento no periodo' };
+      return { status: 'done', upserted: 0, reason: reasonExtra ?? 'sem movimento no periodo' };
     }
 
     return { status: 'error', reason: motivo || 'processamento falhou' };
@@ -1332,7 +1348,7 @@ async function syncOne(
     await db.from('bank_connections')
       .update({ last_synced_at: new Date().toISOString(), needs_resync: false })
       .eq('id', conn.id);
-    return { status: 'done', upserted: 0 };
+    return { status: 'done', upserted: 0, reason: reasonExtra ?? undefined };
   }
 
   // ── Transferência entre o casal não é gasto nem renda ──────────────────────
@@ -1361,7 +1377,7 @@ async function syncOne(
     await db.from('bank_connections')
       .update({ last_synced_at: new Date().toISOString(), needs_resync: false })
       .eq('id', conn.id);
-    return { status: 'done', upserted: 0, reason: removidasDoCasal > 0 ? 'só transferências entre o casal' : undefined };
+    return { status: 'done', upserted: 0, reason: reasonExtra ?? (removidasDoCasal > 0 ? 'só transferências entre o casal' : undefined) };
   }
 
   // ── Reimportação sob demanda ───────────────────────────────────────────────
