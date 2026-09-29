@@ -2014,6 +2014,63 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
      * mexe em dinheiro e em banco de cliente — ela só entra depois de a gente
      * olhar o dado real uma vez (Eduardo, 2026-09-26).
      */
+    /**
+     * `?protocolo=1&casa=<householdId>` — a PROVA para mandar ao suporte.
+     *
+     * Quando a Technospeed pergunta "por que a transacao demorou", ela pede
+     * tres coisas: o cURL, a resposta HTTP completa e o uniqueId. Isto devolve
+     * as tres, com dado real, sem ninguem ter que montar na mao (2026-09-30).
+     *
+     * SO LEITURA: reusa o protocolo que JA existe na conexao. Nao gera
+     * protocolo novo, entao nao gasta nenhuma das 4 geracoes diarias da conta.
+     */
+    if (String(req.query.protocolo ?? '') === '1') {
+      const casa = String(req.query.casa ?? '').trim();
+      if (!casa) return res.status(400).json({ error: 'passe &casa=<householdId>' });
+      const { data: conns2 } = await db
+        .from('bank_connections')
+        .select('id, bank_name, account_hash, payer_cpf, last_protocol_id, last_protocol_at, last_synced_at, cards, consent_status')
+        .eq('household_id', casa)
+        .neq('consent_status', 'revoked');
+
+      const provas: Array<Record<string, unknown>> = [];
+      for (const c of conns2 ?? []) {
+        const protocolos: Array<{ tipo: string; uniqueId: string | null; geradoEm: string | null }> = [
+          { tipo: 'BANK', uniqueId: (c.last_protocol_id as string) ?? null, geradoEm: (c.last_protocol_at as string) ?? null },
+        ];
+        for (const k of (Array.isArray(c.cards) ? c.cards as StoredCard[] : [])) {
+          if (k?.protocolId) protocolos.push({ tipo: `CREDIT_CARD ${k.last4}`, uniqueId: k.protocolId, geradoEm: k.protocolAt ?? null });
+        }
+
+        for (const pr of protocolos) {
+          if (!pr.uniqueId) { provas.push({ banco: c.bank_name, tipo: pr.tipo, erro: 'sem protocolo aberto' }); continue; }
+          const caminho = `/api/v1/statement/openfinance/${pr.uniqueId}`;
+          let resposta: unknown = null;
+          let statusHttp: number | string = 200;
+          try {
+            resposta = await tsReq<Record<string, unknown>>('GET', caminho, c.payer_cpf as string);
+          } catch (e) {
+            statusHttp = e instanceof TSError ? e.status : 'erro';
+            resposta = e instanceof TSError ? e.body : String(e);
+          }
+          const env2 = resposta as { statement?: Record<string, unknown> } | null;
+          provas.push({
+            banco: c.bank_name,
+            tipo: pr.tipo,
+            uniqueId: pr.uniqueId,
+            protocolo_gerado_em: pr.geradoEm,
+            ultima_sincronizacao: c.last_synced_at,
+            // Numa linha só, para copiar e colar sem quebrar. As credenciais
+            // ficam como marcador: elas não saem daqui.
+            curl: `curl -X GET '${TS_BASE_URL}${caminho}' -H 'cnpjsh: <CNPJ_SH>' -H 'tokensh: <TOKEN_SH>' -H 'payercpfcnpj: ${c.payer_cpf}' -H 'Content-Type: application/json'`,
+            http: statusHttp,
+            statement: env2?.statement ?? resposta,
+          });
+        }
+      }
+      return res.status(200).json({ tirada_em: new Date().toISOString(), casa, provas });
+    }
+
     if (String(req.query.faxina ?? '') === '1') {
       const { data: conexoes } = await db
         .from('bank_connections')
