@@ -2027,6 +2027,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (String(req.query.protocolo ?? '') === '1') {
       const casa = String(req.query.casa ?? '').trim();
       if (!casa) return res.status(400).json({ error: 'passe &casa=<householdId>' });
+      const desde = String(req.query.desde ?? '').trim(); // YYYY-MM-DD, opcional
       const { data: conns2 } = await db
         .from('bank_connections')
         .select('id, bank_name, account_hash, payer_cpf, last_protocol_id, last_protocol_at, last_synced_at, cards, consent_status')
@@ -2053,7 +2054,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             statusHttp = e instanceof TSError ? e.status : 'erro';
             resposta = e instanceof TSError ? e.body : String(e);
           }
-          const env2 = resposta as { statement?: Record<string, unknown> } | null;
+          const env2 = resposta as (Envelope & { statement?: Record<string, unknown> }) | null;
+
+          /**
+           * `&desde=YYYY-MM-DD` abre o protocolo e mostra o que tem DENTRO.
+           *
+           * E o teste que encerra a discussao: se a compra do cliente nao
+           * esta aqui, a Technospeed nao entregou o dado — o problema nao e
+           * nosso, e nenhuma mudanca no app resolveria. Se estiver aqui e nao
+           * estiver no nosso banco, ai o problema e da importacao.
+           */
+          let dentro: Array<Record<string, unknown>> | null = null;
+          if (desde && env2) {
+            const todas = [
+              ...(env2.transaction?.credit ?? []), ...(env2.transaction?.debit ?? []),
+              ...(env2.transactionDuplicated?.credit ?? []), ...(env2.transactionDuplicated?.debit ?? []),
+            ] as Array<{ date?: string; description?: string; amount?: string; code?: string }>;
+            dentro = todas
+              .filter((t) => String(t.date ?? '') >= desde)
+              .sort((x, y) => String(x.date).localeCompare(String(y.date)))
+              .map((t) => ({ data: t.date, descricao: t.description, valor: t.amount, codigo: t.code }));
+          }
           provas.push({
             banco: c.bank_name,
             tipo: pr.tipo,
@@ -2065,6 +2086,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             curl: `curl -X GET '${TS_BASE_URL}${caminho}' -H 'cnpjsh: <CNPJ_SH>' -H 'tokensh: <TOKEN_SH>' -H 'payercpfcnpj: ${c.payer_cpf}' -H 'Content-Type: application/json'`,
             http: statusHttp,
             statement: env2?.statement ?? resposta,
+            ...(dentro ? { transacoes_desde: desde, quantas: dentro.length, transacoes: dentro } : {}),
           });
         }
       }
