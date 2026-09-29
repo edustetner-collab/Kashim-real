@@ -195,7 +195,35 @@ const BlockSection: React.FC<BlockSectionProps> = ({
   });
   const [showHidden, setShowHidden] = useState(false);
 
+  /**
+   * Quem SOMA. Linha oculta fica de fora dos rodapes.
+   *
+   * O "Total Faturas" e o "Total Contas Fixas" somavam TODAS as linhas,
+   * inclusive as ocultas. O Eduardo ocultou um cartao de um cliente, o rodape
+   * continuou somando e ele deu um diagnostico errado com esse numero
+   * (2026-09-30).
+   */
+  const itensQueSomam = items.filter((i) => !i.oculto && !hiddenItemIds.has(i.id));
+
+  /**
+   * Um olho so, um efeito so.
+   *
+   * Havia DOIS botoes com o mesmo icone e a mesma palavra "Ocultar": o da
+   * lista, que grava `item.oculto` e tira a linha de todas as somas, e o da
+   * tabela, que so escondia a linha no localStorage e continuava somando. O
+   * Eduardo usou o segundo esperando o primeiro — e o rodape seguiu contando
+   * o cartao "oculto".
+   *
+   * Para quem pode decidir (coach/admin), o olho agora e o de verdade: grava
+   * no banco e para de somar em todo lugar. Para o cliente comum continua
+   * sendo o esconder visual, que e uma preferencia de tela dele.
+   */
   function toggleHideRow(id: string) {
+    if (isAdmin && onToggleOculto) {
+      const alvo = items.find((i) => i.id === id);
+      onToggleOculto(id, !alvo?.oculto);
+      return;
+    }
     setHiddenItemIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) { next.delete(id); } else { next.add(id); }
@@ -1643,9 +1671,9 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                 });
                 if (!hasActivity) return false;
               }
-              return showHidden || !hiddenItemIds.has(item.id);
+              return showHidden || (!hiddenItemIds.has(item.id) && !item.oculto);
             }).map((item) => (
-              <tr key={item.id} className={`border-b transition-colors ${hiddenItemIds.has(item.id) ? 'opacity-35 bg-gray-50' : 'hover:bg-gray-50'}`}>
+              <tr key={item.id} className={`border-b transition-colors ${(hiddenItemIds.has(item.id) || item.oculto) ? 'opacity-35 bg-gray-50' : 'hover:bg-gray-50'}`}>
                 <td className="p-2 text-center">
                   <div className="flex flex-col items-center gap-0.5">
                     {onMoveItem && !hiddenItemIds.has(item.id) && (
@@ -1654,8 +1682,8 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                       </button>
                     )}
                     <button onClick={() => onRemoveItem(item.id)} className="text-red-400/50 hover:text-red-500 transition-colors p-1"><i className="fas fa-trash-alt text-xs"></i></button>
-                    <button onClick={() => toggleHideRow(item.id)} className={`transition-colors p-1 ${hiddenItemIds.has(item.id) ? 'text-green-500 hover:text-green-400' : 'text-gray-300 hover:text-gray-500'}`} title={hiddenItemIds.has(item.id) ? 'Reexibir linha' : 'Ocultar linha'}>
-                      <i className={`fas ${hiddenItemIds.has(item.id) ? 'fa-eye' : 'fa-eye-slash'} text-xs`}></i>
+                    <button onClick={() => toggleHideRow(item.id)} className={`transition-colors p-1 ${(hiddenItemIds.has(item.id) || item.oculto) ? 'text-green-500 hover:text-green-400' : 'text-gray-300 hover:text-gray-500'}`} title={(hiddenItemIds.has(item.id) || item.oculto) ? 'Voltar a somar esta linha' : (isAdmin && onToggleOculto ? 'Ocultar da soma (guarda o histórico)' : 'Esconder da minha tela')}>
+                      <i className={`fas ${(hiddenItemIds.has(item.id) || item.oculto) ? 'fa-eye' : 'fa-eye-slash'} text-xs`}></i>
                     </button>
                     {onMoveItem && !hiddenItemIds.has(item.id) && (
                       <button onClick={() => onMoveItem(item.id, 'down')} className="text-gray-300 hover:text-green-400 transition-colors px-1" title="Mover para baixo">
@@ -2081,7 +2109,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                 </td>
                 {months.map((_, mIdx) => (
                   <td key={mIdx} className="p-3 text-center border-l font-black font-mono text-orange-500">
-                    {formatCurrency(items.reduce((sum, i) => sum + (i.values[mIdx] || 0), 0))}
+                    {formatCurrency(itensQueSomam.reduce((sum, i) => sum + (i.values[mIdx] || 0), 0))}
                   </td>
                 ))}
               </tr>
@@ -2096,7 +2124,7 @@ const BlockSection: React.FC<BlockSectionProps> = ({
                 </td>
                 {months.map((_, mIdx) => (
                   <td key={mIdx} className="p-3 text-center border-l font-black font-mono text-red-500">
-                    {formatCurrency(items.reduce((sum, i) => sum + (i.values[mIdx] || 0), 0))}
+                    {formatCurrency(itensQueSomam.reduce((sum, i) => sum + (i.values[mIdx] || 0), 0))}
                   </td>
                 ))}
               </tr>
