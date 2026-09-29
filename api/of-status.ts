@@ -83,7 +83,8 @@ const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com', 'remmachado.86@gmail.com', 'm
   'ivanfferreira12@hotmail.com',
   'jessica.n.carvalho1709@gmail.com',
   'priscila.anjos.groto@gmail.com',
-  'kelsouzark@gmail.com'];
+  'kelsouzark@gmail.com',
+  'michele.ferdinando@hotmail.com'];
 
 /**
  * Conta própria (sem vínculo de coach) entra no Open Finance; cliente de

@@ -40,7 +40,8 @@ export const OF_BETA_EMAILS = ['eduardo_cda@hotmail.com', 'remmachado.86@gmail.c
   'ivanfferreira12@hotmail.com',
   'jessica.n.carvalho1709@gmail.com',
   'priscila.anjos.groto@gmail.com',
-  'kelsouzark@gmail.com'];
+  'kelsouzark@gmail.com',
+  'michele.ferdinando@hotmail.com'];
 
 interface ClerkLikeUser {
   id?: string | null;
