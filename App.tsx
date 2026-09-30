@@ -1205,10 +1205,23 @@ const App: React.FC = () => {
                * seguia preenchendo por uma hora e só descobria ao voltar, com
                * tudo perdido (Eduardo, 2026-09-25).
                */
+              /**
+               * O DETALHE precisa ser o erro de verdade.
+               *
+               * Erro do Supabase é um objeto `{ message, code, details, hint }`,
+               * NÃO uma instância de Error — então `e instanceof Error` era
+               * falso e o aviso dizia "erro desconhecido", jogando fora
+               * exatamente a informação que permitiria consertar. O Matheus
+               * Paiva mandou o print e não deu para saber de nada
+               * (2026-09-30).
+               */
+              const err = e as { message?: string; code?: string; details?: string } | null;
+              const detalhe = [err?.code, err?.message ?? (e instanceof Error ? e.message : ''), err?.details]
+                .filter(Boolean).join(' · ') || String(e);
               setErroDeGravacao(
                 `Não consegui salvar "${item.description || 'uma linha'}". `
-                + 'NÃO feche esta tela — tire um print e avise o Eduardo. '
-                + `Detalhe: ${e instanceof Error ? e.message : 'erro desconhecido'}`,
+                + 'Tire um print desta tela e envie para o suporte antes de fechar. '
+                + `Detalhe: ${detalhe}`,
               );
               // Para o ciclo: insistir nas outras linhas só empilha o mesmo
               // erro e esconde qual foi a primeira a falhar.
