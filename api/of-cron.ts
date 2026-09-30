@@ -2090,6 +2090,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
      * SO LEITURA: reusa o protocolo que JA existe na conexao. Nao gera
      * protocolo novo, entao nao gasta nenhuma das 4 geracoes diarias da conta.
      */
+    /**
+     * `?conta=1&casa=<id>` — o que a TECHNOSPEED tem cadastrado.
+     *
+     * Quando alguem nao consegue conectar, a pergunta e sempre a mesma: os
+     * dados da conta batem com o banco? A Technospeed confere banco, agencia e
+     * conta com a instituicao (chamado #884775) e divergencia nao conecta, em
+     * silencio. Este modo mostra o que foi cadastrado la — que e o unico lugar
+     * onde a agencia fica guardada; o Kashim nao a grava.
+     *
+     * Foi assim que se viu a agencia "0-1" do Joao Barcellos no Nubank, que
+     * usa 0001 (2026-09-30). SO LEITURA.
+     */
+    if (String(req.query.conta ?? '') === '1') {
+      const casa = String(req.query.casa ?? '').trim();
+      if (!casa) return res.status(400).json({ error: 'passe &casa=<householdId>' });
+      const { data: cs } = await db
+        .from('bank_connections')
+        .select('id, bank_name, account_hash, payer_cpf, consent_status, created_at, open_finance_link')
+        .eq('household_id', casa);
+      const contas: Array<Record<string, unknown>> = [];
+      for (const c of cs ?? []) {
+        let corpo: unknown = null;
+        let http: number | string = 200;
+        try {
+          corpo = await tsReq<Record<string, unknown>>('GET', `/api/v1/account/${c.account_hash}`, c.payer_cpf as string);
+        } catch (e) {
+          http = e instanceof TSError ? e.status : 'erro';
+          corpo = e instanceof TSError ? e.body : String(e);
+        }
+        contas.push({
+          banco: c.bank_name,
+          status_no_kashim: c.consent_status,
+          criada_em: c.created_at,
+          http,
+          cadastro_na_technospeed: corpo,
+        });
+      }
+      return res.status(200).json({ casa, contas });
+    }
+
     if (String(req.query.protocolo ?? '') === '1') {
       const casa = String(req.query.casa ?? '').trim();
       if (!casa) return res.status(400).json({ error: 'passe &casa=<householdId>' });
@@ -2209,7 +2249,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
        */
       const { data: revogadas } = await db
         .from('bank_connections')
-        .select('id, household_id, bank_name, account_hash, payer_cpf, created_at, last_synced_at, openfinance_link')
+        .select('id, household_id, bank_name, account_hash, payer_cpf, created_at, last_synced_at, open_finance_link')
         .eq('consent_status', 'revoked');
 
       return res.status(200).json({

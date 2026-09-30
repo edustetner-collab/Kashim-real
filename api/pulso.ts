@@ -56,6 +56,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
      * vistas. Ver os três campos juntos é o único jeito de saber por que a
      * mesma transação apareceu duas vezes (2026-09-30).
      */
+    /**
+     * `?quem=id1,id2` — de quem são estas casas.
+     *
+     * Cadastro espontâneo não tem `prospect_name`: no relatório ele vira
+     * "(sem nome)" e um id solto. Quando o Eduardo diz "o João não conecta", o
+     * único jeito de achar a conexão dele é ir ao Clerk pelo `clerk_user_id`
+     * (2026-09-30).
+     */
+    const quemCasas = String(req.query.quem ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+    if (quemCasas.length > 0) {
+      const { data: vinculos } = await db
+        .from('household_members').select('household_id, clerk_user_id').in('household_id', quemCasas);
+      const chave = process.env.CLERK_SECRET_KEY ?? '';
+      const pessoas = await Promise.all((vinculos ?? []).map(async (v) => {
+        const sub = v.clerk_user_id as string;
+        if (!chave) return { casa: v.household_id, clerk_user_id: sub };
+        try {
+          const r = await fetch(`https://api.clerk.com/v1/users/${sub}`, {
+            headers: { Authorization: `Bearer ${chave}` },
+          });
+          if (!r.ok) return { casa: v.household_id, clerk_user_id: sub, erro: `clerk ${r.status}` };
+          const u = await r.json() as {
+            first_name?: string | null; last_name?: string | null;
+            primary_email_address_id?: string;
+            email_addresses?: Array<{ id: string; email_address: string }>;
+          };
+          const principal = u.email_addresses?.find((e) => e.id === u.primary_email_address_id)
+            ?? u.email_addresses?.[0];
+          return {
+            casa: v.household_id,
+            nome: [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || null,
+            email: principal?.email_address ?? null,
+          };
+        } catch {
+          return { casa: v.household_id, clerk_user_id: sub, erro: 'clerk indisponível' };
+        }
+      }));
+      return res.status(200).json({ pessoas });
+    }
+
     const casaTx = String(req.query.tx ?? '').trim();
     if (casaTx) {
       const { data: txs, error: erroTx } = await db
