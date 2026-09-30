@@ -52,22 +52,33 @@ interface Bank {
   logo?: string;
   /** aviso mostrado ao selecionar */
   note?: string;
+  /**
+   * Agência única do banco, quando ele só tem uma.
+   *
+   * Banco digital não tem agência de verdade — é sempre a mesma. Sem isto, o
+   * cliente inventa: o João Barcelos digitou agência `0` e dígito `1`, a
+   * Technospeed mandou "0-1" ao Nubank, o banco recusou e ele voltava para a
+   * tela de conectar sem nenhuma explicação, repetidas vezes (2026-09-30).
+   *
+   * Preenchida sozinha e bloqueada: não há o que decidir aqui.
+   */
+  agenciaFixa?: string;
 }
 
 const BANKS: Bank[] = [
-  { id: 'nubank',      code: '260', name: 'Nubank',            alias: 'nu roxinho' },
+  { id: 'nubank',      code: '260', name: 'Nubank',            alias: 'nu roxinho', agenciaFixa: '0001' },
   { id: 'itau',        code: '341', name: 'Itaú',              alias: 'unibanco' },
   { id: 'bradesco',    code: '237', name: 'Bradesco' },
   { id: 'santander',   code: '033', name: 'Santander' },
   { id: 'bb',          code: '001', name: 'Banco do Brasil',   alias: 'bb' },
   { id: 'caixa',       code: '104', name: 'Caixa',             alias: 'cef economica federal',
     note: 'A Caixa está com instabilidade para novas conexões. Se falhar, tente mais tarde.' },
-  { id: 'inter',       code: '077', name: 'Inter',             alias: 'banco inter' },
+  { id: 'inter',       code: '077', name: 'Inter',             alias: 'banco inter', agenciaFixa: '0001' },
   { id: 'c6',          code: '336', name: 'C6 Bank',           alias: 'c6' },
   { id: 'btg',         code: '208', name: 'BTG Pactual' },
-  { id: 'picpay',      code: '380', name: 'PicPay' },
-  { id: 'mercadopago', code: '323', name: 'Mercado Pago',      alias: 'mp meli' },
-  { id: 'pagbank',     code: '290', name: 'PagBank',           alias: 'pagseguro' },
+  { id: 'picpay',      code: '380', name: 'PicPay', agenciaFixa: '0001' },
+  { id: 'mercadopago', code: '323', name: 'Mercado Pago',      alias: 'mp meli', agenciaFixa: '0001' },
+  { id: 'pagbank',     code: '290', name: 'PagBank',           alias: 'pagseguro', agenciaFixa: '0001' },
   { id: 'neon',        code: '426', name: 'Neon' },
   { id: 'xp',          code: '102', name: 'XP Banking',        alias: 'xp investimentos' },
   { id: 'sicredi',     code: '748', name: 'Sicredi' },
@@ -442,7 +453,8 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
     if (!addressNumber.trim()) { setError('Informe o número do endereço'); return; }
     if (!neighborhood.trim()) { setError('Informe o bairro'); return; }
     if (!selectedBank) { setError('Selecione o banco'); return; }
-    if (!agency.trim()) { setError('Informe a agência'); return; }
+    // Banco de agencia unica ja vem preenchido e travado: nao cobra o campo.
+    if (!selectedBank.agenciaFixa && !agency.trim()) { setError('Informe a agência'); return; }
     if (!accountNumber.trim()) { setError('Informe a conta'); return; }
 
     setView('connecting');
@@ -457,8 +469,9 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
           cpf: cpfDigits,
           address: { ...address, neighborhood: neighborhood.trim(), addressNumber: addressNumber.trim() },
           bankCode: selectedBank.code,
-          agency: agency.trim(),
-          agencyDigit: agencyDigit.trim() || undefined,
+          // Banco de agencia unica manda a dele, nao o que o cliente digitou.
+          agency: selectedBank.agenciaFixa ?? agency.trim(),
+          agencyDigit: selectedBank?.agenciaFixa ? undefined : (agencyDigit.trim() || undefined),
           accountNumber: accountNumber.trim(),
           accountNumberDigit: accountNumberDigit.trim() || undefined,
           accountType: 'checking',
@@ -945,10 +958,15 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
                 <input
                   type="text"
                   inputMode="numeric"
-                  value={agency}
+                  value={selectedBank?.agenciaFixa ?? agency}
                   onChange={(e) => setAgency(e.target.value.replace(/\D/g, ''))}
+                  readOnly={!!selectedBank?.agenciaFixa}
                   placeholder="0000"
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white text-sm placeholder-zinc-600 focus:outline-none focus:border-green-500"
+                  className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-green-500 ${
+                    selectedBank?.agenciaFixa
+                      ? 'bg-zinc-900 border-zinc-800 text-zinc-400'
+                      : 'bg-zinc-800 border-zinc-700 text-white placeholder-zinc-600'
+                  }`}
                 />
               </div>
               <div>
@@ -956,10 +974,15 @@ const ConectarBanco: React.FC<Props> = ({ householdId, onClose }) => {
                 <input
                   type="text"
                   inputMode="numeric"
-                  value={agencyDigit}
+                  value={selectedBank?.agenciaFixa ? '' : agencyDigit}
                   onChange={(e) => setAgencyDigit(e.target.value.slice(0, 2))}
-                  placeholder="0"
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white text-sm placeholder-zinc-600 focus:outline-none focus:border-green-500"
+                  readOnly={!!selectedBank?.agenciaFixa}
+                  placeholder={selectedBank?.agenciaFixa ? '—' : '0'}
+                  className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-green-500 ${
+                    selectedBank?.agenciaFixa
+                      ? 'bg-zinc-900 border-zinc-800 text-zinc-500'
+                      : 'bg-zinc-800 border-zinc-700 text-white placeholder-zinc-600'
+                  }`}
                 />
               </div>
             </div>
