@@ -24,7 +24,10 @@ const SUPABASE_URL = process.env.VITE_SUPABASE_URL ?? '';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY ?? '';
 const ADMIN_IDS = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean);
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? '';
-const DONO_EMAILS = ['eduardo_cda@hotmail.com'];
+// Os DOIS e-mails do Eduardo. Ele administra pelo hotmail e usa o app pelo
+// gmail — logado no gmail, as telas de admin devolviam 403 "Acesso restrito"
+// para o proprio dono (2026-09-30).
+const DONO_EMAILS = ['eduardo_cda@hotmail.com', 'edu.stetner@gmail.com'];
 
 function verifyAuthToken(authHeader?: string): { sub: string } | null {
   if (!SUPABASE_JWT_SECRET) return null;

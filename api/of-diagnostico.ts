@@ -18,7 +18,10 @@ const ADMIN_IDS = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim(
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? '';
 // Espelha OF_BETA_EMAILS: a conta que o Eduardo usa no app é a de cliente, e o
 // ID dela não está em ADMIN_USER_IDS — checar só por ID trancava o dono fora.
-const DONO_EMAILS = ['eduardo_cda@hotmail.com'];
+// Os DOIS e-mails do Eduardo. Ele administra pelo hotmail e usa o app pelo
+// gmail — logado no gmail, as telas de admin devolviam 403 "Acesso restrito"
+// para o proprio dono (2026-09-30).
+const DONO_EMAILS = ['eduardo_cda@hotmail.com', 'edu.stetner@gmail.com'];
 
 async function podeDiagnosticar(sub: string): Promise<boolean> {
   if (ADMIN_IDS.includes(sub)) return true;

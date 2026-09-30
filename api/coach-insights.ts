@@ -9,7 +9,10 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY ?? '';
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? '';
 
 // Só o super-admin lê as perguntas dos clientes — mesma lista do portão do coach.
-const SUPER_ADMIN_EMAILS = ['eduardo_cda@hotmail.com'];
+// Os DOIS e-mails do Eduardo. Ele administra pelo hotmail e usa o app pelo
+// gmail — logado no gmail, as telas de admin devolviam 403 "Acesso restrito"
+// para o proprio dono (2026-09-30).
+const SUPER_ADMIN_EMAILS = ['eduardo_cda@hotmail.com', 'edu.stetner@gmail.com'];
 
 function verifyAuthToken(authHeader?: string): { sub: string } | null {
   if (!SUPABASE_JWT_SECRET) return null;

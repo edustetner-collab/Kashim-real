@@ -64,6 +64,65 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
      * único jeito de achar a conexão dele é ir ao Clerk pelo `clerk_user_id`
      * (2026-09-30).
      */
+    /**
+     * `?of=1` — quantas pessoas tem Open Finance AGORA, e por que caminho.
+     *
+     * Sao tres portas, e a pergunta "quantos tem acesso" so se responde
+     * somando as tres: cadastro espontaneo (entra sozinho), a casa marcada
+     * `open_finance` (cliente criado a partir de 28/09) e a lista de e-mails
+     * (exececao manual, um a um). Contar so uma delas engana.
+     */
+    if (String(req.query.of ?? '') === '1') {
+      /**
+       * A coluna `open_finance` pode nao existir ainda (migration pendente).
+       *
+       * No Supabase, pedir coluna inexistente derruba a consulta INTEIRA e
+       * devolve data: null — e o relatorio mostraria "0 casas", que parece um
+       * numero e nao e. Eu cai nessa duas vezes na mesma hora em 2026-09-30.
+       * Por isso: consulta base sem ela, e a marca vem separada e tolerante.
+       */
+      const { data: todas, error: erroCasas } = await db
+        .from('households').select('id, prospect_name, prospect_email, last_active_at');
+      if (erroCasas) return res.status(500).json({ error: `households: ${erroCasas.message}` });
+
+      let marcadasNaCasa = new Set<string>();
+      let migrationRodou = true;
+      {
+        const { data: marc, error: erroMarca } = await db
+          .from('households').select('id').eq('open_finance', true);
+        if (erroMarca) migrationRodou = false;
+        else marcadasNaCasa = new Set((marc ?? []).map((m) => m.id as string));
+      }
+      const { data: cRows } = await db.from('coach_access').select('household_id');
+      const comCoach = new Set((cRows ?? []).map((c) => c.household_id as string));
+      const { data: conns } = await db
+        .from('bank_connections').select('household_id').neq('consent_status', 'revoked');
+      const conectadas = new Set((conns ?? []).map((c) => c.household_id as string));
+
+      let espontaneas = 0, marcadas = 0, semAcesso = 0;
+      const casasComAcesso = new Set<string>();
+      for (const h of todas ?? []) {
+        const id = h.id as string;
+        const ehDoCoach = comCoach.has(id) || !!h.prospect_name || !!h.prospect_email;
+        if (!ehDoCoach) { espontaneas++; casasComAcesso.add(id); continue; }
+        if (marcadasNaCasa.has(id)) { marcadas++; casasComAcesso.add(id); continue; }
+        semAcesso++;
+      }
+      return res.status(200).json({
+        tirada_em: new Date().toISOString(),
+        total_de_casas: (todas ?? []).length,
+        migration_open_finance_rodou: migrationRodou,
+        com_open_finance: {
+          total: casasComAcesso.size,
+          por_cadastro_espontaneo: espontaneas,
+          por_marca_na_casa: marcadas,
+          observacao: 'A lista OF_BETA_EMAILS libera por E-MAIL e nao aparece nesta conta — ela soma por cima destes.',
+        },
+        sem_open_finance: semAcesso,
+        ja_conectaram_banco: [...casasComAcesso].filter((id) => conectadas.has(id)).length,
+      });
+    }
+
     const quemCasas = String(req.query.quem ?? '').split(',').map((x) => x.trim()).filter(Boolean);
     if (quemCasas.length > 0) {
       const { data: vinculos } = await db
